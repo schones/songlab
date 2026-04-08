@@ -16,6 +16,9 @@
   <script src="https://unpkg.com/@blockly/field-colour"></script>
   <!-- Tone.js for audio synthesis -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script src="/static/shared/audio-toggle.js"></script>
+  <!-- MidiWriterJS for MIDI export -->
+  <script src="https://cdn.jsdelivr.net/npm/midi-writer-js@2.1.4/build/browser.min.js"></script>
   <style>
     /* ── Welcome banner ── */
     .intro-banner {
@@ -77,7 +80,7 @@
     <nav class="mtt-header__nav">
       <a href="/" class="mtt-header__link">Home</a>
       <a href="#" class="mtt-header__link mtt-header__link--active">Skratch Studio</a>
-      <a href="/skratch/help" class="mtt-header__link" target="_blank" rel="noopener"
+      <a href="/skratch-studio/help" class="mtt-header__link" target="_blank" rel="noopener"
         title="Open help guide in a new tab">&#10067; Help</a>
     </nav>
   </header>
@@ -135,6 +138,7 @@
           </select>
           <button id="btnClearBlocks" class="btn btn--clear" aria-label="Clear all blocks">Clear Blocks</button>
           <button id="btnClearCanvas" class="btn btn--clear" aria-label="Clear canvas">Clear Canvas</button>
+          <button id="btnExportMidi" class="btn btn--save-block" aria-label="Export MIDI">↓ MIDI</button>
         </div>
         <!-- Audio controls: piano + mic + BPM -->
         <div class="audio-controls">

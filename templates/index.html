@@ -411,6 +411,117 @@
         fill: #0f0e1a;
     }
 
+    /* ── Skratch Studio Card ── */
+    .skratch-section {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem 0;
+    }
+
+    .skratch-card {
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+        text-decoration: none;
+        color: inherit;
+        border-radius: 18px;
+        border: 1.5px solid var(--border);
+        background: var(--bg-card);
+        padding: 2rem 2.5rem;
+        transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    }
+
+    .skratch-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 16px 40px rgba(245, 158, 11, 0.15);
+        border-color: #f59e0b;
+        text-decoration: none;
+    }
+
+    [data-theme="dark"] .skratch-card:hover {
+        box-shadow: 0 16px 40px rgba(245, 158, 11, 0.25);
+    }
+
+    .skratch-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        border-radius: 18px 18px 0 0;
+        background: linear-gradient(90deg, #f59e0b, #f87171, #6c63ff);
+    }
+
+    .skratch-card {
+        position: relative;
+        overflow: hidden;
+    }
+
+    .skratch-card__icon {
+        flex-shrink: 0;
+        width: 72px;
+        height: 72px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(108, 99, 255, 0.12));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    [data-theme="dark"] .skratch-card__icon {
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(108, 99, 255, 0.2));
+    }
+
+    .skratch-card__body {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .skratch-card__label {
+        font-family: var(--font-main);
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: #f59e0b;
+        margin-bottom: 0.25rem;
+    }
+
+    .skratch-card__title {
+        font-family: var(--font-main);
+        font-size: 1.25rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        margin-bottom: 0.4rem;
+        line-height: 1.3;
+    }
+
+    .skratch-card__desc {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        line-height: 1.55;
+        font-weight: 600;
+    }
+
+    .skratch-card__cta {
+        flex-shrink: 0;
+        font-family: var(--font-main);
+        font-size: 0.85rem;
+        font-weight: 800;
+        color: #f59e0b;
+        white-space: nowrap;
+    }
+
+    @media (max-width: 700px) {
+        .skratch-card {
+            flex-direction: column;
+            text-align: center;
+            padding: 1.5rem;
+            gap: 1rem;
+        }
+    }
+
     /* ── Category Grid ── */
     .categories-section {
         max-width: 1100px;
@@ -911,6 +1022,30 @@
         </a>
     </section>
 
+    <!-- ===== Skratch Studio ===== -->
+    <section class="skratch-section">
+        <a href="/skratch-studio" class="skratch-card">
+            <div class="skratch-card__icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="2" width="8" height="8" rx="1" />
+                    <rect x="14" y="2" width="8" height="8" rx="1" />
+                    <rect x="2" y="14" width="8" height="8" rx="1" />
+                    <path d="M14 18h8" />
+                    <path d="M18 14v8" />
+                </svg>
+            </div>
+            <div class="skratch-card__body">
+                <div class="skratch-card__label">Skratch Studio</div>
+                <div class="skratch-card__title">Turn your explorations into compositions</div>
+                <p class="skratch-card__desc">
+                    Explore chords and progressions in the Tonnetz, then snap them together
+                    in Skratch Studio — build loops, layer parts, remix ideas, and export MIDI.
+                </p>
+            </div>
+            <span class="skratch-card__cta">Open Studio →</span>
+        </a>
+    </section>
+
     <!-- ===== Category Grid ===== -->
     <section class="categories-section">
         <h2 class="categories-heading">Become a better musician</h2>
@@ -972,7 +1107,7 @@
                 <div class="category-card__pills">
                     <a href="/rhythm" class="cat-pill">Rhythm Lab</a>
                     <a href="/strumming" class="cat-pill">Strum Patterns</a>
-                    <a href="/skratch" class="cat-pill">Skratch Studio</a>
+                    <a href="/skratch-studio" class="cat-pill">Skratch Studio</a>
                 </div>
             </div>
 

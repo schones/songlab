@@ -269,7 +269,7 @@
       <div>
         <div class="cw-section-label">Controls</div>
         <div class="cw-row">
-          <button class="cw-btn cw-btn--control" id="btn-enable-audio">▶ Enable Audio</button>
+          <!-- Sound controlled by global AudioToggle (floating mute button) -->
           <button class="cw-btn cw-btn--control" id="btn-reset">Reset state</button>
           <button class="cw-btn cw-btn--control" id="btn-theme">Toggle dark/light</button>
         </div>
@@ -361,15 +361,18 @@
     return _toneLoadPromise;
   }
 
-  /**
-   * Load the Salamander piano sampler via KeyboardView.
-   * Does NOT call Tone.start() — that must happen first in a direct
-   * user-gesture handler (see audio-enable button below).
-   * Mirrors ensureAudio() in relative-key-trainer.js exactly.
-   */
-  async function ensureAudio() {
+  let _audioInitPromise = null;
+
+  /** Lazily init Tone + Salamander sampler on first play. */
+  async function ensureFullAudio() {
     if (sampler) return;
-    sampler = await KeyboardView.getSampler();
+    if (_audioInitPromise) return _audioInitPromise;
+    _audioInitPromise = (async () => {
+      await loadToneIfNeeded();
+      await AudioToggle.ensureTone();
+      sampler = await KeyboardView.getSampler();
+    })();
+    return _audioInitPromise;
   }
 
   /**
@@ -395,9 +398,10 @@
    * Silently skips if sampler isn't loaded yet (audio not enabled).
    */
   async function playChord(root, quality) {
+    if (AudioToggle.isMuted()) return;
     try { if (sampler) sampler.releaseAll(); } catch (_) {}
     isPlaying = false;
-    await ensureAudio();
+    await ensureFullAudio();
     if (!sampler) return;
     const voicing = chordVoicing(root, quality);
     if (!voicing.length) return;
@@ -409,31 +413,7 @@
     isPlaying = false;
   }
 
-  // ════════════════════════════════════════════════
-  // AUDIO ENABLE BUTTON
-  // Mirrors the start-overlay in relative-key-trainer.html:
-  //   overlay click → await Tone.start() → await ensureAudio() → hide overlay
-  // ════════════════════════════════════════════════
-
-  const audioBtn = document.getElementById('btn-enable-audio');
-
-  audioBtn.addEventListener('click', async () => {
-    audioBtn.disabled  = true;
-    audioBtn.textContent = 'Loading piano…';
-    try {
-      await loadToneIfNeeded();     // ensure window.Tone is defined (static tag may not have loaded)
-      await Tone.start();           // AudioContext activation — must be direct user gesture
-      await ensureAudio();          // load Salamander sampler via KeyboardView
-      audioBtn.textContent = '♪ Audio ready';
-      audioBtn.style.borderColor = 'var(--text-success)';
-      audioBtn.style.color       = 'var(--text-success)';
-      log('Audio ready — piano sampler loaded.');
-    } catch (err) {
-      audioBtn.disabled    = false;
-      audioBtn.textContent = 'Enable Audio (retry)';
-      log('Audio error: ' + err.message);
-    }
-  });
+  // Audio is ON by default — mute/unmute via global AudioToggle button.
 
   // ════════════════════════════════════════════════
   // CHORD WHEEL
@@ -565,7 +545,7 @@
   }
 
   setKeyActive(0);
-  log('Click "Enable Audio" first, then click any node on the wheel to play.');
+  log('Click any node on the wheel to play. Use the floating speaker button to mute/unmute.');
   log('Console: HarmonyState.setTriad("G","major")  or  wheel.setKey(1)');
 </script>
 {% endblock %}

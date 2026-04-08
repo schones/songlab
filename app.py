@@ -208,15 +208,15 @@ def scale_builder():
 def swing_trainer():
     return render_template("games/swing-trainer.html")
 
-@app.route("/skratch")
+@app.route("/skratch-studio")
 def skratch():
     return render_template("skratch-studio.html")
 
-@app.route("/skratch/help")
+@app.route("/skratch-studio/help")
 def skratch_help():
     return render_template("skratch-studio-help.html")
 
-@app.route("/skratch/piano-popout")
+@app.route("/skratch-studio/piano-popout")
 def skratch_piano_popout():
     return render_template("piano-popout.html")
 

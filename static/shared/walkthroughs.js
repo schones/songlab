@@ -85,6 +85,7 @@ const WALKTHROUGHS = {
       { chord: "Am", title: "The opening", body: "A minor. Dark, contemplative. This is where Stairway begins.", autoPlay: true },
       { chord: "A", title: "Flip to major", body: "A major. Same root, completely different feeling — like the sun coming through clouds. On the Tonnetz, this is the P transform: one note moves, the whole mood inverts.", autoPlay: true, highlightTransform: "P", focus: "tonnetz", concept_specifics: ["P_transform", "parallel_major_minor"] },
       { chord: "Am", title: "And back", body: "A minor again. Zeppelin rides this toggle between light and dark throughout the song. The P transform is the simplest move on the Tonnetz — and one of the most powerful.", autoPlay: true, highlightTransform: "P", focus: "tonnetz" },
+      { chord: "C", title: "Opening up", body: "C major. A minor and C major share two notes — the R transform. This is where Stairway lifts, moving from shadow into a wider, brighter space. Watch how close they sit on the Tonnetz.", autoPlay: true, highlightTransform: "R", focus: "tonnetz", concept_specifics: ["R_transform", "relative_major_minor"] },
     ]
   },
 

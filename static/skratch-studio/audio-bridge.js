@@ -13,8 +13,8 @@ import { startPitchDetection, stopPitchDetection } from '../shared/audio.js';
 import { loadSoundfontSampler, VOICE_TYPES } from '../shared/keyboard-view.js';
 
 // ── Salamander Grand Piano sample map ────────────────────────────────────────
-const SALAMANDER_BASE_URL = 'https://tonejs.github.io/audio/salamander/';
-const SALAMANDER_URLS = {
+export const SALAMANDER_BASE_URL = 'https://tonejs.github.io/audio/salamander/';
+export const SALAMANDER_URLS = {
   A0: 'A0.mp3',  C1: 'C1.mp3',  'D#1': 'Ds1.mp3', 'F#1': 'Fs1.mp3',
   A1: 'A1.mp3',  C2: 'C2.mp3',  'D#2': 'Ds2.mp3', 'F#2': 'Fs2.mp3',
   A2: 'A2.mp3',  C3: 'C3.mp3',  'D#3': 'Ds3.mp3', 'F#3': 'Fs3.mp3',
@@ -322,6 +322,7 @@ export class AudioBridge {
   // ── Note playback ─────────────────────────────────────────────────────────
 
   async playNote(noteName) {
+    if (window.AudioToggle && AudioToggle.isMuted()) return;
     await this.ensureTone();
 
     if (this._soundType === 'piano') {
@@ -352,6 +353,7 @@ export class AudioBridge {
   }
 
   async noteOn(noteName) {
+    if (window.AudioToggle && AudioToggle.isMuted()) return;
     await this.ensureTone();
     if (this._activeNotes.has(noteName)) return;
 

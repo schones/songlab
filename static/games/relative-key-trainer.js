@@ -460,6 +460,7 @@ async function playProgression(chords, bpm) {
   console.log('[playProg] called, isPlaying:', isPlaying);
 
   if (isPlaying) return;
+  if (window.AudioToggle && AudioToggle.isMuted()) return;
 
   await ensureAudio();
 
@@ -2198,6 +2199,7 @@ function updatePracticeStats() {
 /** Play a single triad chord (3 notes, quarter note duration). */
 async function playTriadChord(root, quality) {
   if (isPlaying) return;
+  if (window.AudioToggle && AudioToggle.isMuted()) return;
   await ensureAudio();
   const voicing = chordVoicing(root, quality, 4);
   if (!voicing.length) return;
@@ -2215,6 +2217,7 @@ async function playTriadChord(root, quality) {
 /** Play source chord briefly, then destination chord (for transform). */
 async function playTransformChords(fromRoot, fromQuality, toRoot, toQuality) {
   if (isPlaying) return;
+  if (window.AudioToggle && AudioToggle.isMuted()) return;
   await ensureAudio();
   isPlaying = true;
   const myGen = playbackGeneration;

@@ -54,7 +54,7 @@ const NEXT_STEPS = {
       { category: 'Open',    label: 'Tonnetz Explorer',      desc: 'The full three-panel playground.',    url: '/explorer'                   },
       { category: 'Try',     label: 'Chord Walks',           desc: 'Navigate transforms on the grid.',    url: '/games/relative-key-trainer' },
       { category: 'Try',     label: 'Harmony Trainer',       desc: 'Sing intervals with pitch feedback.', url: '/harmony'                    },
-      { category: 'Try',     label: 'Skratch Studio',        desc: 'Make music with blocks.',             url: '/skratch'                    },
+      { category: 'Try',     label: 'Skratch Studio',        desc: 'Make music with blocks.',             url: '/skratch-studio'                    },
       { category: 'Explore', label: 'Circle of Fifths',      desc: 'See how all 12 keys connect.',        url: '/theory/circle-of-fifths'    },
       { category: 'Explore', label: 'Tonal Centers',         desc: 'How keys organize music.',            url: '/theory/tonal-centers'       },
       { category: 'Explore', label: 'Modes',                 desc: 'Seven flavors of the major scale.',   url: '/theory/modes'               },

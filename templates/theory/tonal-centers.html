@@ -493,7 +493,7 @@
       <div class="tc-panel">
         <div class="tc-panel-header">
           <span>Keyboard</span>
-          <button class="tc-btn-sound" id="tc-btn-audio">▶ Enable Sound</button>
+          <!-- Sound controlled by global AudioToggle (floating mute button) -->
         </div>
         <div class="tc-keyboard-body">
           <div id="tc-keyboard-container"></div>
@@ -606,8 +606,8 @@
   // ════════════════════════════════════════════════════════════════
 
   let sampler    = null;
-  let audioReady = false;
   let isPlaying  = false;   // guard against overlapping playback
+  let _audioInitPromise = null;
 
   let _toneLoadPromise = null;
   async function loadToneIfNeeded() {
@@ -623,33 +623,16 @@
     return _toneLoadPromise;
   }
 
-  async function ensureAudio() {
+  async function ensureFullAudio() {
     if (sampler) return;
-    sampler = await KeyboardView.getSampler();
-  }
-
-  const audioBtn = document.getElementById('tc-btn-audio');
-
-  audioBtn.addEventListener('click', async () => {
-    if (audioReady) return;
-
-    audioBtn.disabled = true;
-    audioBtn.textContent = 'Loading piano…';
-
-    try {
+    if (_audioInitPromise) return _audioInitPromise;
+    _audioInitPromise = (async () => {
       await loadToneIfNeeded();
-      await Tone.start();
-      await ensureAudio();
-      audioReady = true;
-      audioBtn.disabled = false;
-      audioBtn.textContent = '♪ Sound on';
-      audioBtn.className = 'tc-btn-sound tc-btn-sound--on';
-    } catch (err) {
-      audioBtn.disabled = false;
-      audioBtn.textContent = '▶ Enable Sound (retry)';
-      audioBtn.className = 'tc-btn-sound';
-    }
-  });
+      await AudioToggle.ensureTone();
+      sampler = await KeyboardView.getSampler();
+    })();
+    return _audioInitPromise;
+  }
 
   // ════════════════════════════════════════════════════════════════
   // MUSIC UTILITIES
@@ -693,7 +676,9 @@
    * Returns a promise that resolves when the last chord triggers.
    */
   async function playProgression(chords, gapMs) {
-    if (!audioReady || !sampler) return;
+    if (AudioToggle.isMuted()) return;
+    await ensureFullAudio();
+    if (!sampler) return;
     const gap = (gapMs ?? 700) / 1000;
     const now = Tone.now();
 
@@ -921,11 +906,7 @@
       btn.className = 'tc-btn' + (btnDef.isSecondary ? ' tc-btn--ghost' : '');
       btn.addEventListener('click', async () => {
         if (isPlaying) return;
-        if (!audioReady) {
-          btn.textContent = '♪ Enable sound first';
-          setTimeout(() => { btn.textContent = btnDef.label; }, 1800);
-          return;
-        }
+        if (AudioToggle.isMuted()) return;
         isPlaying = true;
         // disable all play buttons during playback
         btnRow.querySelectorAll('button').forEach(b => b.disabled = true);
@@ -1059,7 +1040,7 @@
 
   async function playExerciseProgression() {
     if (isPlaying) return;
-    if (!audioReady) return;
+    if (AudioToggle.isMuted()) return;
 
     isPlaying = true;
     const playBtn   = document.getElementById('tc-ex-play');
@@ -1151,18 +1132,12 @@
 
   // Wire exercise buttons
   document.getElementById('tc-ex-play').addEventListener('click', async () => {
-    if (!audioReady) {
-      const btn = document.getElementById('tc-ex-play');
-      const orig = btn.textContent;
-      btn.textContent = '♪ Enable sound first';
-      setTimeout(() => { btn.textContent = orig; }, 1800);
-      return;
-    }
+    if (AudioToggle.isMuted()) return;
     await playExerciseProgression();
   });
 
   document.getElementById('tc-ex-replay').addEventListener('click', async () => {
-    if (!audioReady || isPlaying) return;
+    if (AudioToggle.isMuted() || isPlaying) return;
     // Clear highlights but keep buttons enabled
     HarmonyState.update({ activeTriads: [], activeNotes: [], activeInterval: null });
     await playExerciseProgression();

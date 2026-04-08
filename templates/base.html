@@ -174,7 +174,7 @@
       </div>
       <!-- Rhythm & Play dropdown -->
       <div class="nav-dropdown">
-        <span data-nav-dropdown="/rhythm,/strumming,/skratch"
+        <span data-nav-dropdown="/rhythm,/strumming,/skratch-studio"
               style="padding:5px 13px; border-radius:7px; border:1px solid var(--border);
                      background:var(--bg-card); color:var(--text-primary);
                      font-size:0.82rem; font-weight:700; font-family:var(--font-main);
@@ -185,7 +185,7 @@
         <div class="nav-dropdown__menu">
           <a href="/rhythm" class="nav-dropdown__item">Rhythm Lab</a>
           <a href="/strumming" class="nav-dropdown__item">Strum Patterns</a>
-          <a href="/skratch" class="nav-dropdown__item">Skratch Studio</a>
+          <a href="/skratch-studio" class="nav-dropdown__item">Skratch Studio</a>
         </div>
       </div>
       <!-- Patterns dropdown -->
@@ -224,6 +224,9 @@
   {% block content %}{% endblock %}
 
   {% block scripts %}{% endblock %}
+
+  <!-- Global audio mute/unmute toggle (loads on every page) -->
+  <script src="{{ url_for('static', filename='shared/audio-toggle.js') }}"></script>
 
   <script>
     (function () {

@@ -239,6 +239,39 @@
     border-style: solid;
   }
 
+  .exp-btn--record-on {
+    background: #ff4757;
+    border-color: #ff4757;
+    color: #fff;
+    border-style: solid;
+    animation: recordPulse 1.5s ease infinite;
+  }
+  .exp-btn--record-on:hover:not(:disabled) {
+    background: #ff6b81 !important;
+    border-color: #ff6b81 !important;
+    color: #fff !important;
+  }
+  @keyframes recordPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.75; }
+  }
+  .exp-sequence-count {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .exp-btn--export {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .exp-btn--export:hover:not(:disabled) {
+    background: var(--accent) !important;
+    color: #fff !important;
+  }
+
   /* ── Selects ─────────────────────────────────────────────────── */
   .exp-select {
     padding: 4px 8px;
@@ -522,6 +555,28 @@
     filter: brightness(1.12);
   }
 
+  /* Export link at bottom of bubble */
+  .wt-export-link {
+    margin-bottom: 0.5rem;
+  }
+  .wt-export-anchor {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--accent);
+    text-decoration: none;
+    opacity: 0.8;
+    transition: opacity 0.15s;
+    cursor: pointer;
+  }
+  .wt-export-anchor:hover {
+    opacity: 1;
+    text-decoration: underline;
+  }
+
+  /* Draggable cursor */
+  .wt-overlay { cursor: grab; }
+  .wt-overlay button, .wt-overlay a { cursor: pointer; }
+
   /* "See also" link nudge on final step */
   .wt-see-also {
     margin-bottom: 0.6rem;
@@ -703,7 +758,7 @@
     <div class="exp-divider"></div>
 
     <!-- Instrument selector -->
-    <div class="exp-ctrl-group" id="inst-picker" hidden>
+    <div class="exp-ctrl-group" id="inst-picker">
       <span class="exp-ctrl-label">Sound</span>
       <button class="exp-btn exp-btn--mode-active" id="btn-inst-piano"  data-inst="piano">Piano</button>
       <button class="exp-btn exp-btn--mode"         id="btn-inst-guitar" data-inst="guitar">Guitar</button>
@@ -712,9 +767,15 @@
 
     <div class="exp-divider"></div>
 
-    <!-- Sound toggle -->
-    <div class="exp-ctrl-group">
-      <button class="exp-btn exp-btn--sound" id="btn-audio">&#9654; Enable Sound</button>
+    <!-- Sequence capture: Record / Export / Clear -->
+    <div class="exp-ctrl-group" id="exp-sequence-group">
+      <button class="exp-btn exp-btn--sound" id="btn-record"
+              title="Record chord clicks for export to Skratch Studio">Record</button>
+      <span class="exp-sequence-count" id="sequence-count" hidden>0 chords</span>
+      <button class="exp-btn exp-btn--export" id="btn-export-skratch" hidden
+              title="Export recorded sequence to Skratch Studio">Export to Skratch</button>
+      <button class="exp-btn exp-btn--clear" id="btn-clear-sequence" hidden
+              title="Discard recorded sequence">Clear</button>
     </div>
 
   </div>
@@ -776,14 +837,13 @@
 
   // ════════════════════════════════════════════════════════════════
   // AUDIO
-  // Same pattern as chord-wheel-test.html and relative-key-trainer.js:
-  //   Step 1: "Enable Sound" click → Tone.start() in the gesture handler
-  //   Step 2: ensureAudio() loads Salamander via KeyboardView.getSampler()
-  //   Step 3: playChord() calls ensureAudio() then triggerAttackRelease()
+  // Audio is ON by default. Tone.js AudioContext resumes on first
+  // user gesture via AudioToggle (shared/audio-toggle.js).
+  // ensureFullAudio() lazily loads Tone + Salamander sampler.
   // ════════════════════════════════════════════════════════════════
 
-  let sampler    = null;
-  let audioReady = false;
+  let sampler = null;
+  let _audioInitPromise = null;
 
   /** How long chords ring in chord mode (seconds). Piano-like sustain. */
   const CHORD_SUSTAIN = 2.5;
@@ -803,9 +863,23 @@
     return _toneLoadPromise;
   }
 
-  async function ensureAudio() {
+  /** Lazily init Tone + Salamander sampler + saved instrument on first play. */
+  async function ensureFullAudio() {
     if (sampler) return;
-    sampler = await KeyboardView.getSampler();
+    if (_audioInitPromise) return _audioInitPromise;
+    _audioInitPromise = (async () => {
+      await loadToneIfNeeded();
+      await AudioToggle.ensureTone();
+      sampler = await KeyboardView.getSampler();
+      // Restore saved instrument preference
+      const savedInst = localStorage.getItem(INST_PREF_KEY) || 'piano';
+      if (savedInst !== 'piano') {
+        _switchInstrument(savedInst);
+      } else {
+        _syncInstButtons('piano', 'loaded');
+      }
+    })();
+    return _audioInitPromise;
   }
 
   /** Build a voiced triad ascending from octave 4. Mirrors chord-wheel-test. */
@@ -823,9 +897,9 @@
   }
 
   async function playChord(root, quality) {
-    if (!audioReady) return;
+    if (AudioToggle.isMuted()) return;
     try { if (sampler) sampler.releaseAll(); } catch (_) {}
-    await ensureAudio();
+    await ensureFullAudio();
     if (!sampler) return;
     const voicing = chordVoicing(root, quality);
     if (!voicing.length) return;
@@ -874,56 +948,88 @@
 
   instBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      if (!audioReady) return;   // picker only active after sound is enabled
       _switchInstrument(btn.dataset.inst);
     });
-  });
-
-  // ── Audio enable / mute button ────────────────────────────────────
-  const audioBtn = document.getElementById('btn-audio');
-
-  audioBtn.addEventListener('click', async () => {
-    if (audioReady) {
-      // Second click = mute
-      audioReady = false;
-      try { if (sampler) sampler.releaseAll(); } catch (_) {}
-      audioBtn.textContent = '▶ Enable Sound';
-      audioBtn.className = 'exp-btn exp-btn--sound';
-      instPicker.hidden = true;
-      return;
-    }
-
-    audioBtn.disabled = true;
-    audioBtn.textContent = 'Loading piano…';
-
-    try {
-      await loadToneIfNeeded();
-      await Tone.start();               // AudioContext — must be a direct user gesture
-      await ensureAudio();              // load Salamander via KeyboardView
-      audioReady = true;
-      audioBtn.disabled = false;
-      audioBtn.textContent = '♪ Sound on';
-      audioBtn.className = 'exp-btn exp-btn--sound-on';
-      instPicker.hidden = false;
-      // Restore saved instrument preference
-      const savedInst = localStorage.getItem(INST_PREF_KEY) || 'piano';
-      if (savedInst !== 'piano') {
-        _switchInstrument(savedInst);
-      } else {
-        _syncInstButtons('piano', 'loaded');
-      }
-      // Play the currently selected chord right away
-      playChord(currentRoot, currentQuality).catch(() => {});
-    } catch (err) {
-      audioBtn.disabled = false;
-      audioBtn.textContent = '▶ Enable Sound (retry)';
-      audioBtn.className = 'exp-btn exp-btn--sound';
-    }
   });
 
   // ════════════════════════════════════════════════════════════════
   // INITIALIZE PANNELS
   // ════════════════════════════════════════════════════════════════
+
+  // ── Sequence capture (Record → Export to Skratch Studio) ──────────
+  let _recording = false;       // manual recording active
+  let _wtCapturing = false;     // walkthrough auto-capture active
+  let _sequence = [];           // captured chord events
+
+  const btnRecord       = document.getElementById('btn-record');
+  const btnExport       = document.getElementById('btn-export-skratch');
+  const btnClearSeq     = document.getElementById('btn-clear-sequence');
+  const sequenceCount   = document.getElementById('sequence-count');
+
+  function _updateSequenceUI() {
+    const has = _sequence.length > 0;
+    const active = _recording || _wtCapturing;
+    sequenceCount.textContent = `${_sequence.length} chord${_sequence.length !== 1 ? 's' : ''}`;
+    sequenceCount.hidden = !has && !active;
+    btnExport.hidden = !has || active;       // show only when stopped with data
+    btnClearSeq.hidden = !has || active;
+  }
+
+  function _pushChord(root, quality, transform) {
+    _sequence.push({ root, quality, transform: transform || null });
+    _updateSequenceUI();
+  }
+
+  function _resetSequence() {
+    _sequence = [];
+    _updateSequenceUI();
+  }
+
+  // Record toggle
+  btnRecord.addEventListener('click', () => {
+    _recording = !_recording;
+    if (_recording) {
+      _sequence = [];
+      btnRecord.textContent = '● Recording';
+      btnRecord.classList.remove('exp-btn--sound');
+      btnRecord.classList.add('exp-btn--record-on');
+    } else {
+      btnRecord.textContent = 'Record';
+      btnRecord.classList.remove('exp-btn--record-on');
+      btnRecord.classList.add('exp-btn--sound');
+    }
+    _updateSequenceUI();
+  });
+
+  // Export: save sequence to sessionStorage and open Skratch Studio
+  btnExport.addEventListener('click', () => {
+    if (!_sequence.length) return;
+
+    // Save to sessionStorage so Skratch Studio can pick it up on load
+    sessionStorage.setItem('tonnetz-export-sequence', JSON.stringify(_sequence));
+    console.log('[Explorer] stored sequence:', sessionStorage.getItem('tonnetz-export-sequence'));
+
+    // Also try BroadcastChannel in case Skratch Studio is already open
+    try {
+      const bridge = new BroadcastChannel('tonnetz-skratch-bridge');
+      bridge.postMessage({ type: 'import_sequence', chords: _sequence });
+      bridge.close();
+    } catch (err) { /* BroadcastChannel not supported or failed — sessionStorage path handles it */ }
+
+    // Open Skratch Studio in a new tab
+    window.open('/skratch-studio', '_blank');
+
+    // Visual confirmation
+    btnExport.textContent = 'Sent!';
+    btnExport.disabled = true;
+    setTimeout(() => {
+      btnExport.textContent = 'Export to Skratch';
+      btnExport.disabled = false;
+    }, 1500);
+  });
+
+  // Clear recorded sequence
+  btnClearSeq.addEventListener('click', _resetSequence);
 
   // ── Tonnetz Neighborhood ─────────────────────────────────────────
   TonnetzNeighborhood.init('exp-tonnetz-container', {
@@ -1099,9 +1205,9 @@
   }
 
   async function playNoteChord() {
-    if (!audioReady) return;
+    if (AudioToggle.isMuted()) return;
     try { if (sampler) sampler.releaseAll(); } catch (_) {}
-    await ensureAudio();
+    await ensureFullAudio();
     if (!sampler) return;
     const activeNotes = HarmonyState.get().activeNotes;
     if (!activeNotes.length) return;
@@ -1232,6 +1338,12 @@
         _lastRoot    = primary.root;
         _lastQuality = primary.quality;
         playChord(primary.root, primary.quality).catch(() => {});
+
+        // Capture for sequence recording (free exploration)
+        if (_recording) {
+          const t = state.activeTransform;
+          _pushChord(primary.root, primary.quality, t ? t.type : null);
+        }
       }
     } else if ((state.activeNotes || []).length > 0 && (state.activeTriads || []).length === 0) {
       // ── Note-accumulation mode (individual toggles) ────────────
@@ -1402,6 +1514,9 @@
 
   const _wtOverlay = new WalkthroughOverlay({
     onExit() {
+      // Stop walkthrough auto-capture and show export if chords were captured
+      _wtCapturing = false;
+      _updateSequenceUI();
       // Return to default Explorer state after walkthrough ends
       HarmonyState.setTriad('C', 'major');
       // Clean URL without reload
@@ -1409,10 +1524,34 @@
       url.searchParams.delete('walkthrough');
       window.history.replaceState({}, '', url);
     },
+    onStep({ root, quality, transform }) {
+      // Auto-capture each walkthrough chord into the sequence
+      if (_wtCapturing) {
+        _pushChord(root, quality, transform);
+      }
+    },
+    onExport() {
+      // Export captured walkthrough sequence to Skratch Studio
+      if (!_sequence.length) return;
+      sessionStorage.setItem('tonnetz-export-sequence', JSON.stringify(_sequence));
+      try {
+        const bridge = new BroadcastChannel('tonnetz-skratch-bridge');
+        bridge.postMessage({ type: 'import_sequence', chords: _sequence });
+        bridge.close();
+      } catch (err) { /* BroadcastChannel not supported */ }
+      window.open('/skratch-studio', '_blank');
+    },
     playChord(root, quality) {
       return playChord(root, quality);
     },
   });
+
+  function _startWalkthrough(wt) {
+    _wtCapturing = true;
+    _sequence = [];
+    _updateSequenceUI();
+    _wtOverlay.start(wt);
+  }
 
   if (_urlWalkthrough && WALKTHROUGHS[_urlWalkthrough]) {
     // Dismiss the welcome banner if a walkthrough is starting
@@ -1421,13 +1560,13 @@
       _wtBanner.remove();
       setFeatureFlag('explorer_intro_seen', true);
     }
-    _wtOverlay.start(WALKTHROUGHS[_urlWalkthrough]);
+    _startWalkthrough(WALKTHROUGHS[_urlWalkthrough]);
   }
 
   // Expose for console use
   window.startWalkthrough = function(key) {
     if (WALKTHROUGHS[key]) {
-      _wtOverlay.start(WALKTHROUGHS[key]);
+      _startWalkthrough(WALKTHROUGHS[key]);
     } else {
       console.log('Available walkthroughs:', Object.keys(WALKTHROUGHS).join(', '));
     }

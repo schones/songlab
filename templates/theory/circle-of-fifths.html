@@ -252,7 +252,7 @@
       <div class="cof-panel">
         <div class="cof-panel-header">
           <span>Circle of Fifths</span>
-          <button class="cof-btn-sound" id="cof-btn-audio">▶ Enable Sound</button>
+          <!-- Sound controlled by global AudioToggle (floating mute button) -->
         </div>
         <div class="cof-wheel-body">
           <div id="cof-wheel-container"></div>
@@ -334,8 +334,8 @@
   // AUDIO
   // ════════════════════════════════════════════════════════════════
 
-  let sampler    = null;
-  let audioReady = false;
+  let sampler = null;
+  let _audioInitPromise = null;
 
   /** Belt-and-suspenders Tone.js fallback loader (mirrors explorer.html). */
   let _toneLoadPromise = null;
@@ -352,9 +352,15 @@
     return _toneLoadPromise;
   }
 
-  async function ensureAudio() {
+  async function ensureFullAudio() {
     if (sampler) return;
-    sampler = await KeyboardView.getSampler();
+    if (_audioInitPromise) return _audioInitPromise;
+    _audioInitPromise = (async () => {
+      await loadToneIfNeeded();
+      await AudioToggle.ensureTone();
+      sampler = await KeyboardView.getSampler();
+    })();
+    return _audioInitPromise;
   }
 
   /**
@@ -363,8 +369,8 @@
    * Staggers notes 200ms apart using Tone.js scheduling.
    */
   async function playScale(rootName, quality) {
-    if (!audioReady) return;
-    await ensureAudio();
+    if (AudioToggle.isMuted()) return;
+    await ensureFullAudio();
     if (!sampler) return;
 
     const rootPC = noteToPC(rootName);
@@ -390,37 +396,6 @@
       sampler.triggerAttackRelease(noteWithOct, '8n', now + i * 0.2);
     });
   }
-
-  // ── Audio enable button ───────────────────────────────────────────
-  const audioBtn = document.getElementById('cof-btn-audio');
-
-  audioBtn.addEventListener('click', async () => {
-    if (audioReady) {
-      // Second click = mute
-      audioReady = false;
-      try { if (sampler) sampler.releaseAll(); } catch (_) {}
-      audioBtn.textContent = '▶ Enable Sound';
-      audioBtn.className = 'cof-btn-sound';
-      return;
-    }
-
-    audioBtn.disabled = true;
-    audioBtn.textContent = 'Loading piano…';
-
-    try {
-      await loadToneIfNeeded();
-      await Tone.start();    // must be inside a user gesture handler
-      await ensureAudio();
-      audioReady = true;
-      audioBtn.disabled = false;
-      audioBtn.textContent = '♪ Sound on';
-      audioBtn.className = 'cof-btn-sound cof-btn-sound--on';
-    } catch (err) {
-      audioBtn.disabled = false;
-      audioBtn.textContent = '▶ Enable Sound (retry)';
-      audioBtn.className = 'cof-btn-sound';
-    }
-  });
 
   // ════════════════════════════════════════════════════════════════
   // CHORD WHEEL

@@ -524,6 +524,7 @@ const _samplerProxy = {
 // ── Internal note helpers ──────────────────────────────────────────
 
 function _playNote(noteWithOctave) {
+  if (window.AudioToggle && AudioToggle.isMuted()) return;
   const s = _getActiveSampler();
   if (!s) return;
   if (Tone.context.state !== 'running') Tone.start();

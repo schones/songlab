@@ -1,5 +1,7 @@
 // music-generators.js — JS code generators for music blocks (clean Tone.js output)
 
+import { TRANSFORMS } from '../shared/transforms.js';
+
 // Chord definitions — matches chords/index.html
 // Major = root + major 3rd (4 semitones) + perfect 5th (7 semitones)
 // Minor = root + minor 3rd (3 semitones) + perfect 5th (7 semitones)
@@ -213,9 +215,44 @@ export function registerMusicGenerators() {
     const quality = block.getFieldValue('QUALITY');
     const duration = block.getFieldValue('DURATION');
     const time = block.getFieldValue('TIME');
+    
+    // Update tracked state
+    js._skratchCurrentChord = { root, quality };
+
     const notes = buildChordNotes(root, quality, 4);
     const notesStr = notes.map(n => `'${n}'`).join(', ');
     return `chords.triggerAttackRelease([${notesStr}], '${duration}', '${time}');\n`;
+  };
+
+  // Normalize Unicode accidentals (♯/♭) from transforms.js to ASCII (#/b)
+  // so note names stay compatible with buildChordNotes / NOTE_SEMITONES.
+  function normalizeRoot(name) {
+    return name.replace(/♯/g, '#').replace(/♭/g, 'b');
+  }
+
+  // Delegate to canonical PLR transforms from shared/transforms.js.
+  // Involution property is preserved because TRANSFORMS.P/L/R already satisfy it.
+  function applyTransform(type, duration, time) {
+    const state = js._skratchCurrentChord || { root: 'C', quality: 'major' };
+    const transformed = TRANSFORMS[type].apply(state.root, state.quality);
+    const result = { root: normalizeRoot(transformed.root), quality: transformed.quality };
+
+    js._skratchCurrentChord = result;
+    const notes = buildChordNotes(result.root, result.quality, 4);
+    const notesStr = notes.map(n => `'${n}'`).join(', ');
+    return `chords.triggerAttackRelease([${notesStr}], '${duration}', '${time}');\n`;
+  }
+
+  js.forBlock['p_transform'] = function(block) {
+    return applyTransform('P', block.getFieldValue('DURATION'), block.getFieldValue('TIME'));
+  };
+
+  js.forBlock['l_transform'] = function(block) {
+    return applyTransform('L', block.getFieldValue('DURATION'), block.getFieldValue('TIME'));
+  };
+
+  js.forBlock['r_transform'] = function(block) {
+    return applyTransform('R', block.getFieldValue('DURATION'), block.getFieldValue('TIME'));
   };
 
   js.forBlock['rest'] = function(block) {
@@ -255,6 +292,10 @@ export function registerMusicGenerators() {
     const body = js.statementToCode(block, 'DO');
     // Declare instrument variables from the injected _instruments object
     // so that blocks like kick.triggerAttackRelease(...) resolve correctly.
+    
+    // reset global generator state tracking for chord
+    js._skratchCurrentChord = { root: 'C', quality: 'major' };
+
     return `// 🎵 Music — set up instruments\n` +
       `const kick = _instruments.kick;\n` +
       `const snare = _instruments.snare;\n` +

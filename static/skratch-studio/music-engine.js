@@ -1,5 +1,7 @@
 // music-engine.js — MusicEngine wrapping Tone.Transport with instrument pooling
 
+import { SALAMANDER_BASE_URL, SALAMANDER_URLS } from './audio-bridge.js';
+
 export class MusicEngine {
   constructor() {
     this._started = false;
@@ -81,11 +83,12 @@ export class MusicEngine {
       volume: -8,
     }).connect(this._volume);
 
-    // Chords — polyphonic for playing triads
-    this._instruments.chords = new Tone.PolySynth(Tone.Synth, {
-      maxPolyphony: 6,
-      oscillator: { type: 'sine' },
-      envelope: { attack: 0.05, decay: 0.3, sustain: 0.5, release: 0.8 },
+    // Chords — Salamander Grand Piano sampler for rich chord playback.
+    // Samples are cached by the browser from AudioBridge's earlier load.
+    this._instruments.chords = new Tone.Sampler({
+      urls:    SALAMANDER_URLS,
+      baseUrl: SALAMANDER_BASE_URL,
+      release: 1,
       volume: -10,
     }).connect(this._volume);
 

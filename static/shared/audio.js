@@ -195,6 +195,7 @@ export function getNoteRange(startOctave = 3, endNote = "C5") {
  * @param {number} [duration] - Duration in seconds (default 0.8)
  */
 export function playNote(noteName, duration = 0.8) {
+  if (window.AudioToggle && AudioToggle.isMuted()) return;
   if (!synth) {
     console.warn("[audio] Call initAudio() first.");
     return;
@@ -211,6 +212,7 @@ export function playNote(noteName, duration = 0.8) {
  * @param {number} [noteDuration]    - Per-note duration in seconds
  */
 export function playInterval(rootNote, intervalSemitones, mode = "melodic-up", noteDuration = 0.8) {
+  if (window.AudioToggle && AudioToggle.isMuted()) return;
   if (!synth) {
     console.warn("[audio] Call initAudio() first.");
     return;

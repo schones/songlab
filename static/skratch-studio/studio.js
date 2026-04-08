@@ -600,6 +600,83 @@ export function init() {
     }
   });
 
+  // --- Tonnetz Integration Bridge (batch import) ---
+  function _showToast(message, duration = 3000) {
+    const toast = document.createElement('div');
+    toast.textContent = message;
+    toast.style.cssText = `
+      position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+      background: var(--accent, #6c5ce7); color: #fff; padding: 0.6rem 1.2rem;
+      border-radius: 8px; font-size: 0.85rem; font-weight: 700;
+      font-family: 'Nunito', sans-serif; z-index: 9999;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      opacity: 0; transition: opacity 0.3s;
+    `;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => { toast.style.opacity = '1'; });
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.addEventListener('transitionend', () => toast.remove());
+    }, duration);
+  }
+
+  // Import a chord sequence into the Blockly workspace
+  function _importSequence(chords) {
+    console.log('[Skratch import] _importSequence called with', chords);
+    if (!workspace || !Array.isArray(chords) || !chords.length) return;
+
+    // Clear workspace and create a fresh music_start block
+    console.log('[Skratch import] Clearing workspace for clean import');
+    workspace.clear();
+    const startBlock = workspace.newBlock('music_start');
+    startBlock.initSvg();
+    startBlock.render();
+    startBlock.moveBy(20, 20);
+
+    let connection = startBlock.getInput('DO').connection;
+    let timeIndex = 0;
+
+    // Build blocks from imported sequence
+    const beatOptions = ['0:0:0', '0:1:0', '0:2:0', '0:3:0'];
+
+    for (const chord of chords) {
+      const timeValue = beatOptions[Math.floor(timeIndex / 2) % 4] || '0:0:0';
+
+      console.log('[Skratch import] Creating play_chord block:', chord.root, chord.quality);
+      const newBlock = workspace.newBlock('play_chord');
+      newBlock.setFieldValue(chord.root, 'ROOT');
+      newBlock.setFieldValue(chord.quality, 'QUALITY');
+      newBlock.setFieldValue('2n', 'DURATION');
+      newBlock.setFieldValue(timeValue, 'TIME');
+
+      newBlock.initSvg();
+      newBlock.render();
+
+      if (connection) {
+        try {
+          connection.connect(newBlock.previousConnection);
+        } catch (err) { console.error('[Skratch import] Failed to connect block:', err); }
+      }
+
+      connection = newBlock.nextConnection;
+      timeIndex += 2;
+    }
+
+    console.log('[Skratch import] Block chain complete —', chords.length, 'blocks created');
+    generateCode();
+    _showToast(`Imported ${chords.length} chord${chords.length !== 1 ? 's' : ''} from Explorer`);
+  }
+
+  // sessionStorage import moved after workspace load (below) so music_start block exists
+
+  // BroadcastChannel listener (secondary path for when both tabs are already open)
+  const tonnetzBridge = new BroadcastChannel('tonnetz-skratch-bridge');
+  tonnetzBridge.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.type !== 'import_sequence') return;
+    _importSequence(msg.chords);
+  };
+
   // Canvas size dropdown
   const canvasSizeSelect = document.getElementById('canvasSizeSelect');
   if (canvasSizeSelect) {
@@ -833,7 +910,7 @@ export function init() {
       return;
     }
     _popoutWindow = window.open(
-      '/skratch/piano-popout',
+      '/skratch-studio/piano-popout',
       'skratch-piano-popout',
       'width=900,height=280,resizable=yes,scrollbars=no'
     );
@@ -890,6 +967,9 @@ export function init() {
     if (_isPlaying) handleStop();
     drawCanvasGrid(document.getElementById('skratchCanvas'));
   });
+
+  // Export MIDI button
+  document.getElementById('btnExportMidi').addEventListener('click', handleExportMidi);
 
   // Mic toggle
   const btnMic = document.getElementById('btnMic');
@@ -977,6 +1057,18 @@ export function init() {
   // Load saved workspace or default starter
   if (!loadWorkspace()) {
     loadStarterProgram('circles');
+  }
+
+  // Check sessionStorage for a sequence exported from Explorer
+  // (must run AFTER workspace load so music_start block exists)
+  console.log('[Skratch] checking sessionStorage:', sessionStorage.getItem('tonnetz-export-sequence'));
+  const exportedJson = sessionStorage.getItem('tonnetz-export-sequence');
+  if (exportedJson) {
+    sessionStorage.removeItem('tonnetz-export-sequence');
+    try {
+      const chords = JSON.parse(exportedJson);
+      _importSequence(chords);
+    } catch (err) { console.error('[Skratch] Failed to parse exported sequence:', err); }
   }
 
   // Initial code preview
@@ -1478,6 +1570,21 @@ function scheduleMusicHighlight(blockId, time) {
   musicEngine._scheduledIds.push(id);
 }
 
+function drawCanvasGrid(canvas) {
+  if (sandbox) sandbox.stop();
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#1e1e2e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#2a2a3e';
+  for (let x = 0; x < canvas.width; x += 20) {
+    for (let y = 0; y < canvas.height; y += 20) {
+      ctx.beginPath();
+      ctx.arc(x, y, 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
 function handleStop() {
   _highlightEnabled = false;
   _isPlaying = false;
@@ -1502,7 +1609,7 @@ function handleStop() {
   const indicator = document.getElementById('beatIndicator');
   if (indicator) indicator.classList.remove('flash');
 
-  // Redraw grid background
+  // Reset canvas to dot grid
   drawCanvasGrid(document.getElementById('skratchCanvas'));
 }
 
@@ -1595,17 +1702,123 @@ function startPianoHighlight() {
   _pianoHighlightId = requestAnimationFrame(tick);
 }
 
-function drawCanvasGrid(canvas) {
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#1e1e2e';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#2a2a3e';
-  for (let x = 0; x < canvas.width; x += 20) {
-    for (let y = 0; y < canvas.height; y += 20) {
-      ctx.beginPath();
-      ctx.arc(x, y, 1, 0, Math.PI * 2);
-      ctx.fill();
-    }
+function handleExportMidi() {
+  if (!window.MidiWriter) {
+    alert("MidiWriterJS is not loaded yet.");
+    return;
   }
-}
+  
+  if (typeof workspace === 'undefined' || !workspace) return;
+  const code = Blockly.JavaScript.workspaceToCode(workspace);
+  const hasMusic = /\b(kick|snare|hihat|bass|melody|chords)\.(trigger|Tone\.Transport)/.test(code);
+  if (!hasMusic) {
+    alert("No music blocks found to export!");
+    return;
+  }
 
+  const events = [];
+  function parseToneDuration(durStr) {
+    const map = { '1n': '1', '2n': '2', '4n': '4', '8n': '8', '16n': '16' };
+    return map[durStr] || '4';
+  }
+  function parseToneTime(timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return 0;
+    const parts = timeStr.split(':').map(Number);
+    const m = parts[0] || 0;
+    const b = parts[1] || 0;
+    const s = parts[2] || 0;
+    return m * 4 * 128 + b * 128 + Math.floor(s * 32);
+  }
+
+  let _drumSkipWarned = false;
+  const _drumSkip = () => {
+    if (!_drumSkipWarned) {
+      console.warn('MIDI export: drum blocks (kick, snare, hihat) are skipped — MIDI drum mapping is not supported.');
+      _drumSkipWarned = true;
+    }
+  };
+
+  const instrumentsProxy = {
+    _add: (notes, dur, time) => {
+      let pitch = Array.isArray(notes) ? notes : [notes];
+      pitch = pitch.map(n => n.replace('♯', '#').replace('♭', 'b'));
+      events.push({
+        pitch,
+        duration: parseToneDuration(dur),
+        startTick: parseToneTime(time)
+      });
+    },
+    kick: { triggerAttackRelease: () => _drumSkip() },
+    snare: { triggerAttackRelease: () => _drumSkip() },
+    hihat: { triggerAttackRelease: () => _drumSkip() },
+    bass: { triggerAttackRelease: (note, dur, time) => instrumentsProxy._add(note, dur || '4n', time) },
+    melody: { triggerAttackRelease: (note, dur, time) => instrumentsProxy._add(note, dur || '4n', time) },
+    chords: { triggerAttackRelease: (notes, dur, time) => instrumentsProxy._add(notes, dur || '4n', time) }
+  };
+
+  const noop = () => {};
+  const fn = new Function(
+    '_instruments', 'Tone',
+    'circle', 'rect', 'ellipse', 'triangle', 'line', 'star',
+    'fill', 'stroke', 'noFill', 'noStroke', 'strokeWeight', 'background',
+    'push', 'pop', 'translate', 'rotate', 'scale',
+    'map', 'lerp', 'random', 'constrain', 'dist',
+    'width', 'height', 'frameCount', 'mouseX', 'mouseY',
+    'Math', 'PI',
+    'currentPitch', 'currentNoteName', 'currentVolume', 'noteIsPlaying',
+    'onNotePlayed', 'everyNBeats',
+    'highlightBlock', '__playLoop',
+    code
+  );
+
+  try {
+    fn(
+      instrumentsProxy, {},
+      noop, noop, noop, noop, noop, noop,
+      noop, noop, noop, noop, noop, noop,
+      noop, noop, noop, noop, noop,
+      noop, noop, noop, noop, noop,
+      400, 400, 0, 0, 0,
+      Math, Math.PI,
+      0, '--', 0, false,
+      noop, noop,
+      noop, noop
+    );
+  } catch (e) {
+    console.error("MIDI Export Evaluation Error", e);
+  }
+
+  if (events.length === 0) {
+    alert("No notes were generated.");
+    return;
+  }
+
+  events.sort((a, b) => a.startTick - b.startTick);
+
+  const bpm = parseInt(document.getElementById('bpmSlider')?.value, 10) || 120;
+  const track = new MidiWriter.Track();
+  track.setTempo(bpm);
+  track.addEvent(new MidiWriter.ProgramChangeEvent({instrument: 1}));
+
+  let currentTick = 0;
+  for (const e of events) {
+    const delta = e.startTick - currentTick;
+    const noteEvent = new MidiWriter.NoteEvent({
+      pitch: e.pitch,
+      duration: e.duration,
+      wait: 'T' + delta
+    });
+    track.addEvent(noteEvent);
+    currentTick = e.startTick;
+  }
+
+  const write = new MidiWriter.Writer(track);
+  const dataUri = write.dataUri();
+  
+  const link = document.createElement('a');
+  link.href = dataUri;
+  link.download = 'skratch-studio.mid';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}

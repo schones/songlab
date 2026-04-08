@@ -425,7 +425,7 @@
       <option value="8">G♯ / A♭</option>
       <option value="10">A♯ / B♭</option>
     </select>
-    <button class="mo-btn-sound" id="mo-btn-audio">▶ Enable Sound</button>
+    <!-- Sound controlled by global AudioToggle (floating mute button) -->
   </div>
 
   <div class="mo-layout">
@@ -446,10 +446,10 @@
 
       <!-- Transport -->
       <div class="mo-transport">
-        <button class="mo-transport-btn mo-transport-btn--play" id="mo-btn-play-scale" disabled>
+        <button class="mo-transport-btn mo-transport-btn--play" id="mo-btn-play-scale">
           ▶ Play Scale
         </button>
-        <button class="mo-transport-btn" id="mo-btn-play-compare" disabled>
+        <button class="mo-transport-btn" id="mo-btn-play-compare">
           ⇆ Play Comparison
         </button>
       </div>
@@ -649,9 +649,9 @@
 
   let currentRootPC = 0;   // pitch class of selected root
   let currentModeIdx = 1;  // default: Ionian (index 1)
-  let audioReady = false;
   let sampler = null;
   let isPlaying = false;
+  let _audioInitPromise = null;
 
   // ════════════════════════════════════════════════════════════════
   // AUDIO
@@ -671,9 +671,15 @@
     return _toneLoadPromise;
   }
 
-  async function ensureAudio() {
+  async function ensureFullAudio() {
     if (sampler) return;
-    sampler = await KeyboardView.getSampler();
+    if (_audioInitPromise) return _audioInitPromise;
+    _audioInitPromise = (async () => {
+      await loadToneIfNeeded();
+      await AudioToggle.ensureTone();
+      sampler = await KeyboardView.getSampler();
+    })();
+    return _audioInitPromise;
   }
 
   const NOTE_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
@@ -716,7 +722,6 @@
   // ════════════════════════════════════════════════════════════════
 
   const rootSelect     = document.getElementById('mo-root-select');
-  const audioBtn       = document.getElementById('mo-btn-audio');
   const modeGrid       = document.getElementById('mo-mode-grid');
   const scaleLabel     = document.getElementById('mo-scale-label');
   const btnPlayScale   = document.getElementById('mo-btn-play-scale');
@@ -864,8 +869,8 @@
   // ════════════════════════════════════════════════════════════════
 
   async function playModeScale(rootPC, modeIdx, callback) {
-    if (!audioReady) return;
-    await ensureAudio();
+    if (AudioToggle.isMuted()) return;
+    await ensureFullAudio();
     if (!sampler) return;
 
     const mode = MODES[modeIdx];
@@ -934,40 +939,7 @@
     }, ionianDuration + 400);
   });
 
-  // ════════════════════════════════════════════════════════════════
-  // AUDIO ENABLE
-  // ════════════════════════════════════════════════════════════════
-
-  audioBtn.addEventListener('click', async () => {
-    if (audioReady) {
-      audioReady = false;
-      try { if (sampler) sampler.releaseAll(); } catch (_) {}
-      audioBtn.textContent = '▶ Enable Sound';
-      audioBtn.className = 'mo-btn-sound';
-      btnPlayScale.disabled = true;
-      btnPlayCompare.disabled = true;
-      return;
-    }
-
-    audioBtn.disabled = true;
-    audioBtn.textContent = 'Loading piano…';
-
-    try {
-      await loadToneIfNeeded();
-      await Tone.start();
-      await ensureAudio();
-      audioReady = true;
-      audioBtn.disabled = false;
-      audioBtn.textContent = '♪ Sound on';
-      audioBtn.className = 'mo-btn-sound mo-btn-sound--on';
-      btnPlayScale.disabled = false;
-      btnPlayCompare.disabled = false;
-    } catch (err) {
-      audioBtn.disabled = false;
-      audioBtn.textContent = '▶ Enable Sound (retry)';
-      audioBtn.className = 'mo-btn-sound';
-    }
-  });
+  // Audio is ON by default — mute/unmute via global AudioToggle button.
 
   // ════════════════════════════════════════════════════════════════
   // EVENT HANDLERS

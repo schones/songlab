@@ -130,6 +130,8 @@ class WalkthroughOverlay {
    */
   constructor(options = {}) {
     this._onExit = options.onExit || (() => {});
+    this._onStep = options.onStep || null;
+    this._onExport = options.onExport || null;
     this._playChord = options.playChord || null;
     this._walkthrough = null;
     this._stepIndex = 0;
@@ -138,6 +140,7 @@ class WalkthroughOverlay {
     this._prevChord = null;   // track previous step's chord for transform highlighting
     this._buildDOM();
     this._bindKeys();
+    this._initDrag();
   }
 
   // ── Public API ───────────────────────────────────────────────────
@@ -181,6 +184,9 @@ class WalkthroughOverlay {
       <div class="wt-body"></div>
       <div class="wt-also"></div>
       <div class="wt-see-also"></div>
+      <div class="wt-export-link" style="display:none">
+        <a href="#" class="wt-export-anchor">Export this progression to Skratch Studio</a>
+      </div>
       <div class="wt-footer">
         <div class="wt-indicator"></div>
         <div class="wt-nav">
@@ -197,6 +203,8 @@ class WalkthroughOverlay {
     this._bodyEl = el.querySelector('.wt-body');
     this._alsoEl = el.querySelector('.wt-also');
     this._seeAlsoEl = el.querySelector('.wt-see-also');
+    this._exportLinkEl = el.querySelector('.wt-export-link');
+    this._exportAnchor = el.querySelector('.wt-export-anchor');
     this._indicatorEl = el.querySelector('.wt-indicator');
     this._backBtn = el.querySelector('.wt-btn--back');
     this._nextBtn = el.querySelector('.wt-btn--next');
@@ -206,6 +214,10 @@ class WalkthroughOverlay {
     this._backBtn.addEventListener('click', () => this._back());
     this._nextBtn.addEventListener('click', () => this._next());
     this._closeBtn.addEventListener('click', () => this.exit());
+    this._exportAnchor.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (this._onExport) this._onExport();
+    });
 
     document.body.appendChild(el);
   }
@@ -230,10 +242,75 @@ class WalkthroughOverlay {
     document.addEventListener('keydown', this._keyHandler);
   }
 
+  // ── Drag-to-reposition ──────────────────────────────────────────
+
+  _initDrag() {
+    let dragging = false;
+    let startX, startY, origLeft, origTop;
+
+    const onMouseDown = (e) => {
+      // Only drag from the overlay background, not buttons/links/inputs
+      const tag = e.target.tagName.toUpperCase();
+      if (tag === 'BUTTON' || tag === 'A' || tag === 'INPUT') return;
+      if (e.target.closest('button') || e.target.closest('a')) return;
+
+      dragging = true;
+      const rect = this._el.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+
+      // Switch from bottom/right positioning to top/left for drag
+      this._el.style.top = rect.top + 'px';
+      this._el.style.left = rect.left + 'px';
+      this._el.style.bottom = 'auto';
+      this._el.style.right = 'auto';
+      origLeft = rect.left;
+      origTop = rect.top;
+
+      this._el.style.cursor = 'grabbing';
+      e.preventDefault();
+    };
+
+    const onMouseMove = (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      this._el.style.left = (origLeft + dx) + 'px';
+      this._el.style.top = (origTop + dy) + 'px';
+    };
+
+    const onMouseUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      this._el.style.cursor = '';
+    };
+
+    this._el.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
+    // Touch support
+    this._el.addEventListener('touchstart', (e) => {
+      const touch = e.touches[0];
+      onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target: e.target, preventDefault: () => e.preventDefault() });
+    }, { passive: false });
+    document.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      const touch = e.touches[0];
+      onMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
+    }, { passive: false });
+    document.addEventListener('touchend', onMouseUp);
+  }
+
   // ── Show / Hide ──────────────────────────────────────────────────
 
   _show() {
     this._visible = true;
+    // Reset to default position (bottom-right) in case it was dragged
+    this._el.style.top = '';
+    this._el.style.left = '';
+    this._el.style.bottom = '';
+    this._el.style.right = '';
     this._el.classList.add('wt-overlay--visible');
   }
 
@@ -249,9 +326,8 @@ class WalkthroughOverlay {
     const maxIdx = this._walkthrough.steps.length - 1;
     if (this._stepIndex < maxIdx) {
       this._goToStep(this._stepIndex + 1);
-    } else {
-      this.exit();
     }
+    // On last step: do nothing — user must click X to dismiss
   }
 
   _back() {
@@ -330,7 +406,11 @@ class WalkthroughOverlay {
 
     // Navigation buttons
     this._backBtn.style.visibility = isFirst ? 'hidden' : 'visible';
-    this._nextBtn.textContent = isLast ? 'Explore freely \u2192' : 'Next \u2192';
+    this._nextBtn.style.display = isLast ? 'none' : '';
+    this._nextBtn.textContent = 'Next \u2192';
+
+    // Export link — show on last step
+    this._exportLinkEl.style.display = (isLast && this._onExport) ? '' : 'none';
 
     // Trigger fade-in
     contentEls.forEach(el => el.classList.add('wt-fade-in'));
@@ -344,6 +424,15 @@ class WalkthroughOverlay {
   _applyStep(step) {
     const parsed = parseChordName(step.chord);
     if (!parsed) return;
+
+    // Fire onStep callback for sequence capture
+    if (this._onStep) {
+      this._onStep({
+        root: parsed.root,
+        quality: parsed.quality,
+        transform: step.highlightTransform || null,
+      });
+    }
 
     // If this step has a highlightTransform and we have a previous chord,
     // use setTransform to show the PLR arrow on the Tonnetz

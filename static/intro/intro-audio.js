@@ -155,11 +155,13 @@ export async function ensureSampler() {
 }
 
 export function playSamplerNote(noteWithOctave, duration) {
+  if (window.AudioToggle && AudioToggle.isMuted()) return;
   if (!_samplerReady || !_sampler) return;
   _sampler.triggerAttackRelease(noteWithOctave, duration || '4n', Tone.now());
 }
 
 export function playSamplerAttack(noteWithOctave) {
+  if (window.AudioToggle && AudioToggle.isMuted()) return;
   if (!_samplerReady || !_sampler) return;
   _sampler.triggerAttack(noteWithOctave, Tone.now());
 }

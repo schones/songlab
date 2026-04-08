@@ -689,6 +689,7 @@
         }
 
         function playNote(noteName, duration = 0.8) {
+            if (window.AudioToggle && AudioToggle.isMuted()) return;
             // Route through sampler (piano or voice) if available, else fall back to synth
             const s = window.__harmonyAudio?.sampler;
             if (s) { s.triggerAttackRelease(noteName, duration); return; }
@@ -696,6 +697,7 @@
         }
 
         function playInterval(rootNote, intervalSemitones, mode = "melodic-up", noteDuration = 0.8) {
+            if (window.AudioToggle && AudioToggle.isMuted()) return;
             const s = window.__harmonyAudio?.sampler;
             const instrument = s || synth;
             if (!instrument) return;

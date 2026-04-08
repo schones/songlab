@@ -196,6 +196,69 @@ export function registerMusicBlocks() {
     }
   };
 
+  Blockly.Blocks['p_transform'] = {
+    init() {
+      this.appendDummyInput()
+        .appendField('🔀 P transform')
+        .appendField('for')
+        .appendField(new Blockly.FieldDropdown([
+          ['half note', '2n'], ['quarter note', '4n'],
+          ['whole note', '1n'], ['eighth note', '8n'],
+        ]), 'DURATION')
+        .appendField('at beat')
+        .appendField(new Blockly.FieldDropdown([
+          ['1',   '0:0:0'], ['1 +', '0:0:2'], ['2',   '0:1:0'], ['2 +', '0:1:2'],
+          ['3',   '0:2:0'], ['3 +', '0:2:2'], ['4',   '0:3:0'], ['4 +', '0:3:2'],
+        ]), 'TIME');
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(330);
+      this.setTooltip('Parallel transform: flips major/minor. (e.g. C major -> C minor)');
+    }
+  };
+
+  Blockly.Blocks['l_transform'] = {
+    init() {
+      this.appendDummyInput()
+        .appendField('🔀 L transform')
+        .appendField('for')
+        .appendField(new Blockly.FieldDropdown([
+          ['half note', '2n'], ['quarter note', '4n'],
+          ['whole note', '1n'], ['eighth note', '8n'],
+        ]), 'DURATION')
+        .appendField('at beat')
+        .appendField(new Blockly.FieldDropdown([
+          ['1',   '0:0:0'], ['1 +', '0:0:2'], ['2',   '0:1:0'], ['2 +', '0:1:2'],
+          ['3',   '0:2:0'], ['3 +', '0:2:2'], ['4',   '0:3:0'], ['4 +', '0:3:2'],
+        ]), 'TIME');
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(330);
+      this.setTooltip('Leading-tone transform: C major -> E minor, or C minor -> Ab major');
+    }
+  };
+
+  Blockly.Blocks['r_transform'] = {
+    init() {
+      this.appendDummyInput()
+        .appendField('🔀 R transform')
+        .appendField('for')
+        .appendField(new Blockly.FieldDropdown([
+          ['half note', '2n'], ['quarter note', '4n'],
+          ['whole note', '1n'], ['eighth note', '8n'],
+        ]), 'DURATION')
+        .appendField('at beat')
+        .appendField(new Blockly.FieldDropdown([
+          ['1',   '0:0:0'], ['1 +', '0:0:2'], ['2',   '0:1:0'], ['2 +', '0:1:2'],
+          ['3',   '0:2:0'], ['3 +', '0:2:2'], ['4',   '0:3:0'], ['4 +', '0:3:2'],
+        ]), 'TIME');
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(330);
+      this.setTooltip('Relative transform: C major -> A minor, or C minor -> Eb major');
+    }
+  };
+
   // ===================== SONG STRUCTURE (teal, hue 170) =====================
 
   Blockly.Blocks['section'] = {
@@ -281,6 +344,10 @@ export function getMusicToolboxXml() {
     <block type="play_melody_note"></block>
     <block type="play_chord"></block>
     <block type="rest"></block>
+    <sep gap="20"></sep>
+    <block type="p_transform"></block>
+    <block type="l_transform"></block>
+    <block type="r_transform"></block>
   </category>
   <category name="📋 Song" colour="170">
     <block type="music_start"></block>

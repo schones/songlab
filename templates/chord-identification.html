@@ -383,6 +383,7 @@
   }
 
   function playChord(rootMidi, intervals, duration) {
+    if (window.AudioToggle && AudioToggle.isMuted()) return;
     if (!sampler || !samplerReady) return;
     const notes = intervals.map(s => midiToName(rootMidi + s));
     sampler.triggerAttackRelease(notes, duration || 1.8);

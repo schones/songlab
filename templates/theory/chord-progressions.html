@@ -559,7 +559,7 @@
       <option value="Eb">E&#9837; major</option>
       <option value="Ab">A&#9837; major</option>
     </select>
-    <button class="cp-btn-sound" id="cp-btn-audio">&#9654; Enable Sound</button>
+    <!-- Sound controlled by global AudioToggle (floating mute button) -->
   </div>
 
   <div class="cp-layout">
@@ -839,8 +839,8 @@
   // AUDIO
   // ════════════════════════════════════════════════════════════════
 
-  let sampler    = null;
-  let audioReady = false;
+  let sampler = null;
+  let _audioInitPromise = null;
 
   let _toneLoadPromise = null;
   async function loadToneIfNeeded() {
@@ -856,17 +856,23 @@
     return _toneLoadPromise;
   }
 
-  async function ensureAudio() {
+  async function ensureFullAudio() {
     if (sampler) return;
-    sampler = await KeyboardView.getSampler();
+    if (_audioInitPromise) return _audioInitPromise;
+    _audioInitPromise = (async () => {
+      await loadToneIfNeeded();
+      await AudioToggle.ensureTone();
+      sampler = await KeyboardView.getSampler();
+    })();
+    return _audioInitPromise;
   }
 
   const CHORD_SUSTAIN = 1.5;
 
   async function playChord(root, quality) {
-    if (!audioReady) return;
+    if (AudioToggle.isMuted()) return;
     try { if (sampler) sampler.releaseAll(); } catch (_) {}
-    await ensureAudio();
+    await ensureFullAudio();
     if (!sampler) return;
 
     const notes = triadNotes(root, quality);
@@ -878,36 +884,6 @@
       sampler.triggerAttackRelease(`${ascii}4`, CHORD_SUSTAIN, now);
     }
   }
-
-  // Audio enable button
-  const audioBtn = document.getElementById('cp-btn-audio');
-
-  audioBtn.addEventListener('click', async () => {
-    if (audioReady) {
-      audioReady = false;
-      try { if (sampler) sampler.releaseAll(); } catch (_) {}
-      audioBtn.textContent = '▶ Enable Sound';
-      audioBtn.className = 'cp-btn-sound';
-      return;
-    }
-
-    audioBtn.disabled = true;
-    audioBtn.textContent = 'Loading piano…';
-
-    try {
-      await loadToneIfNeeded();
-      await Tone.start();
-      await ensureAudio();
-      audioReady = true;
-      audioBtn.disabled = false;
-      audioBtn.textContent = '♪ Sound on';
-      audioBtn.className = 'cp-btn-sound cp-btn-sound--on';
-    } catch (err) {
-      audioBtn.disabled = false;
-      audioBtn.textContent = '▶ Enable Sound (retry)';
-      audioBtn.className = 'cp-btn-sound';
-    }
-  });
 
   // ════════════════════════════════════════════════════════════════
   // SHARED COMPONENTS

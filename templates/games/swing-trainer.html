@@ -6,6 +6,7 @@
   <title>Swing Trainer — Tonnetz</title>
   <link rel="stylesheet" href="../shared/styles.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script src="/static/shared/audio-toggle.js"></script>
   <style>
     body {
       display: flex;
@@ -394,15 +395,21 @@
       const idx  = beatCount % 4;
       const beat = ostinato[idx];
 
+      const muted = window.AudioToggle && AudioToggle.isMuted();
+
       if (state === 1) {
-        synth.triggerAttackRelease(beat.down, '8n', time, 0.75);
-        synth.triggerAttackRelease(beat.up,   '8n', time + currentSwing * BEAT_DUR, 0.38);
+        if (!muted) {
+          synth.triggerAttackRelease(beat.down, '8n', time, 0.75);
+          synth.triggerAttackRelease(beat.up,   '8n', time + currentSwing * BEAT_DUR, 0.38);
+        }
       } else {
         /* User groove */
-        synth.triggerAttackRelease(beat.down, '8n', time, 0.75);
-        synth.triggerAttackRelease(beat.up,   '8n', time + currentSwing * BEAT_DUR, 0.38);
+        if (!muted) {
+          synth.triggerAttackRelease(beat.down, '8n', time, 0.75);
+          synth.triggerAttackRelease(beat.up,   '8n', time + currentSwing * BEAT_DUR, 0.38);
+        }
         /* Ghost groove (Practice only) */
-        if (mode === 'practice') {
+        if (mode === 'practice' && !muted) {
           synthGhost.triggerAttackRelease(beat.down, '8n', time, 0.75 * GHOST_VOL);
           synthGhost.triggerAttackRelease(beat.up,   '8n', time + targetRatio * BEAT_DUR, 0.38 * GHOST_VOL);
         }
