@@ -52,7 +52,7 @@ export const sections = [
     gameLink: {
       game: 'chord-walks',
       label: 'Play Chord Walks →',
-      url: '/games/relative-key-trainer',
+      url: '/games/chord-walks',
     },
     onActivate: null,
   },

@@ -26,7 +26,7 @@ const WALKTHROUGHS = {
   yesterday_voice_leading: {
     title: "Yesterday's Aching Bass Line",
     song: "Yesterday — The Beatles",
-    seeAlso: { label: "Harmony Trainer", href: "/games/relative-key-trainer" },
+    seeAlso: { label: "Harmony Trainer", href: "/games/chord-walks" },
     steps: [
       { chord: "F", title: "Start here", body: "F major. Bright, stable. Listen to where the bass note sits.", autoPlay: true },
       { chord: "Em", title: "One note drops", body: "The bass slides down just a half step — F to E. The whole mood shifts from major to minor.", autoPlay: true, focus: "keyboard" },

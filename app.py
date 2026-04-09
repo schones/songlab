@@ -194,8 +194,8 @@ def rhythm():
 def strumming():
     return render_template("strumming.html")
 
-@app.route("/games/relative-key-trainer")
-def relative_key_trainer():
+@app.route("/games/chord-walks")
+def chord_walks():
     return render_template("relative-key-trainer.html")
 
 

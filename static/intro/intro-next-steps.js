@@ -44,7 +44,7 @@ const NEXT_STEPS = {
     links: [
       { category: 'Continue', label: 'Chapter 5: Transforms',           desc: 'PLR operations: the elegant moves that connect every chord.', url: '/intro/5'                      },
       { category: 'Open',     label: 'Tonnetz Explorer',                desc: 'The full three-panel playground.',                           url: '/explorer'                     },
-      { category: 'Try',      label: 'Chord Walks',                     desc: 'Navigate transforms on the grid.',                           url: '/games/relative-key-trainer'   },
+      { category: 'Try',      label: 'Chord Walks',                     desc: 'Navigate transforms on the grid.',                           url: '/games/chord-walks'   },
       { category: 'Explore',  label: 'Modes',                           desc: 'Seven flavors of the major scale.',                          url: '/theory/modes'                 },
     ],
   },
@@ -52,7 +52,7 @@ const NEXT_STEPS = {
     graduation: true,
     links: [
       { category: 'Open',    label: 'Tonnetz Explorer',      desc: 'The full three-panel playground.',    url: '/explorer'                   },
-      { category: 'Try',     label: 'Chord Walks',           desc: 'Navigate transforms on the grid.',    url: '/games/relative-key-trainer' },
+      { category: 'Try',     label: 'Chord Walks',           desc: 'Navigate transforms on the grid.',    url: '/games/chord-walks' },
       { category: 'Try',     label: 'Harmony Trainer',       desc: 'Sing intervals with pitch feedback.', url: '/harmony'                    },
       { category: 'Try',     label: 'Skratch Studio',        desc: 'Make music with blocks.',             url: '/skratch-studio'                    },
       { category: 'Explore', label: 'Circle of Fifths',      desc: 'See how all 12 keys connect.',        url: '/theory/circle-of-fifths'    },
