@@ -435,7 +435,7 @@ final values are determined by running the test corpus.
 | Parameter | Current value | Tuned by | Notes |
 |---|---|---|---|
 | `TEMPO_BPM` | User-set, default 120 | N/A (user config) | Stored as cantor-level state. Visible, editable input on main page. |
-| `CHORD_CLUSTER_WINDOW` | Untuned. Initial guess: 1/8 of a beat | Corpus tests T2.1, T2.2, M.1 | Length of the temporal window for clustering recent attacks. Expressed as a fraction of beat duration so it scales with `TEMPO_BPM`. At 120 BPM, 1/8 beat ≈ 62.5 ms. |
+| `CHORD_CLUSTER_WINDOW` | Untuned. Initial guess: 1/8 of a beat | Corpus tests T2.1, T2.2, T2.7, M.1 | Length of the temporal window for clustering recent attacks. Expressed as a fraction of beat duration so it scales with `TEMPO_BPM`. At 120 BPM, 1/8 beat ≈ 62.5 ms. |
 | `DYAD_SUSTAIN_THRESHOLD` | Untuned. Initial guess: 1 beat | Corpus tests D.1, D.2 | Duration a 2-note dyad must continuously sound before escalating to chord. |
 | `DYAD_REPETITION_THRESHOLD` | Untuned. Initial guess: 3 attacks | Corpus tests D.3, D.4 | Number of dyad-attacks within `DYAD_REPETITION_WINDOW` to trigger escalation. |
 | `DYAD_REPETITION_WINDOW` | Untuned. Initial guess: 2 beats | Corpus tests D.3, D.4 | Window over which dyad attacks are counted for repetition-based escalation. |
@@ -743,6 +743,13 @@ which puts this work close to implied-chord detection §3.
 
 Every meaningful change to the rule, parameters, or scope. Newest
 at the top.
+
+### 2026-05-07 — T2.7 added to CHORD_CLUSTER_WINDOW tuning set
+Updated the `CHORD_CLUSTER_WINDOW` parameter row: T2.7 (synthetic
+repeated-rolls test) added; T2.6 removed because all-sustaining
+rolls don't isolate the cluster window from the sounding-set rule.
+T2.7 probes the upper-bound constraint on the cluster window
+without depending on M.1's pending real-world transcription.
 
 ### 2026-05-06 (later same session) — Audio corpus companion doc
 Created `chord-melody-audio-corpus.md` as a parallel artifact to

@@ -339,6 +339,83 @@ cases, chord state is preserved.*
 
 ---
 
+### T2.6 — Rolled chord clusters within window
+*Tempo: 120 BPM. Purpose: exercises chord-resolver root
+identification on a first-inversion voicing (see OQ5) at fast-roll
+timing. All three notes sustain to overlap, so the chord can be
+detected from the held set alone — this is not a probe of
+CHORD_CLUSTER_WINDOW per se. T2.7 covers the cluster-window probe
+synthetically; M.1 will cover it in a real-world context once
+transcribed.*
+
+**MIDI:**
+```
+t=0     noteAttack  pitch=64 (E4)
+t=40    noteAttack  pitch=67 (G4)
+t=80    noteAttack  pitch=72 (C5)
+t=2000  noteRelease pitch=64
+t=2000  noteRelease pitch=67
+t=2000  noteRelease pitch=72
+```
+
+**Expected:**
+- t=0 to t=40: state=melody, effective_set=[64]
+- t=40 to t=80: state=melody, effective_set=[64,67] (minor third dyad, no escalation)
+- t=80 to t=2000: state=chord, identity=(C, major), confidence=declared, effective_set=[64,67,72]. Root is C (MIDI 72) despite E being the bass.
+- t=2000+: state=nothing.
+
+---
+
+### T2.7 — Repeated rolled chords cluster as discrete chord events
+*Tempo: 120 BPM. Purpose: probes the upper-bound constraint on
+CHORD_CLUSTER_WINDOW. Three identical C-major rolls in sequence,
+each rolled over 60ms with attacks separated by 30ms, with 100ms
+of silence between the release of one chord and the first attack
+of the next. The cluster window must be wide enough to cluster
+within-roll attacks (~60ms span) but narrow enough that adjacent
+rolled chords don't merge into a single effective set. This is the
+synthetic counterpart to M.1, intended to exercise the same
+parameter constraint without depending on M.1's pending real-world
+transcription.*
+
+**MIDI:**
+```
+t=0     noteAttack  pitch=64 (E4)
+t=30    noteAttack  pitch=67 (G4)
+t=60    noteAttack  pitch=72 (C5)
+t=200   noteRelease pitch=64
+t=200   noteRelease pitch=67
+t=200   noteRelease pitch=72
+t=300   noteAttack  pitch=64 (E4)
+t=330   noteAttack  pitch=67 (G4)
+t=360   noteAttack  pitch=72 (C5)
+t=500   noteRelease pitch=64
+t=500   noteRelease pitch=67
+t=500   noteRelease pitch=72
+t=600   noteAttack  pitch=64 (E4)
+t=630   noteAttack  pitch=67 (G4)
+t=660   noteAttack  pitch=72 (C5)
+t=800   noteRelease pitch=64
+t=800   noteRelease pitch=67
+t=800   noteRelease pitch=72
+```
+
+**Expected:**
+- Roll 1: state transitions through melody → melody dyad → chord(C, major, declared) by t=60. Holds chord state until t=200.
+- t=200+: state=nothing. Chord identity ends (root C released). Recent-attack buffer ages out within CHORD_CLUSTER_WINDOW.
+- Roll 2: by t=360, state=chord, identity=(C, major), confidence=declared. New chord declaration (chord identity was cleared, so this is a fresh declaration via step 3, not an identity update).
+- t=500+: state=nothing.
+- Roll 3: by t=660, state=chord, identity=(C, major), confidence=declared.
+- t=800+: state=nothing.
+
+*Three discrete declared-chord events separated by nothing. This
+test fails if CHORD_CLUSTER_WINDOW is wide enough that the recent-
+attack buffer holds attacks across the inter-chord gap (causing
+adjacent rolls to merge), or if the window is too narrow to cluster
+the within-roll attacks (causing each roll to fail to declare).*
+
+---
+
 ## Chord-state tests
 
 These tests specifically exercise the chord-state machinery —
@@ -555,8 +632,21 @@ implementation.*
 ### D.4 — Dyad repetitions outside window do not escalate
 *Tempo: 120 BPM. Purpose: boundary test for D.3.*
 
-**MIDI:** Same as D.3 but with each repetition spaced 1500ms apart
-(attacks at t=0, 1500, 3000).
+**MIDI:**
+```
+t=0     noteAttack  pitch=55 (G3)
+t=0     noteAttack  pitch=62 (D4)
+t=200   noteRelease pitch=55
+t=200   noteRelease pitch=62
+t=1500  noteAttack  pitch=55
+t=1500  noteAttack  pitch=62
+t=1700  noteRelease pitch=55
+t=1700  noteRelease pitch=62
+t=3000  noteAttack  pitch=55
+t=3000  noteAttack  pitch=62
+t=3200  noteRelease pitch=55
+t=3200  noteRelease pitch=62
+```
 
 **Expected:** With DYAD_REPETITION_WINDOW=2 beats at 120 BPM
 (=1000ms), no two attacks fall within the window simultaneously.
@@ -712,6 +802,20 @@ Implementation deferred — see "Build progress" in the design doc.
 ---
 
 ## Change log
+
+### 2026-05-07 — T2.6 and T2.7 added (rolled-chord cases)
+Added T2.6 — fast-roll inversion case (E4-G4-C5, all sustaining).
+Exercises chord-resolver root identification on inversions (see
+design doc OQ5) at fast-roll timing; gives C.4 a companion case in
+Tier 2. Notes sustain to overlap, so this is not a CHORD_CLUSTER_
+WINDOW probe.
+
+Added T2.7 — three repeated C-major rolls separated by silence.
+Synthetic counterpart to M.1; probes the upper-bound constraint on
+CHORD_CLUSTER_WINDOW (window wide enough to cluster within-roll
+attacks, narrow enough that adjacent rolls don't merge). Allows
+parameter tuning to proceed without waiting on M.1's real-world
+transcription.
 
 ### 2026-05-06 (later same session) — JSON regeneration workflow
 Added working-agreement rule (item 6) and "How JSON specs work"
