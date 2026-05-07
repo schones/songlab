@@ -1,0 +1,104 @@
+{
+  "id": "T2.7",
+  "title": "Repeated rolled chords cluster as discrete chord events",
+  "tier": "T2",
+  "tempo_bpm": 120,
+  "purpose": "probes the upper-bound constraint on CHORD_CLUSTER_WINDOW. Three identical C-major rolls in sequence, each rolled over 60ms with attacks separated by 30ms, with 100ms of silence between the release of one chord and the first attack of the next. The cluster window must be wide enough to cluster within-roll attacks (~60ms span) but narrow enough that adjacent rolled chords don't merge into a single effective set. This is the synthetic counterpart to M.1, intended to exercise the same parameter constraint without depending on M.1's pending real-world transcription.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 30,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 60,
+      "event": "noteAttack",
+      "pitch": 72
+    },
+    {
+      "t_ms": 200,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 200,
+      "event": "noteRelease",
+      "pitch": 67
+    },
+    {
+      "t_ms": 200,
+      "event": "noteRelease",
+      "pitch": 72
+    },
+    {
+      "t_ms": 300,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 330,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 360,
+      "event": "noteAttack",
+      "pitch": 72
+    },
+    {
+      "t_ms": 500,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 500,
+      "event": "noteRelease",
+      "pitch": 67
+    },
+    {
+      "t_ms": 500,
+      "event": "noteRelease",
+      "pitch": 72
+    },
+    {
+      "t_ms": 600,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 630,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 660,
+      "event": "noteAttack",
+      "pitch": 72
+    },
+    {
+      "t_ms": 800,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 800,
+      "event": "noteRelease",
+      "pitch": 67
+    },
+    {
+      "t_ms": 800,
+      "event": "noteRelease",
+      "pitch": 72
+    }
+  ],
+  "expected_prose": "- Roll 1: state transitions through melody → melody dyad → chord(C, major, declared) by t=60. Holds chord state until t=200.\n- t=200+: state=nothing. Chord identity ends (root C released). Recent-attack buffer ages out within CHORD_CLUSTER_WINDOW.\n- Roll 2: by t=360, state=chord, identity=(C, major), confidence=declared. New chord declaration (chord identity was cleared, so this is a fresh declaration via step 3, not an identity update).\n- t=500+: state=nothing.\n- Roll 3: by t=660, state=chord, identity=(C, major), confidence=declared.\n- t=800+: state=nothing.",
+  "trailing_notes": [
+    "Three discrete declared-chord events separated by nothing. This test fails if CHORD_CLUSTER_WINDOW is wide enough that the recent- attack buffer holds attacks across the inter-chord gap (causing adjacent rolls to merge), or if the window is too narrow to cluster the within-roll attacks (causing each roll to fail to declare)."
+  ],
+  "status": "ok"
+}

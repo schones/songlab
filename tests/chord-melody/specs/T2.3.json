@@ -1,0 +1,42 @@
+{
+  "id": "T2.3",
+  "title": "Slow arpeggio resolving to held chord",
+  "tier": "T2",
+  "tempo_bpm": 120,
+  "purpose": "the key forcing-function test that proves the classifier handles state-evolution correctly. Each individual note attacks alone (melody at the time of attack), but by the end all three are sustaining together (chord).",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 400,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 800,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 60
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 67
+    }
+  ],
+  "expected_prose": "- t=0 to t=400: state=melody, effective_set=[60]\n- t=400 to t=800: state=melody, effective_set=[60,64]\n  (dyad of major third, no escalation — major thirds are not\n  power-chord-eligible regardless of duration)\n- t=800 to t=2000: state=chord, identity=(C, major),\n  confidence=declared, effective_set=[60,64,67]\n- t=2000+: state=nothing",
+  "trailing_notes": [],
+  "status": "ok"
+}

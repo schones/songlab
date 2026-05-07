@@ -1,0 +1,32 @@
+{
+  "id": "D.2",
+  "title": "Dyad released before threshold does not escalate",
+  "tier": "D",
+  "tempo_bpm": 120,
+  "purpose": "boundary test for D.1.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 55
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 62
+    },
+    {
+      "t_ms": 300,
+      "event": "noteRelease",
+      "pitch": 55
+    },
+    {
+      "t_ms": 300,
+      "event": "noteRelease",
+      "pitch": 62
+    }
+  ],
+  "expected_prose": "With DYAD_SUSTAIN_THRESHOLD=1 beat at 120 BPM\n(=500ms), the dyad ends at 300ms (< 500ms). state=melody throughout.",
+  "trailing_notes": [],
+  "status": "ok"
+}

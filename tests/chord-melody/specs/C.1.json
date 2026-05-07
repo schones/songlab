@@ -1,0 +1,42 @@
+{
+  "id": "C.1",
+  "title": "Partial release: third released, root + fifth held",
+  "tier": "C",
+  "tempo_bpm": 120,
+  "purpose": "confirms releasing the third of a declared chord transitions to implied state.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 1000,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 60
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 67
+    }
+  ],
+  "expected_prose": "- t=0 to t=1000: state=chord, identity=(C, major), confidence=declared, effective_set=[60,64,67]\n- t=1000 to t=2000: state=chord, identity=(C, major), confidence=implied, effective_set=[60,67]. Root (C) is still held; full template no longer matches; chord state persists with reduced confidence.\n- t=2000+: state=nothing.",
+  "trailing_notes": [],
+  "status": "ok"
+}

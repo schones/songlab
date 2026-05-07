@@ -1,0 +1,32 @@
+{
+  "id": "T1.4",
+  "title": "Two-note dyad, brief",
+  "tier": "T1",
+  "tempo_bpm": 120,
+  "purpose": "confirms a brief dyad (no escalation) classifies as simultaneous melody.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 300,
+      "event": "noteRelease",
+      "pitch": 60
+    },
+    {
+      "t_ms": 300,
+      "event": "noteRelease",
+      "pitch": 67
+    }
+  ],
+  "expected_prose": "effective_set=[60,67] is a dyad. Duration (300ms <\nDYAD_SUSTAIN_THRESHOLD) and repetition count (1 < DYAD_REPETITION_\nTHRESHOLD) mean no escalation. state=melody for both notes\nsimultaneously.",
+  "trailing_notes": [],
+  "status": "ok"
+}

@@ -1,0 +1,32 @@
+{
+  "id": "D.5",
+  "title": "Sustained non-fifth dyad does NOT escalate",
+  "tier": "D",
+  "tempo_bpm": 120,
+  "purpose": "confirms only perfect-fifth dyads escalate to power chord. Other intervals stay melody regardless of duration.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 3000,
+      "event": "noteRelease",
+      "pitch": 60
+    },
+    {
+      "t_ms": 3000,
+      "event": "noteRelease",
+      "pitch": 64
+    }
+  ],
+  "expected_prose": "Held for 6 beats at 120 BPM, well past\nDYAD_SUSTAIN_THRESHOLD. Escalation tries to fire, but the interval\n(major third = 4 semitones) does not match the power-chord template\n(interval 7). No chord declared. state=melody throughout.",
+  "trailing_notes": [],
+  "status": "ok"
+}

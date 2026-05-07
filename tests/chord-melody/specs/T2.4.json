@@ -1,0 +1,42 @@
+{
+  "id": "T2.4",
+  "title": "Repeated single note",
+  "tier": "T2",
+  "tempo_bpm": 120,
+  "purpose": "confirms repeated attacks on the same pitch don't trigger spurious chord classification.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 200,
+      "event": "noteRelease",
+      "pitch": 60
+    },
+    {
+      "t_ms": 300,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 500,
+      "event": "noteRelease",
+      "pitch": 60
+    },
+    {
+      "t_ms": 600,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 800,
+      "event": "noteRelease",
+      "pitch": 60
+    }
+  ],
+  "expected_prose": "Three discrete melody events. Same pitch repeated is\nnot a chord; escalation only applies to 2-note shapes.",
+  "trailing_notes": [],
+  "status": "ok"
+}

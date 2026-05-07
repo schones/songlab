@@ -1,0 +1,42 @@
+{
+  "id": "T1.2",
+  "title": "Sequential single notes, well-spaced",
+  "tier": "T1",
+  "tempo_bpm": 120,
+  "purpose": "confirms sequential notes with no temporal overlap and gaps larger than CHORD_CLUSTER_WINDOW classify as melody. This is the test we tried to run on 2026-05-06; the prior register-based implementation failed it because of the C4 threshold filter.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 500,
+      "event": "noteRelease",
+      "pitch": 60
+    },
+    {
+      "t_ms": 1000,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 1500,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 2500,
+      "event": "noteRelease",
+      "pitch": 67
+    }
+  ],
+  "expected_prose": "Three discrete melody events. At each attack, the\neffective set is one note; state=melody. No chord is ever\ndetected.",
+  "trailing_notes": [],
+  "status": "ok"
+}

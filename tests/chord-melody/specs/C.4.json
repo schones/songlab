@@ -1,0 +1,44 @@
+{
+  "id": "C.4",
+  "title": "Inverted chord: root identification works",
+  "tier": "C",
+  "tempo_bpm": 120,
+  "purpose": "confirms the chord-state machinery works for inversions (root is not the bass note). The \"until the root releases\" behavior depends on correctly identifying the root.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 72
+    },
+    {
+      "t_ms": 1000,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 72
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 67
+    }
+  ],
+  "expected_prose": "- t=0 to t=1000: state=chord, identity=(C, major), confidence=declared. Even though the bass note is E (this is C major first inversion), the root is C.\n- t=1000 to t=2000: bass E released. Remaining: [67, 72] (G+C). Root (C, MIDI 72) still held → state=chord, identity=(C, major), confidence=implied.\n- t=2000+: state=nothing.",
+  "trailing_notes": [
+    "This test depends on `chord-resolver.js` correctly identifying the root for inversions. See OQ5 in the design doc."
+  ],
+  "status": "ok"
+}

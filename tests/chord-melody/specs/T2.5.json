@@ -1,0 +1,74 @@
+{
+  "id": "T2.5",
+  "title": "Sustained chord with melody on top",
+  "tier": "T2",
+  "tempo_bpm": 120,
+  "purpose": "tests the melody-on-top behavior. Once a chord is declared, additional notes (when they don't form a meaningfully different chord) are melody-on-top — the chord state persists.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 48
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 52
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 55
+    },
+    {
+      "t_ms": 1000,
+      "event": "noteAttack",
+      "pitch": 72
+    },
+    {
+      "t_ms": 1300,
+      "event": "noteRelease",
+      "pitch": 72
+    },
+    {
+      "t_ms": 1500,
+      "event": "noteAttack",
+      "pitch": 74
+    },
+    {
+      "t_ms": 1800,
+      "event": "noteRelease",
+      "pitch": 74
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteAttack",
+      "pitch": 76
+    },
+    {
+      "t_ms": 2300,
+      "event": "noteRelease",
+      "pitch": 76
+    },
+    {
+      "t_ms": 5000,
+      "event": "noteRelease",
+      "pitch": 48
+    },
+    {
+      "t_ms": 5000,
+      "event": "noteRelease",
+      "pitch": 52
+    },
+    {
+      "t_ms": 5000,
+      "event": "noteRelease",
+      "pitch": 55
+    }
+  ],
+  "expected_prose": "- t=0 to t=1000: state=chord, identity=(C, major), confidence=declared, effective_set=[48,52,55]\n- t=1000 to t=1300: state=chord, identity=(C, major), confidence=declared. C5 is melody-on-top — it's an octave doubling of the root, not a meaningfully different chord.\n- t=1300 to t=1500: state=chord, identity=(C, major), confidence=declared. Back to just the triad.\n- t=1500 to t=1800: state=chord, identity=(C, major), confidence=declared. D5 is melody-on-top — adding D to C-E-G gives C-D-E-G, which doesn't match any chord template. Chord state persists.\n- t=1800 to t=2000: state=chord, identity=(C, major), confidence=declared.\n- t=2000 to t=2300: state=chord, identity=(C, major), confidence=declared. E5 is melody-on-top — octave doubling of the third, not a meaningfully different chord.\n- t=2300 to t=5000: state=chord, identity=(C, major), confidence=declared.\n- t=5000+: state=nothing.",
+  "trailing_notes": [
+    "This test verifies the melody-on-top rule (step 2e of classification logic). The bass triad is declared at t=0, and every melody note added on top either (a) duplicates an existing chord tone or (b) doesn't form a new chord template. In both cases, chord state is preserved."
+  ],
+  "status": "ok"
+}

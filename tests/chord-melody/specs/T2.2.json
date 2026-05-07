@@ -1,0 +1,42 @@
+{
+  "id": "T2.2",
+  "title": "Slow arpeggio (broken chord played as melody)",
+  "tier": "T2",
+  "tempo_bpm": 120,
+  "purpose": "confirms an arpeggio played slowly enough — with each note fully released before the next attacks — classifies as melody. Together with T2.1, brackets the CHORD_CLUSTER_WINDOW value.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 200,
+      "event": "noteRelease",
+      "pitch": 60
+    },
+    {
+      "t_ms": 500,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 700,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 1000,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 1200,
+      "event": "noteRelease",
+      "pitch": 67
+    }
+  ],
+  "expected_prose": "No two attacks fall within CHORD_CLUSTER_WINDOW\n(spacing is 500ms >> any reasonable window). Sounding-set never\ncontains more than one note. Three discrete melody events.",
+  "trailing_notes": [],
+  "status": "ok"
+}

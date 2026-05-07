@@ -1,0 +1,171 @@
+{
+  "generated_from": "docs/chord-melody-test-corpus.md",
+  "generated_at": "2026-05-07T21:45:33Z",
+  "test_count": 26,
+  "tests": [
+    {
+      "id": "T1.1",
+      "tier": "T1",
+      "status": "ok",
+      "file": "T1.1.json"
+    },
+    {
+      "id": "T1.2",
+      "tier": "T1",
+      "status": "ok",
+      "file": "T1.2.json"
+    },
+    {
+      "id": "T1.3",
+      "tier": "T1",
+      "status": "ok",
+      "file": "T1.3.json"
+    },
+    {
+      "id": "T1.4",
+      "tier": "T1",
+      "status": "ok",
+      "file": "T1.4.json"
+    },
+    {
+      "id": "T2.1",
+      "tier": "T2",
+      "status": "ok",
+      "file": "T2.1.json"
+    },
+    {
+      "id": "T2.2",
+      "tier": "T2",
+      "status": "ok",
+      "file": "T2.2.json"
+    },
+    {
+      "id": "T2.3",
+      "tier": "T2",
+      "status": "ok",
+      "file": "T2.3.json"
+    },
+    {
+      "id": "T2.4",
+      "tier": "T2",
+      "status": "ok",
+      "file": "T2.4.json"
+    },
+    {
+      "id": "T2.5",
+      "tier": "T2",
+      "status": "ok",
+      "file": "T2.5.json"
+    },
+    {
+      "id": "T2.6",
+      "tier": "T2",
+      "status": "ok",
+      "file": "T2.6.json"
+    },
+    {
+      "id": "T2.7",
+      "tier": "T2",
+      "status": "ok",
+      "file": "T2.7.json"
+    },
+    {
+      "id": "C.1",
+      "tier": "C",
+      "status": "ok",
+      "file": "C.1.json"
+    },
+    {
+      "id": "C.2",
+      "tier": "C",
+      "status": "ok",
+      "file": "C.2.json"
+    },
+    {
+      "id": "C.3",
+      "tier": "C",
+      "status": "ok",
+      "file": "C.3.json"
+    },
+    {
+      "id": "C.4",
+      "tier": "C",
+      "status": "ok",
+      "file": "C.4.json"
+    },
+    {
+      "id": "C.5",
+      "tier": "C",
+      "status": "ok",
+      "file": "C.5.json"
+    },
+    {
+      "id": "C.6",
+      "tier": "C",
+      "status": "ok",
+      "file": "C.6.json"
+    },
+    {
+      "id": "D.1",
+      "tier": "D",
+      "status": "ok",
+      "file": "D.1.json"
+    },
+    {
+      "id": "D.2",
+      "tier": "D",
+      "status": "ok",
+      "file": "D.2.json"
+    },
+    {
+      "id": "D.3",
+      "tier": "D",
+      "status": "ok",
+      "file": "D.3.json"
+    },
+    {
+      "id": "D.4",
+      "tier": "D",
+      "status": "ok",
+      "file": "D.4.json"
+    },
+    {
+      "id": "D.5",
+      "tier": "D",
+      "status": "ok",
+      "file": "D.5.json"
+    },
+    {
+      "id": "M.1",
+      "tier": "M",
+      "status": "pending",
+      "file": "M.1.json"
+    },
+    {
+      "id": "T3.1",
+      "tier": "T3",
+      "status": "pending",
+      "file": "T3.1.json"
+    },
+    {
+      "id": "T3.2",
+      "tier": "T3",
+      "status": "pending",
+      "file": "T3.2.json"
+    },
+    {
+      "id": "T3.3",
+      "tier": "T3",
+      "status": "pending",
+      "file": "T3.3.json"
+    }
+  ],
+  "tier_counts": {
+    "T1": 4,
+    "T2": 7,
+    "C": 6,
+    "D": 5,
+    "M": 1,
+    "T3": 3
+  }
+}

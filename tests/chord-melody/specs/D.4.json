@@ -1,0 +1,72 @@
+{
+  "id": "D.4",
+  "title": "Dyad repetitions outside window do not escalate",
+  "tier": "D",
+  "tempo_bpm": 120,
+  "purpose": "boundary test for D.3.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 55
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 62
+    },
+    {
+      "t_ms": 200,
+      "event": "noteRelease",
+      "pitch": 55
+    },
+    {
+      "t_ms": 200,
+      "event": "noteRelease",
+      "pitch": 62
+    },
+    {
+      "t_ms": 1500,
+      "event": "noteAttack",
+      "pitch": 55
+    },
+    {
+      "t_ms": 1500,
+      "event": "noteAttack",
+      "pitch": 62
+    },
+    {
+      "t_ms": 1700,
+      "event": "noteRelease",
+      "pitch": 55
+    },
+    {
+      "t_ms": 1700,
+      "event": "noteRelease",
+      "pitch": 62
+    },
+    {
+      "t_ms": 3000,
+      "event": "noteAttack",
+      "pitch": 55
+    },
+    {
+      "t_ms": 3000,
+      "event": "noteAttack",
+      "pitch": 62
+    },
+    {
+      "t_ms": 3200,
+      "event": "noteRelease",
+      "pitch": 55
+    },
+    {
+      "t_ms": 3200,
+      "event": "noteRelease",
+      "pitch": 62
+    }
+  ],
+  "expected_prose": "With DYAD_REPETITION_WINDOW=2 beats at 120 BPM\n(=1000ms), no two attacks fall within the window simultaneously.\nNo escalation. All three dyads remain state=melody.",
+  "trailing_notes": [],
+  "status": "ok"
+}

@@ -1,0 +1,42 @@
+{
+  "id": "T2.6",
+  "title": "Rolled chord clusters within window",
+  "tier": "T2",
+  "tempo_bpm": 120,
+  "purpose": "exercises chord-resolver root identification on a first-inversion voicing (see OQ5) at fast-roll timing. All three notes sustain to overlap, so the chord can be detected from the held set alone — this is not a probe of CHORD_CLUSTER_WINDOW per se. T2.7 covers the cluster-window probe synthetically; M.1 will cover it in a real-world context once transcribed.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 40,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 80,
+      "event": "noteAttack",
+      "pitch": 72
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 67
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 72
+    }
+  ],
+  "expected_prose": "- t=0 to t=40: state=melody, effective_set=[64]\n- t=40 to t=80: state=melody, effective_set=[64,67] (minor third dyad, no escalation)\n- t=80 to t=2000: state=chord, identity=(C, major), confidence=declared, effective_set=[64,67,72]. Root is C (MIDI 72) despite E being the bass.\n- t=2000+: state=nothing.",
+  "trailing_notes": [],
+  "status": "ok"
+}

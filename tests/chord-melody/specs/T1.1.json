@@ -1,0 +1,22 @@
+{
+  "id": "T1.1",
+  "title": "Single sustained note",
+  "tier": "T1",
+  "tempo_bpm": 120,
+  "purpose": "confirms a lone note classifies as melody, not as a degenerate chord.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 60
+    }
+  ],
+  "expected_prose": "- t=0 to t=2000: state=melody, effective_set=[60]\n- t=2000+: state=nothing, effective_set=[]",
+  "trailing_notes": [],
+  "status": "ok"
+}

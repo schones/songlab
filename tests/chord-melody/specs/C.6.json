@@ -1,0 +1,52 @@
+{
+  "id": "C.6",
+  "title": "Chord identity does NOT update on octave doubling",
+  "tier": "C",
+  "tempo_bpm": 120,
+  "purpose": "confirms that octave-doubling additions don't trigger chord-identity updates. Distinguishes \"playing melody on top of held chord\" from \"modifying the chord.\"",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 1000,
+      "event": "noteAttack",
+      "pitch": 72
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 72
+    },
+    {
+      "t_ms": 3000,
+      "event": "noteRelease",
+      "pitch": 60
+    },
+    {
+      "t_ms": 3000,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 3000,
+      "event": "noteRelease",
+      "pitch": 67
+    }
+  ],
+  "expected_prose": "- t=0 to t=1000: state=chord, identity=(C, major), confidence=declared, effective_set=[60,64,67]\n- t=1000 to t=2000: effective_set=[60,64,67,72]. C5 is an octave-doubling of C4 (same pitch class). The pitch-class-collapsed set is still {C, E, G} = C major. Not meaningfully different. C5 is melody-on-top. state=chord, identity=(C, major), confidence=declared.\n- t=2000 to t=3000: state=chord, identity=(C, major), confidence=declared.\n- t=3000+: state=nothing.",
+  "trailing_notes": [],
+  "status": "ok"
+}

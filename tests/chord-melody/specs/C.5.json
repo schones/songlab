@@ -1,0 +1,52 @@
+{
+  "id": "C.5",
+  "title": "Chord identity update (C major → C7)",
+  "tier": "C",
+  "tempo_bpm": 120,
+  "purpose": "confirms chord identity updates when an added note forms a meaningfully different chord template.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 1000,
+      "event": "noteAttack",
+      "pitch": 70
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 60
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 67
+    },
+    {
+      "t_ms": 2000,
+      "event": "noteRelease",
+      "pitch": 70
+    }
+  ],
+  "expected_prose": "- t=0 to t=1000: state=chord, identity=(C, major), confidence=declared, effective_set=[60,64,67]\n- t=1000 to t=2000: effective_set=[60,64,67,70]. Matches C dom7 template — meaningfully different from C major (different quality). Chord identity updates. state=chord, identity=(C, dom7), confidence=declared.\n- t=2000+: state=nothing.",
+  "trailing_notes": [],
+  "status": "ok"
+}

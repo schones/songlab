@@ -1,0 +1,44 @@
+{
+  "id": "T2.1",
+  "title": "Fast arpeggio with overlap",
+  "tier": "T2",
+  "tempo_bpm": 120,
+  "purpose": "confirms attacks within CHORD_CLUSTER_WINDOW correctly cluster as chord even if not strictly simultaneous.",
+  "midi": [
+    {
+      "t_ms": 0,
+      "event": "noteAttack",
+      "pitch": 60
+    },
+    {
+      "t_ms": 50,
+      "event": "noteAttack",
+      "pitch": 64
+    },
+    {
+      "t_ms": 100,
+      "event": "noteAttack",
+      "pitch": 67
+    },
+    {
+      "t_ms": 300,
+      "event": "noteRelease",
+      "pitch": 60
+    },
+    {
+      "t_ms": 300,
+      "event": "noteRelease",
+      "pitch": 64
+    },
+    {
+      "t_ms": 300,
+      "event": "noteRelease",
+      "pitch": 67
+    }
+  ],
+  "expected_prose": "All three sustain past t=100, so sounding-set sees\nthe triad. state=chord, identity=(C, major), confidence=declared\nby t=100.",
+  "trailing_notes": [
+    "Tuning note: this test passes for any reasonable CHORD_CLUSTER_WINDOW and sounding-set rule. It's a sanity test, not a tuning test."
+  ],
+  "status": "ok"
+}
