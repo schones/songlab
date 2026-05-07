@@ -2,6 +2,138 @@
 
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
+## 2026-05-07 — Test corpus formalization (regenerate script + corpus edits)
+
+### Landed
+- `tools/regenerate-test-json.py` (new). Parses
+  `docs/chord-melody-test-corpus.md` and emits one JSON file per
+  test in `tests/chord-melody/specs/`, plus `_manifest.json`.
+  Strict on MIDI sequence parsing; lenient on expected-outcome
+  prose (captured as raw text). Recognizes pending tests (no
+  fenced MIDI block) and emits them with `status: "pending"` plus
+  a `pending_reason` field. Schema includes `trailing_notes` as a
+  list (M.1 has two trailing italic blocks; the schema needs to
+  accommodate that). Python stdlib only, 3.10+.
+- Test corpus edits: T2.6 reframed as a fast-roll inversion case
+  (notes sustain, not a CHORD_CLUSTER_WINDOW probe); T2.7 added
+  as the synthetic cluster-window probe (three repeated C-major
+  rolls separated by silence); D.4's MIDI expanded from a prose
+  transformation of D.3 into an explicit fenced block; T2.6 minor
+  third / minor sixth annotation fixed; T2.7 closing paragraph
+  italic markers restored. Design doc parameter table updated to
+  reference T2.7 instead of T2.6 for CHORD_CLUSTER_WINDOW tuning.
+- Generated 26 JSON specs (22 ok, 4 pending: M.1, T3.1, T3.2,
+  T3.3) under `tests/chord-melody/specs/`.
+
+### Diagnosed / decided
+- **JSON schema for expected outcomes: prose blob (option 3), not
+  structured.** Considered three options for how the parser
+  handles expected outcomes — fully structured intervals, mixed
+  structured-plus-prose, or raw prose blob. Settled on prose blob
+  because the harness doesn't exist yet and the comparison
+  contract (what counts as pass/fail at the per-test level)
+  hasn't been designed. Locking in a structured schema now would
+  bake in guesses. Schema can be extended incrementally per-test
+  as the harness's needs surface.
+- **Test-driven build sequencing.** Rather than building a full
+  harness up-front and then the classifier, decided to build the
+  harness alongside the classifier: each new classifier feature
+  brings the comparison logic for the test cases it enables.
+  Avoids designing the comparison contract speculatively. Order:
+  OQ1 (tempo state) → chord-resolver power-chord extension →
+  classifier features paired with their corresponding harness
+  comparison logic.
+- **T2.6 vs T2.7 split.** Initial T2.6 draft tried to be both a
+  fast-roll inversion test and a CHORD_CLUSTER_WINDOW probe.
+  Realized mid-draft that with all notes sustaining to overlap,
+  the chord is detectable from the held set alone — so the test
+  doesn't actually isolate the cluster window from the
+  sounding-set rule (same critique already documented for T2.1).
+  Split into two tests: T2.6 covers the inversion case
+  realistically, T2.7 covers the cluster-window probe with three
+  repeated rolls separated by silence (which probes the
+  upper-bound constraint: window wide enough to cluster
+  within-roll attacks, narrow enough that adjacent rolls don't
+  merge).
+- **M.1 Mario stays pending.** Considered swapping in a synthetic
+  rolled chord under the M.1 ID, but the M.x tier is reserved
+  for real-world musical excerpts. Quietly redirecting the
+  content under an existing ID would violate the corpus's
+  conventions. T2.7 is the synthetic version; M.1 stays as the
+  eventual real-world test (with a note that a different piece
+  may end up replacing the Mario reference).
+- **Schema field: `trailing_notes` (list), not `trailing_note`
+  (single string).** Discovered when M.1 emitted with the wrong
+  trailing note captured — M.1 has two trailing italic blocks
+  (the substantive note about the cluster-window constraint, and
+  a metadata note about transcription status). Schema changed to
+  always emit a list, empty if no trailing notes exist (not
+  null), in source order. Cleaner harness logic later.
+
+### Setup for next session
+- Branch: `audio-onset-analysis`. Working tree clean after this
+  session's three commits.
+- Commits this session (in order): corpus content edits; new
+  regenerate script; generated JSON specs.
+- The regen script is the canonical path from corpus Markdown to
+  JSON. Per the corpus working agreement (item 6), run it after
+  any corpus edit and commit the JSON alongside the Markdown
+  change.
+
+### Calibration notes
+- Reading code/content before reasoning paid off again. The T2.6
+  vs T2.7 issue surfaced only because we walked through the
+  classification logic event-by-event for the proposed test —
+  initially the mistake (one test trying to do two things) was
+  invisible. The "before forming a hypothesis about a bug,
+  characterize the symptom" rule from WORKING_STYLE generalizes
+  to "before locking in a test, walk through what the classifier
+  actually does."
+- The autonomous-optimization detour (mid-session question about
+  whether Claude Code could optimize the classifier from logs)
+  was worth pushing back on. The corpus encodes design decisions,
+  not just behavior — autonomous parameter tuning would Goodhart
+  the corpus. Diagnostic logging is fine; autonomous tuning loop
+  is not. Worth keeping that line clear as the classifier work
+  progresses.
+- "Will Claude Code edit a complex set of changes correctly?" —
+  yes, with the right prompt structure. The find-and-replace
+  pattern with explicit reasons per edit (so Claude Code can
+  recover when find-text doesn't match exactly) worked cleanly
+  for both the corpus edits and the schema change.
+
+### Flagged for later
+- M.1 transcription. The current placeholder references Super
+  Mario Bros. Ground Theme measure 10. Two paths: (a) transcribe
+  it by hand (Dustin only — Claude can't read copyrighted score
+  imagery), or (b) substitute a different real-world piece with
+  rolled chords (Chopin nocturne, Joplin rag, etc.) when willing
+  to do the transcription work. T2.7 covers the synthetic case
+  in the meantime.
+- T3.2 source selection. The "Bach two-part invention or similar"
+  prose is unselected. Needs a separate decision-making session.
+- The audit doc on `audio-onset-analysis`
+  (`docs/audio-analysis-orchestration.md`) is still stale.
+  Independent thread; not blocking chord/melody work, but should
+  be done before the original-goal Phase 2 prompt can be drafted
+  cleanly.
+- Gamification planning (game-flow.js extraction, adaptive-engine
+  standardization) and BeatLab design conversation — both still
+  backburner.
+
+### Out of scope / deferred
+- Test harness implementation. Decided to build incrementally
+  alongside the classifier rather than as a unit up front.
+- Structured-expected-outcome schema. Stays as prose blob until
+  the harness has a comparison contract that drives the shape.
+- M.1 and T3.2 MIDI transcriptions. Stay pending; the parser
+  handles them correctly with status=pending.
+- Autonomous classifier optimization based on log output.
+  Considered briefly, declined: the corpus encodes design
+  decisions, not just behavior, and autonomous tuning would
+  Goodhart it. Diagnostic logging for human-driven tuning is
+  appropriate; autonomous tuning loop is not.
+
 ## 2026-05-06 / 2026-05-07 — Chord/melody classification design
 Two-day design session (Wednesday morning + Thursday morning, with
 an overnight gap). Originally intended as a planning chat to draft

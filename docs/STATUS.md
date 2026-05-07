@@ -36,15 +36,22 @@
 - Chord/melody classifier rebuild (branch: audio-onset-analysis).
   Design and test corpus complete; see
   docs/chord-melody-classification.md and
-  docs/chord-melody-test-corpus.md on that branch. Replaces the
-  current register-based melody/accompaniment split (_splitPoint
-  in cantor-view.js) with a chord-state classifier that tracks
+  docs/chord-melody-test-corpus.md. Replaces the current
+  register-based melody/accompaniment split (_splitPoint in
+  cantor-view.js) with a chord-state classifier that tracks
   declared/implied chord identity, dyad escalation for power
-  chords, and tempo-relative attack clustering. Audio corpus
-  companion doc (docs/chord-melody-audio-corpus.md) sketched but
-  audio testing deferred until MIDI corpus passes. Estimated
-  remaining work: test harness + classifier implementation +
-  parameter tuning, ~3-5 sessions.
+  chords, and tempo-relative attack clustering. Test corpus
+  formalized: tools/regenerate-test-json.py parses the Markdown
+  corpus into per-test JSON specs in tests/chord-melody/specs/
+  (26 tests; 22 ok, 4 pending — M.1 + the three Tier 3
+  forcing-function tests). Decision: test-driven build sequence —
+  resolve OQ1 (tempo state location) first, then chord-resolver
+  power-chord extension, then build the classifier and harness
+  together with the corpus driving comparison contract design as
+  it accretes. Audio corpus (docs/chord-melody-audio-corpus.md)
+  remains deferred until MIDI corpus passes. Estimated remaining
+  work: tempo state + chord-resolver extension + classifier
+  build + parameter tuning, ~4-6 sessions.
 
 **Open / deferred:**
 - OQ1 decision (MIDI publishing path during migration). Audit
