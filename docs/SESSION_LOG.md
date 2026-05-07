@@ -2,6 +2,238 @@
 
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
+## 2026-05-06 / 2026-05-07 — Chord/melody classification design
+Two-day design session (Wednesday morning + Thursday morning, with
+an overnight gap). Originally intended as a planning chat to draft
+a Claude Code prompt for Phase 2 of the Cantor audio-onset-analysis
+migration. Pivoted to a deeper question after testing on cantor
+revealed both an architectural finding and a design problem in the
+chord/melody classifier.
+Landed
+Three new design docs on audio-onset-analysis:
+
+docs/chord-melody-classification.md — design doc for the
+chord/melody classifier (v1). Defines the classification rule,
+rationale, parameters, build progress checklist, open questions,
+deferred work, and change log. The "Working agreement" section
+at the top establishes the doc as the durable home for this
+design — read at start of every session, all changes reflected
+here before code lands.
+docs/chord-melody-test-corpus.md — MIDI test corpus. 19 tests
+across 5 categories (Tier 1 foundational, Tier 2 design-probe,
+chord-state, dyad-escalation, real-world Mario test, Tier 3
+forcing-functions for voice-leading). Each test has a MIDI
+sequence sketch, expected classification, and stated purpose.
+Corpus is the canonical Markdown source; JSON specs (per-test
+files in tests/chord-melody/specs/) are derivatives produced
+by tools/regenerate-test-json.py (not yet written).
+docs/chord-melody-audio-corpus.md — audio (WAV) test corpus
+companion. Same musical scenarios as MIDI corpus, but rendered
+as WAVs through Logic Pro and tested via the AudioInterpreter →
+classifier pipeline. Implementation deliberately deferred until
+MIDI corpus is passing — sequencing rule documented in the
+working agreement so audio failures can be cleanly attributed
+to AudioInterpreter rather than the classifier.
+
+No code changes this session. Phase 2 prompt was not drafted —
+see "Out of scope / deferred" below.
+Diagnosed / decided
+Phase 1 of the audio migration did more consolidation than the
+audit doc reflects. Started the session intending to draft a
+Phase 2 Claude Code prompt against the audit doc's "Notable
+findings" section. Verification grep on cantor.html showed:
+
+Notable A's cited line numbers (455-457, 839) don't exist in
+the current 828-line file.
+Cantor.html now routes all AudioInterpreter lifecycle through a
+single _reconcileAudioInterpreter funnel (7 call sites, all
+going through the funnel rather than scattered ad-hoc triggers).
+A comment block at lines 473-479 documents the design post-Phase-1.
+Notable B (silence watcher): v0 owns it (silenceWatcherId at
+audio-interpreter.js:278). Cantor's silence-watcher copy is dead
+code.
+
+The audit doc was largely written before Phase 1 landed. Decided
+to update the audit doc as a living document on audio-onset-analysis
+to reflect post-Phase-1 reality, but deferred this work —
+mid-session pivot to chord/melody classification took priority.
+Audit doc remains stale; flagged for later.
+Live testing on cantor revealed a hard C4 cutoff in the melody
+constellation. Cantor was filtering notes ≤ MIDI 60 out of the
+melody constellation via _splitPoint = MELODY_SPLIT_PITCH_DEFAULT
+in cantor-view.js (line 669: if (ev.pitch <= this._splitPoint) return;). This was a known design — register-based melody/
+accompaniment split — but seeing it in test bit me because the
+specific test (C-E-G triads at C4) landed exactly on the boundary.
+Concluded: register-based split is the wrong primitive. Chord vs
+melody is a role/temporal question, not a pitch-region question.
+Designed a v1 chord/melody classification rule. Multiple
+iterations and acknowledged reversals through the design
+conversation; settled on:
+
+Maintain a sounding set + a tempo-relative recent-attack buffer.
+Combine into an "effective sounding set."
+Once a chord template matches → declare chord. Chord identity
+persists until the root releases. Partial release of non-root
+tones produces "implied chord" state with reduced confidence.
+Chord identity updates if a new chord template matches the
+sounding set (e.g., adding B♭ to held C-E-G updates to C7).
+Octave doublings of existing chord-tones don't count as
+meaningfully different.
+Melody-on-top: notes added to a held chord that don't form a
+new chord template are melody; chord state persists.
+Dyads: classify as melody by default. Escalate to power chord
+if (sustained ≥ threshold) OR (repeated ≥ threshold within
+window) — but only perfect fifths escalate (other intervals
+don't have unambiguous "this is the root" interpretation).
+Dyad clock restarts when chord identity ends — pre-chord
+history doesn't carry forward into post-chord residual dyads.
+Tempo is a first-class concept, user-set (visible editable input
+on cantor's main page). Window sizes scale with tempo.
+
+Rejected alternatives, all documented in the design doc's
+Rationale section: register-based (the prior implementation),
+sounding-set-only (fails on rolled chords like Mario Ground Theme
+m.10), attack-pinned classification (fails on melody-resolving-to-
+chord case), "release any chord-tone ends chord" (too brittle),
+"release all chord-tones ends chord" (too forgiving).
+Endpoint vision: voice-leading-aware classification. The interim
+rule is deliberately stepping-stone-shaped — continuous state
+emission, sounding-set-as-primitive, tempo-relative windows all
+generalize naturally to voice-tracking.
+Decided on Markdown-as-canonical for test corpus. Tests are
+hand-written prose in the corpus doc; JSON specs are derivatives
+regenerated by a Python script. Initially considered JSON-as-source
+
+render script; inverted because the artifact humans interact with
+most often (the doc) should be the source-of-truth. JSON regenerated
+post-edit, committed alongside Markdown changes. Per-test files
+(many small files in specs/) preferred over single corpus.json
+for git-friendly diffs.
+
+Decided on MIDI corpus before audio corpus. Audio testing tests
+the full AudioInterpreter + classifier pipeline; MIDI testing tests
+the classifier in isolation. Until the classifier is verified via
+MIDI tests, audio failures can't be cleanly attributed. Audio corpus
+structure laid out now (so it doesn't get forgotten) but
+implementation deferred until MIDI corpus passes.
+Setup for next session
+Branch: audio-onset-analysis. Three new docs in docs/ need to
+be committed:
+
+docs/chord-melody-classification.md
+docs/chord-melody-test-corpus.md
+docs/chord-melody-audio-corpus.md
+
+Working tree before commits: should be clean apart from these three
+new files. Verify with git status before committing.
+Next session's natural starting point: write tools/regenerate-test-json.py
+
+JSON schema for individual test specs. This is bounded scope
+(parser + validator + writer), low risk, and unblocks the test
+harness work that follows. The corpus doc's "How JSON specs work"
+section establishes what the script needs to do.
+
+After that: test harness (synthesizes events into
+MusicalEventStream, captures classifier output, compares against
+expected). Then chord-resolver.js extension to add power-chord
+template ({quality:'5', intervals:[0,7], priority:4}). Then the
+classifier itself.
+Calibration notes
+Wall-clock time across sessions is invisible to Claude. This
+session spanned Wednesday morning + Thursday morning (with sleep
+gap), and Claude couldn't tell that a day had passed without me
+saying so. Worth establishing a session-start/session-end timestamp
+ritual — paste the date and time when opening and closing a chat
+session — so future-Claude has a clear picture of session boundaries.
+The audit doc's line citations were stale because they predated
+Phase 1. Lesson: when a design doc has line-level citations into
+implementation files, those citations rot fast. Either treat them
+as approximate ("around line N") or commit to updating them every
+time the implementation moves. The grep-based verification we did
+this session (find-the-actual-call-sites) was much more reliable
+than reading line numbers from the doc.
+"Test something simple first" can mislead if the simple test
+lands on a design boundary. The C-E-G triad at C4 we tried as a
+"basic" test happened to fall exactly on cantor's C4 melody/
+accompaniment split. The test failed not because the system was
+broken but because we picked a test scenario that the design
+deliberately filtered. Lesson: when designing tests, deliberately
+choose scenarios that land away from known boundaries unless the
+boundary is what's being tested.
+Reasoning my way through a design with multiple reversals is OK
+when each reversal is driven by a real case the previous rule
+fails — but worth naming honestly. I argued for combined rule →
+sounding-set-only → combined rule again over the course of the
+chord/melody conversation. Each pivot was driven by a case Dustin
+raised that the previous rule failed (Mario rolled chords for the
+combined-vs-sounding-set pivot). The reversals weren't random; they
+were converging toward the case-coverage the design needs. But
+acknowledging "I was wrong because X" rather than silently pivoting
+matters.
+Flagged for later
+Audit doc on audio-onset-analysis is stale. docs/audio-analysis-orchestration.md
+in particular needs updating to reflect post-Phase-1 cantor reality:
+Notable A (implicit start triggers in MIDI/device-change handlers)
+is resolved by _reconcileAudioInterpreter funnel; Notable B
+(silence watcher) classification is (a) absorbed by AudioInterpreter
+v0; line citations throughout are stale. Could be done as living
+doc edit (matching STATUS.md cleanup pattern) or as additive section
+("Post-Phase-1 reconciliation"). Living doc edit consistent with
+recent platform conventions.
+Phase 2 of the audio migration was not drafted this session.
+The original goal. Phase 2 is now closer to a verify-and-tidy pass
+than a refactor (Phase 1 did most of the consolidation). Could be
+done in a future session once the audit doc is updated. Not
+blocking the chord/melody work — they're independent threads.
+Tempo placement on cantor's main page. Decided it should be a
+visible, editable input. Where exactly it lives in the UI and what
+the styling looks like is unanswered. Not a today decision; flagged
+in the design doc as a v1 requirement.
+OQ5 — root identification for inversions. The chord-state
+machinery depends on chord-resolver.js correctly identifying the
+root for all inversions of all supported chord qualities. Need to
+verify this before the classifier can rely on "release the root"
+behavior. Flagged in the design doc.
+Cantor C4 split documentation gap. The C4 melody/accompaniment
+split is a real design feature with no durable home — I knew about
+it from a past discussion but had to rediscover it during testing.
+The chord/melody classification design doc replaces this design
+when it lands, so the gap will close as a side effect. But the
+broader pattern — undocumented design decisions biting later —
+motivates the "durable home for design decisions" working agreement
+in the new doc.
+Out of scope / deferred
+
+Phase 2 Claude Code prompt — original session goal, replaced
+by chord/melody design when testing surfaced a more fundamental
+question. Phase 2 still needs to happen but is not blocked by
+chord/melody work.
+Audit doc update — see "Flagged for later." Required before
+Phase 2 prompt can be drafted cleanly, but not required for
+chord/melody work.
+Test harness implementation — deferred to next session.
+Bounded scope, low risk, but better fresh than tired.
+Audio corpus implementation — deferred until MIDI corpus
+passes. Sequencing rule documented in audio corpus working
+agreement.
+Voice-leading-aware classification — deferred indefinitely.
+Eventual endpoint; interim rule is stepping-stone-shaped toward
+it. See design doc "Deferred to future work" §1.
+Tempo inference from input — deferred indefinitely. May
+belong to BeatField/BeatLab work. v1 takes user-set tempo. See
+design doc "Deferred to future work" §2.
+Implied chords beyond dyad-escalation and partial-release —
+drone+melody, monophonic outlining, ostinato implication.
+Deferred alongside voice-leading work; shares infrastructure.
+See design doc "Deferred to future work" §3.
+Backburner threads from Wednesday's handoff (gamification
+planning, BeatLab spec) — not surfaced this session because
+chord/melody work consumed all available bandwidth. Carry
+forward to next handoff.
+
+For full design conversation context, see Claude.ai chat from
+2026-05-06/2026-05-07 (chord/melody classification design session).
+
 
 ## 2026-05-05 — OQ1 resolved (MIDI publishing path)
 

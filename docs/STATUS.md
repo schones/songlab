@@ -33,7 +33,18 @@
 - Phase 2 (single-publisher consolidation) — gated on OQ1
   decision. Audit §6.1 recommends sibling MIDIInterpreter; user
   decides.
-- 
+- Chord/melody classifier rebuild (branch: audio-onset-analysis).
+  Design and test corpus complete; see
+  docs/chord-melody-classification.md and
+  docs/chord-melody-test-corpus.md on that branch. Replaces the
+  current register-based melody/accompaniment split (_splitPoint
+  in cantor-view.js) with a chord-state classifier that tracks
+  declared/implied chord identity, dyad escalation for power
+  chords, and tempo-relative attack clustering. Audio corpus
+  companion doc (docs/chord-melody-audio-corpus.md) sketched but
+  audio testing deferred until MIDI corpus passes. Estimated
+  remaining work: test harness + classifier implementation +
+  parameter tuning, ~3-5 sessions.
 
 **Open / deferred:**
 - OQ1 decision (MIDI publishing path during migration). Audit
