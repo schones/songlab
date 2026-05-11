@@ -2,6 +2,151 @@
 
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
+## 2026-05-11 — Session 1 of chord/melody arc: tempo state (OQ1 resolution)
+
+### Landed
+- `static/shared/tempo-state.js` — new module. Singleton with pub/sub
+  mirroring HarmonyState conventions. `get()`/`getBPM()` both return
+  current BPM; `setBPM(v)` coerces via Number, no-ops on NaN, clamps
+  to [1, 300], notifies unconditionally; `on(fn)` returns
+  unsubscribe; `reset()` restores 120 and notifies. Self-tests
+  (commented IIFE block at bottom): 16/16 passed.
+- `templates/cantor.html` — added tempo input (`<label>` + `<input
+  type="number">`) in the `.cn-hardware` row, wired inline via
+  `<script type="module">` block: imports TempoState, subscribes for
+  external updates (skips when input is focused), `change` listener
+  writes to TempoState and reflects clamped value back. Also added
+  HTML comment near top of file documenting that cantor's main-page
+  JS lives inline rather than in a separate module.
+- `docs/chord-melody-classification.md` — OQ1 marked resolved with
+  decision documented: option 1 (new shared module), scope explicitly
+  user-input tempo only, deferred unification noted.
+- `docs/active-plans/chord-melody-build-plan.md` — added backburner
+  entry for post-Cantor tempo architecture review (inventory of all
+  tempo-bearing subsystems); added Session 8 goal pointing back to
+  that backburner entry; added 2026-05-11 change-log entry for
+  Session 1 completion; updated Status block to reflect Session 1
+  complete and Session 2 next; reconciled Session 1 description
+  (removed stale "option 3" reference).
+
+### Diagnosed / decided
+- **Tempo state architecture: option 1, not option 3.** Initial
+  build-plan favoring was option 3 (module-scoped in cantor-view.js).
+  Pivoted to option 1 (new shared module) once we recognized the
+  cantor tempo input is itself a near-term second consumer, making
+  the "v1 module-scoped, revisit later" framing inappropriate. A
+  tiny pub/sub module is barely more friction than module-scoped
+  state and leaves a clean handoff point for the Session 8 tempo
+  architecture review.
+- **Per-tool tempo, not global.** A grep across `static/` for
+  `tempo|bpm|BPM` surfaced five distinct runtime tempo subsystems
+  (`progressionState.tempo` in harmony-state; SkratchLab's
+  Tone.Transport/sandbox._bpm; `rhythm/rhythm.js`;
+  `polyrhythm.js`; hardcoded BPM in relative-key-trainer) plus
+  data-file metadata (out of scope). Each serves a different
+  use case; unifying now would be premature. Each tool legitimately
+  has its own tempo. Decision: TempoState owns user-input tempo
+  only; unification deferred for Session 8 review with explicit
+  framing (use case, writer, reader, observable harm if any from
+  independence).
+- **No Tone.Transport coupling on TempoState.** Cantor doesn't use
+  Transport, so the classifier doesn't need it. If a future feature
+  wants playback synced to the user's tempo, it reads from
+  TempoState. Transport stays downstream of the source.
+- **HarmonyState convention on notify-on-no-change: always notify.**
+  Confirmed by reading `update()` and `_notify()`. No equality check.
+  TempoState mirrors this for consistency — subscribers are expected
+  to be idempotent enough that a redundant notify is fine.
+- **Discovery: cantor's main-page JS lives inline in
+  `templates/cantor.html`**, not in a separate JS module. Added a
+  small HTML comment at the top of cantor.html so the next person
+  working on cantor finds this immediately.
+
+### Setup for next session
+- Branch: `audio-onset-analysis`, ahead of origin by Session 1 commit.
+- Working tree clean after Session 1 commit.
+- Session 2: chord-resolver power-chord extension + OQ5 root-id
+  verification. Pre-work (reading chord-resolver.js for root
+  identification) completed Sunday — no inversion fix needed in the
+  resolver itself; the classifier will handle PC-to-MIDI mapping
+  separately. Three observations from that read documented in the
+  Session 2 context: PC vs MIDI distinction, preferredRootPC
+  parameter (not blocking), exact-PC-count match requirement (right
+  signal for melody-on-top detection).
+
+### Calibration notes
+- **Read-before-reasoning paid off twice this session.** First,
+  reading harmony-state.js before drafting tempo-state.js surfaced
+  the right conventions (export style, `on()` not `subscribe`, the
+  always-notify pattern, the commented-IIFE self-test scaffold).
+  Second, the grep for tempo/BPM across `static/` reframed the
+  unification question from "should we unify with one other place"
+  to "do we want a global tempo abstraction" — a much more honest
+  framing of what was being decided. Both moments would have been
+  much weaker if I had drafted from priors.
+- **The grep that returned nothing surfaced a working-directory
+  bug, not a clean codebase.** Initial grep returned zero matches
+  for `tempo|bpm|BPM` in `static/`, which I correctly flagged as
+  suspicious rather than accepting the result. Was scoped to the
+  wrong directory. Good instinct to push back on a too-clean answer.
+- **Prompt-splitting was the right call.** The original draft
+  bundled three concerns (module + UI + docs) into one Claude Code
+  prompt. Splitting into module-first/UI-second meant Prompt 1
+  could verify (self-tests pass) before anything depended on it.
+  Pattern worth repeating on future sessions.
+- **Stale doc references catch up with you.** The build plan
+  Session 1 description still said "option 3" after the conversation
+  pivoted to option 1. Caught at end-of-session via the discrepancy
+  between the resolution language and the planning language. Worth
+  watching for in future arcs: when a planning doc references a
+  resolution from a design doc, the planning doc needs to be kept
+  in sync, not just the design doc.
+
+### Flagged for later
+- **Post-Cantor tempo architecture review** (Session 8). Inventory
+  captured in build plan backburner section. Framing: for each
+  runtime tempo-bearing subsystem, document use case, writer,
+  reader, and observable harm (if any) from independence. Decide:
+  spawn dedicated arc, write planning doc, or accept independence
+  as the correct design.
+  - **OQ1 namespace collision across docs.** Two design docs each have
+  their own OQ1: `chord-melody-classification.md` OQ1 (tempo state,
+  resolved 2026-05-11) and the audio-interpreter-audit OQ1 (MIDI
+  publishing path, still open). STATUS.md references both and the
+  ambiguity is real — a reader has to know which doc's OQ1 to know
+  what's being discussed. Disambiguated in the 2026-05-11 STATUS
+  update with a clarifying parenthetical. As more design docs
+  accumulate their own OQs, this will get worse. Possible
+  conventions: prefix references with doc name (e.g.,
+  `chord-melody/OQ1`, `audio-interpreter/OQ1`), or rename OQs
+  once-globally. Not urgent; flag for whenever the next design doc
+  introduces its own OQ1.
+- **harmony-state.js self-test invocation comment is stale.** Uses
+  the direct-file form (`node --input-type=module
+  static/shared/harmony-state.js`), which is blocked on the current
+  Node version. The piped form (`cat ... | node ...`) is the working
+  invocation. Not fixing now since harmony-state.js is on the
+  do-not-touch list; flag for when it comes off the list.
+- **No durable "codebase architecture notes" doc exists.** During
+  end-of-session, briefly considered where to record "cantor's JS
+  is inline." STATUS.md (turnover), WORKING_STYLE.md (conventions,
+  not facts), and cantor-design.md (design intent, not
+  implementation) all the wrong fit. Landed on a comment in
+  cantor.html itself. If similar facts accumulate, a
+  `docs/architecture-notes.md` or equivalent might earn its place.
+  Not creating prematurely.
+
+### Out of scope / deferred
+- Tone.Transport coupling on TempoState — deliberately not done; no
+  consumer needs it.
+- Tempo inference from input — future feature; TempoState's pub/sub
+  is ready for it.
+- Unification of all tempo-bearing subsystems — deferred to Session
+  8 review.
+- Bounds tightening (e.g., minimum BPM of 40 rather than 1) — left
+  permissive on TempoState; UI input enforces its own `min`/`max`
+  for the user-facing case.
+
 ## 2026-05-07 — Test corpus formalization (regenerate script + corpus edits)
 
 ### Landed

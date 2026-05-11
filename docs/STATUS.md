@@ -1,15 +1,14 @@
 # SongLab Project Status
 
 
-## Current state (April 28, 2026)
+## Current state (May 11, 2026)
 
+### Cantor — current state (updated 2026-05-11)
 
-### Cantor — current state (updated 2026-04-29)
-
-**Landed and verified on dev:**
+**Landed and verified on dev** (unchanged since 2026-04-29):
 - [keep existing entries]
 
-**Landed on audio-onset-analysis branch (not yet on dev):**
+**Landed on audio-onset-analysis branch (not yet on dev)** (updated 2026-05-11):
 - AudioInterpreter v0 phase 1 migration. templates/cantor.html
   no longer imports chord-detection.js; the in-template chord
   block (start/stop functions, dedupe, silence watcher) is
@@ -19,7 +18,7 @@
   from audit §3.4 verified. Criterion 3 (saved-device auto-
   restore) does NOT pass — see Known Issues for the
   characterization.
-  - `AudioInput.rewireForTone()` lifted into static/shared/audio-input.js
+- `AudioInput.rewireForTone()` lifted into static/shared/audio-input.js
   (2026-04-30). Single canonical implementation of the post-gesture
   rewire that handles selectDevice's standalone-context fallback.
   Self-gating (no-op if no active device or already on Tone's
@@ -28,11 +27,22 @@
   _attachAudioInputToTone() function deleted in the same commit.
   Acceptance criteria 1, 2, 3, 4, 5, 6 (audit §3.4 + harmonograph
   regression checks) all verified manually.
+- **Chord/melody classifier arc — Session 1 complete (2026-05-11).**
+  OQ1 resolved: tempo state lives in new module
+  `static/shared/tempo-state.js` (option 1, singleton with pub/sub
+  mirroring HarmonyState; default 120 BPM, clamped [1, 300]; scope
+  is user-input tempo only, no Tone.Transport coupling). Cantor's
+  main page now has a tempo input wired to TempoState. Self-tests
+  passing (16/16). Per-tool tempo design intentional; unification
+  of all tempo-bearing subsystems deferred for Session 8 review.
 
 **In progress:**
 - Phase 2 (single-publisher consolidation) — gated on OQ1
   decision. Audit §6.1 recommends sibling MIDIInterpreter; user
   decides.
+  *Note: this is the audio-interpreter-audit OQ1 (MIDI publishing
+  path), distinct from the chord/melody-classification OQ1 that
+  was resolved 2026-05-11.*
 - Chord/melody classifier rebuild (branch: audio-onset-analysis).
   Design and test corpus complete; see
   docs/chord-melody-classification.md and
@@ -45,13 +55,13 @@
   corpus into per-test JSON specs in tests/chord-melody/specs/
   (26 tests; 22 ok, 4 pending — M.1 + the three Tier 3
   forcing-function tests). Decision: test-driven build sequence —
-  resolve OQ1 (tempo state location) first, then chord-resolver
-  power-chord extension, then build the classifier and harness
-  together with the corpus driving comparison contract design as
-  it accretes. Audio corpus (docs/chord-melody-audio-corpus.md)
-  remains deferred until MIDI corpus passes. Estimated remaining
-  work: tempo state + chord-resolver extension + classifier
-  build + parameter tuning, ~4-6 sessions.
+  Session 1 (OQ1, tempo state) complete; Session 2 (chord-resolver
+  power-chord extension + OQ5 root-identification verification) is
+  next. Audio corpus (docs/chord-melody-audio-corpus.md) remains
+  deferred until MIDI corpus passes. Estimated remaining work:
+  chord-resolver extension + classifier build + parameter tuning,
+  ~4-5 sessions. Build plan:
+  docs/active-plans/chord-melody-build-plan.md.
 
 **Open / deferred:**
 - OQ1 decision (MIDI publishing path during migration). Audit
@@ -65,11 +75,11 @@
   as a separate in-place fix. Phase 1 subscriber reads
   event.bass and event.pitchClasses directly off the event
   (not yet exercised, but the pattern is preserved).
-  - Explorer migration onto AudioInput.rewireForTone() — explorer.html
+- Explorer migration onto AudioInput.rewireForTone() — explorer.html
   has its own local copy of the rewire machinery (call site at line
   1980, function and flag at lines 3935-4057) that should migrate to
   the lifted shared implementation. Discovered during the 2026-04-30
-  lift session via cross-codebase grep. Drafttable as its own session;
+  lift session via cross-codebase grep. Draftable as its own session;
   recommended approach is read-only pass first to map explorer's
   gesture path and check whether explorer's local function differs
   from the harmonograph version. Acceptance criteria need to cover
@@ -77,6 +87,15 @@
   addition to saved-device auto-restore. Smaller cognitive load than
   tonight's lift because rewireForTone() is now established. Details
   in SESSION_LOG.md 2026-04-30 entry.
+- Post-Cantor tempo architecture review (Session 8 of chord/melody
+  arc). TempoState (2026-05-11) is the user-input tempo only;
+  pre-existing tempo state in harmony-state's progressionState,
+  skratch-studio, rhythm/, polyrhythm/, relative-key-trainer
+  remains independent. Review at end of chord/melody arc: for each
+  subsystem, document use case, writer, reader, and observable harm
+  (if any) from independence. Decide: spawn dedicated arc, write
+  planning doc, or accept independence as the correct design.
+  Inventory in build plan backburner section.
 
 **Standing rules — optional:**
 - [keep existing entries]
@@ -86,6 +105,11 @@
   explicitly lifted on 2026-04-30 for the rewireForTone() lift; no
   other audio-input.js work was permitted to ride along (OQ9 still
   open; device-restore refactor still deferred).
+- Cantor's main-page JavaScript lives inline in
+  `templates/cantor.html` as a `<script type="module">` block, not
+  in a separate JS module. New cantor-page logic lands in that
+  script block unless extraction is justified. Comment to this
+  effect added at the top of cantor.html (2026-05-11).
 
 - Calibration on the migration audit: §3 missed the
   AudioInput.disconnect() call inside _initAudioInput at

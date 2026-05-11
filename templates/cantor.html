@@ -2,6 +2,14 @@
 {% block theme %}dark{% endblock %}
 {% block title %}Cantor · SongLab{% endblock %}
 
+<!--
+  Cantor's main-page JavaScript lives inline in the
+  <script type="module"> block in this file, not in a separate
+  JS module. New cantor-page logic (imports, init, event
+  handlers) should land in that script block unless extraction
+  is justified.
+-->
+
 {% block head %}
 <style>
   /* ── Page frame ───────────────────────────────────────────── */
@@ -171,6 +179,17 @@
     min-width: 240px;
   }
 
+  .cn-hw-input {
+    background: var(--bg-input, #12121A);
+    color: var(--text-primary, #F2EFE6);
+    border: 1px solid var(--border-input, #43434F);
+    border-radius: var(--radius-md, 6px);
+    padding: 6px 10px;
+    font-family: inherit;
+    font-size: var(--font-size-sm, 0.88rem);
+    width: 84px;
+  }
+
   .cn-hw-status {
     display: inline-flex;
     align-items: center;
@@ -262,6 +281,8 @@
       <span class="cn-hw-dot"></span>
       <span class="cn-hw-status-text">Off</span>
     </span>
+    <label class="cn-hardware__label" for="cantor-tempo-input">Tempo (BPM)</label>
+    <input class="cn-hw-input" type="number" id="cantor-tempo-input" min="1" max="300" step="1" value="120" />
     <button class="cn-hw-toggle" id="cantor-keyboard-toggle" type="button" aria-pressed="false"
       title="Show or hide the on-screen keyboard">Keyboard</button>
   </section>
@@ -286,6 +307,8 @@
     from '{{ url_for("static", filename="shared/transforms.js") }}';
   import { createAudioInterpreter }
     from '{{ url_for("static", filename="shared/audio-interpreter.js") }}';
+  import { TempoState }
+    from '{{ url_for("static", filename="shared/tempo-state.js") }}';
 
   // Tone.js loader — keyboard playback needs Tone. AudioContext stays
   // suspended until first user gesture (a keyboard click), which is fine.
@@ -351,6 +374,26 @@
     _initSplitPointOverlay(cantorView);
 
     _initAudioInput();
+
+    // Tempo input — reflects and writes TempoState. `change` (not
+    // `input`) so we wait for commit and don't reject mid-typed values.
+    (function _initTempoInput() {
+      const input = document.getElementById('cantor-tempo-input');
+      if (!input) return;
+      input.value = String(TempoState.getBPM());
+      input.addEventListener('change', (e) => {
+        const v = parseInt(e.target.value, 10);
+        if (!Number.isNaN(v)) {
+          TempoState.setBPM(v);
+        }
+        e.target.value = String(TempoState.getBPM());
+      });
+      TempoState.on((bpm) => {
+        if (document.activeElement !== input) {
+          input.value = String(bpm);
+        }
+      });
+    })();
 
     // Keyboard show/hide toggle. Default hidden, persisted across reloads.
     (function _initKeyboardToggle() {

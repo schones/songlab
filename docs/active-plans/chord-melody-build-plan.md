@@ -15,9 +15,12 @@
 
 ## Status
 
-**2026-05-07** — Plan created. Branch: `audio-onset-analysis`.
-Test corpus formalized (26 tests; 22 ok, 4 pending). Regenerate
-script in place. No classifier code yet.
+**2026-05-11** — Session 1 complete (OQ1 resolved; TempoState
+landed and wired to cantor's main page). Next session: Session 2
+(chord-resolver power-chord extension + OQ5 verification).
+Branch: `audio-onset-analysis`. Test corpus formalized (26 tests;
+22 ok, 4 pending). Regenerate script in place. No classifier code
+yet.
 
 ---
 
@@ -82,9 +85,7 @@ as a structural guide, not a rigid schedule.
 **Pre-work:** None.
 
 **Goals:**
-- Decide where tempo state lives (design doc OQ1 — current
-  resolution path: option 3, module-scoped state in
-  cantor-view.js).
+- Decide where tempo state lives (design doc OQ1).
 - Implement: tempo state accessible to the classifier; visible,
   editable input on cantor's main page.
 - Update design doc: mark OQ1 resolved, document decision.
@@ -239,6 +240,10 @@ consuming classifier output, branch ready to merge to dev.
 - Updating STATUS.md to reflect merged state.
 - Handoff prep for the next arc (gamification/BeatLab planning
   inherits from `docs/active-plans/`).
+- Frame the post-Cantor tempo architecture review. Either start
+  the use-case mapping in this session or spawn a
+  `docs/active-plans/` doc for the next arc. See backburner
+  section for inventory.
 
 **Risk:** None — this is the absorption layer.
 
@@ -275,6 +280,22 @@ explicitly held with a documented reason).
 - BeatLab — never specced. Forward plan in `docs/active-plans/`.
 - T3.2 source selection.
 - M.1 transcription.
+- Post-Cantor tempo architecture review. The chord/melody classifier
+  introduces TempoState (`static/shared/tempo-state.js`) as a new
+  tempo-bearing module. Pre-existing tempo state lives in:
+  `harmony-state.js`'s `progressionState.tempo` (trainer progression
+  auto-advance), `skratch-studio` (Tone.Transport playback,
+  `sandbox._bpm`, `bpmSlider`/`bpmInput` UI), `rhythm/rhythm.js`
+  (beat practice via `createBpmSlider` + localStorage),
+  `games/polyrhythm.js` (adaptive polyrhythm practice with
+  `BPM_FLOOR`/`CEILING`), and `games/relative-key-trainer.js`
+  (hardcoded `const BPM = 100`). Plus data-file fields
+  (`walkthroughs.js`, `song-examples.js`) — these are song metadata,
+  not runtime state, and out of scope. Review during Session 8
+  handoff: for each runtime tempo-bearing subsystem, document use
+  case, writer, reader, and observable harm (if any) from
+  independence. Decide whether to spawn a dedicated arc, write a
+  planning doc, or accept independence as the correct design.
 
 ---
 
@@ -284,3 +305,13 @@ explicitly held with a documented reason).
 Initial sequencing decision (test-driven build, OQ1 →
 chord-resolver → classifier+harness). Session-by-session plan
 drafted. Definition of done established. Risk tracking started.
+
+### 2026-05-11 — Session 1 complete (OQ1 resolution)
+- Created static/shared/tempo-state.js (default 120, clamped 1–300,
+  pub/sub mirroring HarmonyState).
+- Wired tempo input on cantor's main page to TempoState.
+- OQ1 resolved in docs/chord-melody-classification.md.
+- Backburner entry added for post-Cantor tempo architecture review;
+  Session 8 goals updated.
+- Self-test invocation comment in tempo-state.js fixed to use the
+  pipe-to-node form.

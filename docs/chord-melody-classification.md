@@ -559,8 +559,9 @@ Updated at end of each session.
 Things known to be unresolved. Each has a date raised and a note
 about what would resolve it.
 
-### OQ1 — Where does tempo state live?
+### OQ1 — Where does tempo state live? (RESOLVED 2026-05-11)
 *Raised 2026-05-06.*
+*Resolved 2026-05-11.*
 
 Tempo needs to be accessible from cantor's classifier and
 potentially from other surfaces (Harmonograph, games). Candidates:
@@ -573,6 +574,38 @@ potentially from other surfaces (Harmonograph, games). Candidates:
 Resolution path: lowest-friction option that doesn't paint into
 a corner. Probably option 3 for v1, with a note to revisit when
 the second consumer appears.
+
+**Resolved 2026-05-11:** Option 1 — tempo state lives in a new
+module `static/shared/tempo-state.js`, with pub/sub mirroring
+`HarmonyState`'s pattern (singleton object, `on(fn)` returning an
+unsubscribe, `_notify()` over a `_listeners` array). Default 120
+BPM, clamped to [1, 300]. No Tone.Transport coupling.
+
+Scope: the module owns the **user-input tempo only** — the tempo
+at which the user is currently playing into the system. Other
+tempo-bearing subsystems remain independent:
+- `harmony-state.js`'s `progressionState.tempo` (trainer
+  progression auto-advance)
+- `skratch-studio` (Tone.Transport playback, sandbox._bpm,
+  bpmSlider/bpmInput UI)
+- `rhythm/rhythm.js` (beat practice via createBpmSlider +
+  localStorage)
+- `games/polyrhythm.js` (adaptive polyrhythm practice with
+  BPM_FLOOR/CEILING)
+- `games/relative-key-trainer.js` (hardcoded `const BPM = 100`)
+
+Unification of these into a single tempo source is deferred for
+review during Session 8 of the build plan (arc handoff prep). See
+`docs/active-plans/chord-melody-build-plan.md` backburner section
+for the post-Cantor tempo architecture review framing.
+
+Option 3 (module-scoped state in cantor-view.js) was originally
+the favored resolution path on grounds of lowest friction. It was
+upgraded to option 1 because the classifier is not the only
+near-term consumer (the cantor main-page tempo input also needs
+to write to it), and a tiny pub/sub module is barely more friction
+than module-scoped state while leaving a clean handoff point for
+the Session 8 architecture review.
 
 ### OQ2 — How does cantor-view render the chord-state transitions?
 *Raised 2026-05-06.*
