@@ -205,6 +205,86 @@ This feature connects naturally to theory topics in the curriculum:
 
 ---
 
+## Future Directions (Research Threads)
+
+Distinct from Future Scope: these are exploratory threads without
+phase placement or concrete UX. Captured here so they don't drift
+out of awareness as the Voicing Explorer matures.
+
+### Probabilistic Chord Interpretation
+
+The current ChordResolver is a hard classifier: it returns one
+chord name, or falls back to interval content when nothing matches.
+A probabilistic variant would return a *distribution* over candidate
+interpretations — each with a fit score — rather than committing
+to a single answer.
+
+**Why this fits the Voicing Explorer specifically:** most exotic
+voicings are exactly *not* clean template matches. A rootless A‑7
+voicing (C‑E‑G‑B) is genuinely ambiguous — it could be read as
+Cmaj7 with the root present, or as Am9 with the root omitted. The
+current resolver picks one (by priority); a probabilistic version
+would surface the ambiguity as the answer and let context break the
+tie. That ambiguity *is* the harmonic content, and exposing it is
+what makes the Explorer a tool for understanding voicings rather
+than just labeling them.
+
+**Bayesian framing:**
+
+  P(chord | pcs, context) ∝ P(pcs | chord) · P(chord | context)
+
+- **Likelihood** P(pcs | chord) — how well the sounding notes fit
+  a candidate chord interpretation. Perfect template matches score
+  high; missing the third scores lower; missing the root scores
+  lower still; extra non-template notes reduce the score. This is
+  where rootless voicings, drop voicings, and shell voicings fall
+  out naturally instead of being special-cased.
+- **Prior** P(chord | context) — how likely a chord is given
+  everything else known about the song. Sources of prior include:
+  key/tonal center, previous chord (transition probabilities),
+  position in form (resolution chords near phrase endings), and
+  genre (jazz priors lift extensions; folk priors lift triads).
+
+**What it unlocks:**
+
+- *Ambiguity as a first-class output.* {C, E, G, A} is genuinely
+  55% Am7 / 45% C6. Show that, don't hide it.
+- *Partial matches become principled.* Rootless and drop voicings
+  emerge from the likelihood model rather than needing separate
+  templates.
+- *What-if exploration.* Drop the fifth — how does the
+  interpretation shift? Raise the seventh — same. Probabilities
+  make these deltas answerable.
+- *Bayesian updating across time.* Each chord interpretation
+  refines the running estimate of the key, which sharpens priors
+  for the next chord. Mirrors what trained musicians do
+  unconsciously.
+
+**Honest caveats:**
+
+- The likelihood function is the hard part, not the math.
+  "How often is the root omitted?" is genre- and voicing-specific
+  and needs either hand-engineered costs or a labeled corpus.
+- The prior wants real data. Chord transition probabilities differ
+  wildly between corpora; "the prior" is really "the prior under
+  genre assumption X."
+- The Explorer might not want full Bayesian inference — it might
+  want the *likelihood function alone*, with the user adjusting
+  the prior via UI controls (key, genre, "expect extensions"). A
+  tunable lens may be more interpretable than a black box.
+
+**Relationship to current ChordResolver:** This would be a *new*
+function (`interpretChord(pcs, context)` or similar), not a
+replacement. The hard classifier remains useful for callers that
+need a single answer with `recognized: false` as a meaningful
+failure signal (e.g., the chord/melody classifier's melody-on-top
+detection). The two would share the underlying template set.
+
+
+---
+
+
+
 ## Build Phase Placement
 
 **MVP: Phase A5** — builds directly on the Explorer currently in progress. The ChordBubbleRenderer (glow worm) and ChordResolver are natural additions to the existing three-panel architecture. Core shipped; remaining MVP items (ProjectionEngine, ShapeDragger) are 1–2 sessions.
