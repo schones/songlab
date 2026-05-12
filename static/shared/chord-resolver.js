@@ -45,6 +45,8 @@ const CHORD_TYPES = [
   { quality: 'minmaj7', symbol: 'mM7',    intervals: [0, 3, 7, 11],     priority: 3 },
   { quality: 'augmaj7', symbol: '+M7',    intervals: [0, 4, 8, 11],     priority: 3 },
   { quality: 'aug7',    symbol: '+7',     intervals: [0, 4, 8, 10],     priority: 3 },
+  // ── Power chord ────────────────────────────────────────────────
+  { quality: '5',       symbol: '5',      intervals: [0, 7],            priority: 4 },
 ];
 
 // Semitone count → short interval name
