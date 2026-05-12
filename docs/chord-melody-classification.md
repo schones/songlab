@@ -657,22 +657,53 @@ Resolution path: v1 is discrete. Revisit if rendering work (OQ2)
 or future implied-chord generalization (Deferred §3) shows the
 discrete model is too coarse.
 
-### OQ5 — Inversions and root identification
-*Raised 2026-05-06.*
+### OQ5 — Inversions and root identification ✓ RESOLVED 2026-05-12
 
 The rule depends on knowing which note in a chord is "the root."
 For root-position chords this is unambiguous. For inversions (e.g.,
 E-G-C as C major first inversion), the root is C even though it's
 not the bass note.
 
-`chord-resolver.js` returns a `root` field — does it correctly
-identify the root for all inversions of all supported chord
-qualities? This needs verification before the chord-state machinery
-can rely on "release the root" behavior.
+**Resolution:** Verified by test that `chord-resolver.js` correctly
+identifies the root for inversions of all 15 supported chord
+qualities. See the self-test block at the bottom of
+`static/shared/chord-resolver.js` (39 assertions; run via
+`cat static/shared/chord-resolver.js | node --input-type=module`
+after uncommenting the block delimiters).
 
-Resolution path: read `chord-resolver.js`'s root-identification
-logic; if it doesn't handle inversions, extend it before
-implementing the classifier.
+The resolver uses a "try each PC as candidate root, match interval
+signature against templates" approach (Pattern B). For asymmetric
+qualities, this handles inversions automatically: only the
+theoretical root produces an interval signature matching a template.
+
+**Three caveats surfaced during verification:**
+
+1. **Symmetric qualities (aug, dim7) have multiple valid roots
+   under inversion.** Every inversion of an aug chord is itself an
+   aug chord from a different root; same for dim7. The resolver
+   returns one of the valid roots (deterministic but
+   convention-dependent); callers needing a specific root pass
+   `preferredRootPC`. The classifier will pass this once key
+   context is established.
+
+2. **sus2 and sus4 share PC sets under inversion.** Csus4 = Fsus2 =
+   {C, F, G}. Both templates have priority 2; sus2 is listed first
+   and always wins unbiased calls. sus4 requires `preferredRootPC`
+   to surface. Documented inline in the resolver and in RADAR.
+   The classifier handles this via key context.
+
+3. **The resolver works in pitch classes, not MIDI numbers.** Slash
+   chords like C/G (C major with G in the bass) and root-position
+   C major are indistinguishable to the resolver. Bass-note
+   awareness lives downstream — the classifier will need MIDI
+   numbers, not just PCs, to recognize slash chord notation. This
+   is a known design boundary, not a defect.
+
+**Implication for future work:** The probabilistic chord
+interpretation thread in the Voicing Explorer spec (Future
+Directions) is the natural place to surface symmetric-quality and
+sus2/sus4 ambiguity as first-class outputs rather than as
+convention-dependent single answers.
 
 ---
 

@@ -17,6 +17,21 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-05-12] sus2/sus4 cross-template inversion equivalence in
+  chord-resolver.** {root, M2, P5} = {root+5, P4, P5} — every sus4
+  PC set is also a sus2 PC set from a different root, and vice
+  versa. With both at priority 2 and sus2 listed first, unbiased
+  resolveChord() always returns sus2; sus4 requires a preferredRootPC
+  bias. Documented inline near the templates and in the chord/melody
+  classifier design doc. Future work: the probabilistic interpretation
+  in the Voicing Explorer spec (Future Directions) is the natural
+  place to surface this ambiguity as a first-class output. Any new
+  template additions should be checked for analogous cross-template
+  inversion equivalence.
+  See: `static/shared/chord-resolver.js` near sus2/sus4 templates;
+  `docs/chord-melody-classification.md` OQ5 resolution.
+
+  
 - **[2026-05-11] Tempo subsystems scattered across SongLab.** TempoState
   is the user-input tempo only. Pre-existing tempo state in
   harmony-state's progressionState, skratch-studio, rhythm/,

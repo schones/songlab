@@ -315,3 +315,27 @@ drafted. Definition of done established. Risk tracking started.
   Session 8 goals updated.
 - Self-test invocation comment in tempo-state.js fixed to use the
   pipe-to-node form.
+
+  ### 2026-05-12 — Session 2 complete (chord-resolver power-chord + OQ5)
+- Added power-chord template to static/shared/chord-resolver.js
+  (quality '5', symbol '5', intervals [0, 7], priority 4).
+- Added in-file self-test block (commented-IIFE pattern matching
+  tempo-state.js): 39 assertions across 5 sections — power chord
+  root position, power chord inverted PC order, inversion
+  verification for 12 asymmetric qualities, symmetric quality
+  handling (aug, dim7) with assertOneOf helper, priority
+  preservation. All passing.
+- OQ5 resolved with three caveats surfaced during verification:
+  symmetric qualities (aug, dim7) require preferredRootPC for
+  specific-root selection; sus2/sus4 share PC sets under inversion
+  and sus4 requires preferredRootPC bias to surface; resolver
+  operates on PCs not MIDI numbers (slash chords are downstream
+  concern). Documented inline near the relevant templates.
+- RADAR entry added for sus2/sus4 cross-template inversion
+  equivalence — affects future Voicing Explorer probabilistic
+  interpretation work and any future template additions.
+- Voicing Explorer spec extended with a new "Future Directions
+  (Research Threads)" section documenting probabilistic chord
+  interpretation as exploratory thread.
+- Status block updated: Session 2 complete, Session 3 next
+  (foundation harness + T1.1).
