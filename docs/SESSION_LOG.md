@@ -2,6 +2,206 @@
 
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
+## 2026-05-12 — Session 2 of chord/melody arc: chord-resolver power-chord + OQ5 verification
+
+### Landed
+- `static/shared/chord-resolver.js` — power-chord template added
+  (`{ quality: '5', symbol: '5', intervals: [0, 7], priority: 4 }`),
+  placed after the priority-3 group with its own `── Power chord ──`
+  divider matching the file's existing section-comment style.
+  Symbol `'5'` aligns with the suffix convention (renders as `C5`,
+  `G5`, etc.).
+- `static/shared/chord-resolver.js` — in-file self-test block added
+  using the commented-IIFE pattern from tempo-state.js. 39 assertions
+  across 5 sections: power chord root position, power chord inverted
+  PC order, inversion verification for 12 asymmetric qualities (root +
+  quality per quality), symmetric quality handling (aug, dim7) with
+  unbiased `assertOneOf` + biased exact-match variants, priority
+  preservation. All 39 passing. TODO comment above the block:
+  "extract to chord-resolver.test.js if this grows past ~50 assertions
+  or if Voicing Explorer adds template variants."
+- `static/shared/chord-resolver.js` — inline comment near sus2/sus4
+  templates documenting the cross-template inversion equivalence
+  ({root, M2, P5} = {root+5, P4, P5}) and noting that sus4 requires
+  `preferredRootPC` bias to surface, with pointer to the chord/melody
+  classifier design doc OQ5.
+- `docs/chord-melody-classification.md` — OQ5 marked resolved with
+  three caveats documented: symmetric qualities (aug, dim7) require
+  preferredRootPC for specific-root selection; sus2/sus4 share PC
+  sets under inversion (sus4 requires bias); resolver operates on
+  PCs not MIDI (slash chords are downstream concern). Forward pointer
+  to the Voicing Explorer probabilistic-interpretation thread as the
+  natural place to surface ambiguity as a first-class output.
+- `docs/RADAR.md` — new active thread for sus2/sus4 cross-template
+  inversion equivalence. Affects future Voicing Explorer probabilistic
+  interpretation work and any future template additions; flagged as
+  a check to run when extending the templates array.
+- `docs/voicing-explorer-spec.md` — new top-level section "Future
+  Directions (Research Threads)" added between Future Scope and Build
+  Phase Placement, documenting probabilistic chord interpretation as
+  an exploratory thread (likelihood × prior framing, what it unlocks,
+  honest caveats on the modeling work, relationship to the current
+  hard classifier). Distinct from Future Scope by being exploratory
+  rather than phase-placed.
+- `docs/active-plans/chord-melody-build-plan.md` — change-log entry
+  for Session 2 completion; Status block updated to reflect Session 2
+  complete, Session 3 next.
+
+### Diagnosed / decided
+- **sus2/sus4 cross-template inversion equivalence is a real
+  constraint, not a bug.** Discovered when the unbiased sus4 test
+  failed: `resolveChord([5, 7, 0])` matches both `sus2` at root=5
+  (Fsus2) and `sus4` at root=0 (Csus4), because the PC set {C, F, G}
+  is enharmonically both. Both templates have priority 2; sus2 is
+  listed first and always wins unbiased calls. Resolution: pass
+  `preferredRootPC` for sus4 tests (mirrors realistic usage from a
+  key context); document inline in the resolver, in the design doc
+  OQ5 resolution, and in RADAR. A scan for analogous collisions
+  across other templates (major/minor, dom7/min7/hdim7, maj7
+  inversions) turned up no other cross-template inversion equivalences
+  in the current set.
+- **OQ5 resolution is "verified with three caveats," not a clean
+  yes.** The Pattern B "try each PC as candidate root" approach
+  handles asymmetric-quality inversions automatically — that part of
+  OQ5 is a clean yes. The caveats: symmetric qualities have multiple
+  valid roots (aug, dim7); sus2/sus4 share PC sets under inversion;
+  the resolver operates on PCs not MIDI. Recording these honestly in
+  the design doc rather than treating OQ5 as a binary resolution.
+- **Test convention for chord-resolver: in-file commented IIFE,
+  mirroring tempo-state.js exactly.** Considered separate test file
+  vs in-file; in-file won on grounds of (a) lower friction with no
+  test-runner question to answer, (b) Voicing Explorer's potential
+  template expansion is uncertain enough that extraction would be
+  premature, (c) extracting later is cheap (~10 min). TODO comment
+  above the block records the extraction trigger.
+- **Test plan revised mid-design to honor the strength of the
+  underlying claim.** Initial plan treated all chord-quality tests as
+  equality-against-expected. Refined for symmetric qualities (aug,
+  dim7) to use `assertOneOf` for unbiased calls + equality for biased
+  calls — encoding the resolver's actual contract rather than
+  inventing a convention to test against. The probabilistic-
+  interpretation Future Directions thread in the Voicing Explorer
+  spec is the right home for surfacing ambiguity as a first-class
+  output; the hard classifier stays a hard classifier.
+- **Voicing Explorer spec extension surfaced naturally from the
+  conversation.** While discussing whether the resolver might grow
+  substantially (the "pipe dream" of exotic-voicing exploration),
+  the probabilistic-interpretation framing emerged. Captured in the
+  spec as a Future Directions thread rather than Future Scope, since
+  it has no concrete UX or phase placement. Connects forward to the
+  sus2/sus4 and aug/dim7 findings — those are exactly the cases the
+  probabilistic interpretation would surface as ambiguity rather
+  than as convention-dependent single answers.
+
+### Setup for next session
+- Branch: `audio-onset-analysis`, ahead of origin by Session 2 commits.
+- Working tree clean after Session 2 commits (chord-resolver template
+  addition, chord-resolver self-tests + sus2/sus4 fix, doc closeout).
+- Session 3: Foundation harness + T1.1 (single sustained note).
+  Build minimum harness — load JSON spec, replay MIDI sequence into
+  `MusicalEventStream`, capture classifier output, compare against
+  expected outcomes. Implement classifier minimum — sounding-set
+  tracking, basic continuous state emission, `nothing` and `melody`
+  cases. Establish the comparison contract for "single melody
+  interval."
+- Pre-work suggestion (build plan says none required, but cheap
+  insurance): read `docs/chord-melody-test-corpus.md` T1.1 spec
+  before the session. The build plan flags Session 3 as the one where
+  comparison-contract decisions surface; entering with the T1.1 spec
+  read could surface contract questions earlier in the planning
+  conversation.
+- Start-of-next-session ritual: Claude proposes updates to STATUS.md
+  and RADAR.md from this session's SESSION_LOG entry; I review and
+  accept. (Note: a sus2/sus4 RADAR entry is already in place as part
+  of Session 2 doc closeout; the start-of-next ritual is about
+  STATUS.md primarily, plus any RADAR items I missed.)
+
+### Calibration notes
+- **Run-and-see did the work that reading alone wouldn't have.** The
+  sus2/sus4 finding was not in the test plan, not in the Sunday
+  pre-work, not in any reading of chord-resolver.js. It surfaced only
+  when the tests ran and sus4 failed. Same pattern as Session 1's
+  "grep that returned nothing surfaced a working-directory bug" —
+  the discipline to actually execute and inspect the result, rather
+  than reason about what the result *should* be, paid off again.
+  Worth marking as a recurring lesson: even with careful pre-work,
+  the execution step is doing real epistemic work, not just
+  confirmation.
+- **The "doubt about test design" pause was load-bearing.** When the
+  question came up about whether tempo-style equality assertions fit
+  chord interpretation, the right response was to slow down and
+  unpack what kind of claim each test was encoding. The result
+  (split between equality for asymmetric, assertOneOf for symmetric,
+  with a clearer mental model of what each test was claiming) was
+  better than the original test plan and probably surfaced the
+  framework that *helped* identify the sus2/sus4 issue when it
+  appeared. Slowing down to interrogate the design surfaced a sharper
+  design.
+- **Splitting one Claude Code prompt into two paid off again.**
+  Prompt 1 (template addition) verified clean before Prompt 2
+  (self-tests) ran — meaning the failures in Prompt 2 were
+  unambiguously about the tests, not the template. If they'd been
+  bundled, the sus2/sus4 finding would have been harder to attribute.
+  Same lesson as Session 1's module/UI split. Pattern is consolidating.
+- **A tangent earned its place.** The Voicing Explorer spec edit
+  started as a "pipe dream" digression and turned into a Future
+  Directions section that's now load-bearing for how OQ5's caveats
+  are framed. Worth noting that some tangents are doing real design
+  work in disguise. Distinguishing them from drift is judgment;
+  retroactively, the test is whether the tangent connects to other
+  active threads (it did — it's now referenced from the chord-melody
+  classification doc and from RADAR).
+- **Test convention is forming.** tempo-state.js established the
+  commented-IIFE pattern; chord-resolver.js extended it with
+  `assertOneOf`. Two files is not a convention; three would be. Next
+  file that wants self-tests should match this unless there's a real
+  reason to diverge. If the pattern persists, it may earn a place in
+  WORKING_STYLE.
+
+### Flagged for later
+- **Property-style testing for priority preservation.** The Section
+  5 test ("C-E-G resolves to major, not power") is an
+  example-based stand-in for the property "priority ordering is
+  respected across template additions." If the priority system ever
+  broke for some other input we didn't test, we wouldn't catch it.
+  Not worth a property-testing dependency for one file, but worth
+  noting if the resolver accumulates more priority-sensitive logic.
+- **Cross-template inversion-equivalence audit when adding new
+  templates.** The sus2/sus4 finding implies that any new template
+  addition should be checked against existing templates for analogous
+  collisions. Captured in the RADAR entry but worth a more
+  prominent check (or a small utility?) if templates expand
+  meaningfully. The probabilistic-interpretation work in the
+  Voicing Explorer thread would also benefit from a systematic
+  inventory of these equivalences.
+- **Slash-chord notation needs MIDI, not just PCs.** Already flagged
+  in the Sunday pre-work and now in the OQ5 resolution. The
+  classifier will need its own logic to map PC back to MIDI for the
+  "root release ends chord" rule and for slash-chord recognition.
+  Not Session 3 work, but it's the kind of thing that should be
+  remembered before Session 5 (chord-state machinery).
+- **TODO above the self-test block becomes a real decision when
+  Voicing Explorer becomes active.** The extraction trigger is
+  "~50 assertions OR Voicing Explorer adds template variants." If
+  Phase A5 builds extended/altered chord templates, the in-file
+  pattern will probably tip over. Mentally pre-cached.
+
+### Out of scope / deferred
+- Edge-case testing for chord-resolver (empty input, duplicate PCs,
+  malformed input) — outside OQ5 scope, deliberately not in this
+  session.
+- Probabilistic chord interpretation implementation — captured as a
+  Future Directions thread in the Voicing Explorer spec; not active
+  work.
+- Extension/alteration templates (9th, 11th, 13th, alterations) — not
+  in current template set; would land with Voicing Explorer work
+  if/when it activates.
+- Slash-chord recognition — downstream of MIDI, not PC; classifier
+  concern.
+- STATUS.md update — deferred per end-of-session protocol; will be
+  proposed at start of Session 3.
+
+
 ## 2026-05-11 — Session 1 of chord/melody arc: tempo state (OQ1 resolution)
 
 ### Landed
