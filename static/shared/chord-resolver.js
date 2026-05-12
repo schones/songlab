@@ -34,6 +34,13 @@ const CHORD_TYPES = [
   { quality: 'minor',   symbol: 'm',      intervals: [0, 3, 7],         priority: 1 },
   { quality: 'dim',     symbol: '°',      intervals: [0, 3, 6],         priority: 1 },
   { quality: 'aug',     symbol: '+',      intervals: [0, 4, 8],         priority: 1 },
+  // sus2 and sus4 share PC sets under inversion:
+  // {root, M2, P5} = {root+5, P4, P5} relative to the new root.
+  // For example {C, D, G} = Csus2 = Gsus4. With both at priority 2
+  // and sus2 listed first, unbiased resolveChord calls always
+  // return sus2. Callers needing sus4 must pass preferredRootPC.
+  // The chord/melody classifier handles this via key context;
+  // see docs/chord-melody-classification.md OQ5.
   { quality: 'sus2',    symbol: 'sus2',   intervals: [0, 2, 7],         priority: 2 },
   { quality: 'sus4',    symbol: 'sus4',   intervals: [0, 5, 7],         priority: 2 },
   // ── Seventh chords ─────────────────────────────────────────────
@@ -172,3 +179,118 @@ export { resolveChord };
 if (typeof window !== 'undefined') {
   window.ChordResolver = { resolveChord };
 }
+
+// ════════════════════════════════════════════════════════════════════
+// SELF-TEST (manual — run: cat static/shared/chord-resolver.js | node --input-type=module)
+// Note: the direct-file form (node --input-type=module path/to/file.js)
+// is blocked on the current Node version; pipe stdin instead.
+// ════════════════════════════════════════════════════════════════════
+
+// TODO: extract to chord-resolver.test.js if this grows past
+//       ~50 assertions or if Voicing Explorer adds template variants.
+
+/* --- Self-test: uncomment this block to run ---
+
+(function selfTest() {
+  const results = [];
+  function assert(label, actual, expected) {
+    const pass = JSON.stringify(actual) === JSON.stringify(expected);
+    results.push({ label, pass });
+    console.log(pass
+      ? `  ✓ ${label}`
+      : `  ✗ ${label}\n      got:      ${JSON.stringify(actual)}\n      expected: ${JSON.stringify(expected)}`);
+  }
+  function assertOneOf(label, actual, validSet) {
+    const pass = validSet.includes(actual);
+    results.push({ label, pass });
+    console.log(pass
+      ? `  ✓ ${label}`
+      : `  ✗ ${label}\n      got:      ${JSON.stringify(actual)}\n      expected one of: ${JSON.stringify(validSet)}`);
+  }
+
+  console.log("\n─── chord-resolver.js self-test ───\n");
+
+  // ── Section 1: Power chord, root position ──
+  {
+    const r = resolveChord([0, 7]);
+    assert("[0,7] recognized",     r.recognized, true);
+    assert("[0,7] root = C",       r.root,       'C');
+    assert("[0,7] quality = '5'",  r.quality,    '5');
+    assert("[0,7] symbol = '5'",   r.symbol,     '5');
+    assert("[0,7] name = 'C5'",    r.name,       'C5');
+  }
+
+  // ── Section 2: Power chord, inverted PC order ──
+  {
+    const r = resolveChord([7, 0]);
+    assert("[7,0] recognized",     r.recognized, true);
+    assert("[7,0] root = C",       r.root,       'C');
+    assert("[7,0] quality = '5'",  r.quality,    '5');
+    assert("[7,0] symbol = '5'",   r.symbol,     '5');
+    assert("[7,0] name = 'C5'",    r.name,       'C5');
+  }
+
+  // ── Section 3: Inversion verification, asymmetric qualities ──
+  // sus2 and sus4 share PC sets under inversion ({C, F, G} =
+  // Csus4 = Fsus2). Both tests pass preferredRootPC: 0 to
+  // disambiguate to the C-rooted reading. This mirrors how the
+  // resolver is called in practice (from a key context).
+  // sus2:    [2, 7, 0],  preferredRootPC=0    → root 'C', quality 'sus2'
+  // sus4:    [5, 7, 0],  preferredRootPC=0    → root 'C', quality 'sus4'
+  const inversionCases = [
+    { label: 'major',    pcs: [4, 7, 0],        quality: 'major'   },
+    { label: 'minor',    pcs: [3, 7, 0],        quality: 'minor'   },
+    { label: 'dim',      pcs: [3, 6, 0],        quality: 'dim'     },
+    { label: 'sus2',     pcs: [2, 7, 0],        quality: 'sus2',    bias: 0 },
+    { label: 'sus4',     pcs: [5, 7, 0],        quality: 'sus4',    bias: 0 },
+    { label: 'dom7',     pcs: [4, 7, 10, 0],    quality: 'dom7'    },
+    { label: 'maj7',     pcs: [4, 7, 11, 0],    quality: 'maj7'    },
+    { label: 'min7',     pcs: [3, 7, 10, 0],    quality: 'min7'    },
+    { label: 'hdim7',    pcs: [3, 6, 10, 0],    quality: 'hdim7'   },
+    { label: 'minmaj7',  pcs: [3, 7, 11, 0],    quality: 'minmaj7' },
+    { label: 'augmaj7',  pcs: [4, 8, 11, 0],    quality: 'augmaj7' },
+    { label: 'aug7',     pcs: [4, 8, 10, 0],    quality: 'aug7'    },
+  ];
+  for (const { label, pcs, quality, bias } of inversionCases) {
+    const r = resolveChord(pcs, bias);
+    assert(`${label} ${JSON.stringify(pcs)} → root = C`,       r.root,    'C');
+    assert(`${label} ${JSON.stringify(pcs)} → quality = ${quality}`, r.quality, quality);
+  }
+
+  // ── Section 4: Symmetric qualities (aug, dim7) ──
+  {
+    const r = resolveChord([0, 4, 8]);
+    assertOneOf("aug [0,4,8] unbiased → root ∈ {C, E, G♯}",
+      r.root, ['C', 'E', 'G♯']);
+  }
+  {
+    const r = resolveChord([0, 4, 8], 4);
+    assert("aug [0,4,8] preferredRoot=4 → root = E",
+      r.root, 'E');
+  }
+  {
+    const r = resolveChord([0, 3, 6, 9]);
+    assertOneOf("dim7 [0,3,6,9] unbiased → root ∈ {C, D♯, F♯, A}",
+      r.root, ['C', 'D♯', 'F♯', 'A']);
+  }
+  {
+    const r = resolveChord([0, 3, 6, 9], 6);
+    assert("dim7 [0,3,6,9] preferredRoot=6 → root = F♯",
+      r.root, 'F♯');
+  }
+
+  // ── Section 5: Priority preservation ──
+  // Power-chord template (priority 4) must not displace higher-priority
+  // matches: [0,4,7] still resolves to a major triad, not a power chord.
+  {
+    const r = resolveChord([0, 4, 7]);
+    assert("[0,4,7] quality = major (priority preserved over '5')",
+      r.quality, 'major');
+  }
+
+  // Summary
+  const passed = results.filter(r => r.pass).length;
+  console.log(`\n─── ${passed}/${results.length} passed ───\n`);
+})();
+
+--- End self-test --- */
