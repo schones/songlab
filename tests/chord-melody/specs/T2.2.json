@@ -37,6 +37,8 @@
     }
   ],
   "expected_prose": "No two attacks fall within CHORD_CLUSTER_WINDOW\n(spacing is 500ms >> any reasonable window). Sounding-set never\ncontains more than one note. Three discrete melody events.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [],
   "status": "ok"
 }

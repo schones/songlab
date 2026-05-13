@@ -37,6 +37,42 @@
     }
   ],
   "expected_prose": "- t=0 to t=1000: state=chord, identity=(C, major), confidence=declared\n- t=1000 to t=2000: state=chord, identity=(C, major), confidence=implied, effective_set=[60,64]. Root held; full template no longer matches.\n- t=2000+: state=nothing.",
+  "expected": [
+    {
+      "from_ms": 0,
+      "to_ms": 1000,
+      "state": "chord",
+      "identity": {
+        "root": 0,
+        "quality": "major"
+      },
+      "confidence": "declared",
+      "effective_set": []
+    },
+    {
+      "from_ms": 1000,
+      "to_ms": 2000,
+      "state": "chord",
+      "identity": {
+        "root": 0,
+        "quality": "major"
+      },
+      "confidence": "implied",
+      "effective_set": [
+        60,
+        64
+      ]
+    },
+    {
+      "from_ms": 2000,
+      "to_ms": null,
+      "state": "nothing",
+      "identity": null,
+      "confidence": null,
+      "effective_set": []
+    }
+  ],
+  "expected_null_reason": null,
   "trailing_notes": [],
   "status": "ok"
 }

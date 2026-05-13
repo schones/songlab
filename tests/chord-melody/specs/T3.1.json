@@ -6,6 +6,8 @@
   "purpose": "forcing function for voice-leading. The interim classifier mis-classifies this as chord because the three attacks fall within CHORD_CLUSTER_WINDOW and the pitches form a chord template. Voice-leading-aware classification would correctly identify it as melody by tracking voice continuity.",
   "midi": null,
   "expected_prose": "All three notes are melody.\n\n**Expected (interim, combined rule):** state=chord, identity=(C, major),\nconfidence=declared. Known failure of the interim rule; deferred\nto voice-leading work — see design doc \"Deferred to future work\" §1.",
+  "expected": null,
+  "expected_null_reason": "dual_block",
   "trailing_notes": [],
   "status": "pending",
   "pending_reason": "A C-E-G run played as fast sequential single notes — each pitch attacked 30ms apart, each note 50ms long, intended musically as a melody fragment."

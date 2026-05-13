@@ -6,6 +6,8 @@
   "purpose": "forcing function for voice-leading. Two melodic lines played independently, frequently sounding simultaneously. Interim rule classifies the simultaneous moments as chord; voice-leading-aware classification recognizes two voices in melodic motion.",
   "midi": null,
   "expected_prose": "Both lines are melody. No chord events\nduring simultaneous-but-melodic passages.\n\n**Expected (interim):** Many false-positive chord classifications\nwhen the two voices happen to harmonize into recognized triads.\nDocumented as expected failure.",
+  "expected": null,
+  "expected_null_reason": "dual_block",
   "trailing_notes": [],
   "status": "pending",
   "pending_reason": "To be transcribed from a Bach two-part invention or similar. Pending."

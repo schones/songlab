@@ -6,6 +6,8 @@
   "purpose": "forcing function for implied-chord generalization (beyond v1's partial-release implied state). A pedal A in the bass with a melody in A minor above it should imply A minor harmony — even when no triad is ever literally sounding and no chord was previously declared.",
   "midi": null,
   "expected_prose": "Implied chord(A minor) shown — perhaps\nwith translucent visualization to distinguish from declared chords.\n\n**Expected (interim):** state varies. The drone + melody dyad will\nescalate (A2+C5 is a minor-tenth = pitch-class minor third, not a\nperfect fifth, so it doesn't power-chord-escalate; A2+E5 is a fifth,\nit would escalate). The intermittent escalations to A5 power chord\nare not \"wrong\" but they're not the desired implied A minor either.\nDeferred to implied-chord work — see design doc \"Deferred to future\nwork\" §3.",
+  "expected": null,
+  "expected_null_reason": "dual_block",
   "trailing_notes": [],
   "status": "pending",
   "pending_reason": "Sustained A2 throughout. Above it, a melody using A, C, E, F notes typical of A minor."

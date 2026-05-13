@@ -6,6 +6,8 @@
   "purpose": "rolled-chord case. The motivating real-world test for the temporal-window rule. See design doc Rationale §2.",
   "midi": null,
   "expected_prose": "Three discrete chord events. Each rolled chord\nclassifies as a single declared chord (per CHORD_CLUSTER_WINDOW\ncatching the rolled attacks). The three chords are distinct events\n— each new rolled chord triggers chord-identity update because the\nnew effective set matches a meaningfully different chord template.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [
     "This test is the upper-bound constraint on CHORD_CLUSTER_WINDOW: the window must be wide enough to cluster within-roll attacks (~80ms span) but narrow enough that adjacent rolled chords don't merge (~150-200ms gap).",
     "Status: incomplete. Score reference is page 1, measure 10 of \"Super Mario Bros. Ground Theme\" (composed by Koji Kondo, arr. Shinobu Amayake). MIDI transcription pending."

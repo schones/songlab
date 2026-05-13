@@ -40,6 +40,24 @@ EVENT_KEYWORDS = {"noteAttack", "noteRelease"}
 ALLOWED_OPTIONAL_FIELDS = {"velocity", "channel"}
 REQUIRED_FIELD_NAMES = {"t", "pitch"}
 
+# NOTE: This structured expected format assumes hard classification
+# (single identity per chord interval). The Voicing Explorer's
+# probabilistic interpretation thread (see chord-melody-classification.md
+# OQ5 resolution and voicing-explorer-spec.md Future Directions)
+# will require a schema rev when it lands. The current shape is
+# deliberately not pre-designed for that future; rev when there's a
+# concrete consumer.
+INTERVAL_TIME_RANGE_RE = re.compile(r"^t=(\d+)\s+to\s+t=(\d+):")
+INTERVAL_TIME_OPEN_RE = re.compile(r"^t=(\d+)\+:")
+STATE_RE = re.compile(r"\bstate=(melody|chord|nothing)\b")
+INVALID_STATE_RE = re.compile(r"\bstate=([A-Za-z_][A-Za-z0-9_]*)\b")
+IDENTITY_RE = re.compile(r"\bidentity=\(\s*([A-Ga-g][#b♭]?)\s*,\s*([^)]+?)\s*\)")
+CONFIDENCE_RE = re.compile(r"\bconfidence=(declared|implied|n/a)\b")
+EFFECTIVE_SET_RE = re.compile(r"\beffective_set=\[([^\]]*)\]")
+
+NOTE_PC = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+VALID_CONFIDENCES = {"declared", "implied"}
+
 
 class ParseError(Exception):
     def __init__(self, test_id: str | None, message: str) -> None:
@@ -225,6 +243,168 @@ def normalize_expected_prose(text: str) -> str:
     return "\n".join(selected)
 
 
+def root_name_to_pc(name: str) -> int:
+    name = name.strip()
+    if not name:
+        raise ValueError("empty root name")
+    base = name[0].upper()
+    if base not in NOTE_PC:
+        raise ValueError(f"unknown note letter in {name!r}")
+    pc = NOTE_PC[base]
+    accidental = name[1:].strip()
+    if accidental == "":
+        return pc
+    if accidental == "#":
+        return (pc + 1) % 12
+    if accidental in ("b", "♭"):
+        return (pc - 1) % 12
+    raise ValueError(f"unknown accidental {accidental!r} in root {name!r}")
+
+
+def split_expected_bullets(text: str) -> list[str]:
+    """Split a bulleted Markdown block into per-bullet strings.
+
+    A bullet starts at a line beginning with ``- ``. Subsequent lines
+    that don't start a new bullet are treated as continuations of the
+    current bullet. Each returned string is the bullet content with
+    whitespace collapsed.
+    """
+    bullets: list[str] = []
+    current: list[str] | None = None
+    for line in text.split("\n"):
+        if line.startswith("- "):
+            if current is not None:
+                bullets.append(normalize_whitespace(" ".join(current)))
+            current = [line[2:]]
+        elif current is not None:
+            current.append(line.strip())
+    if current is not None:
+        bullets.append(normalize_whitespace(" ".join(current)))
+    return bullets
+
+
+def parse_expected_bullet(bullet: str) -> dict | None:
+    """Parse a single bullet into a structured interval, or return None.
+
+    Returns ``None`` when the bullet's leading shape doesn't match a
+    structured interval (``t=<int> to t=<int>:`` or ``t=<int>+:``).
+    Raises ``ValueError`` when the bullet has the structured shape but
+    invalid content (unknown state, missing identity for chord, etc.).
+    """
+    m_range = INTERVAL_TIME_RANGE_RE.match(bullet)
+    m_open = INTERVAL_TIME_OPEN_RE.match(bullet)
+    if m_range:
+        from_ms = int(m_range.group(1))
+        to_ms: int | None = int(m_range.group(2))
+        rest = bullet[m_range.end():]
+    elif m_open:
+        from_ms = int(m_open.group(1))
+        to_ms = None
+        rest = bullet[m_open.end():]
+    else:
+        return None
+
+    state_match = STATE_RE.search(rest)
+    if not state_match:
+        invalid = INVALID_STATE_RE.search(rest)
+        if invalid:
+            raise ValueError(
+                f"invalid state={invalid.group(1)!r} "
+                f"(must be melody/chord/nothing) in bullet: {bullet!r}"
+            )
+        # No state= field at all — the bullet has a time prefix but
+        # carries free-form prose instead of structured fields. Treat
+        # as "shape doesn't fit"; classify_expected will demote the
+        # whole test to loose-prose.
+        return None
+    state = state_match.group(1)
+
+    identity_match = IDENTITY_RE.search(rest)
+    confidence_match = CONFIDENCE_RE.search(rest)
+    effective_set_match = EFFECTIVE_SET_RE.search(rest)
+
+    identity: dict | None = None
+    confidence: str | None = None
+    if state == "chord":
+        if not identity_match:
+            raise ValueError(
+                f"chord state requires identity=(root, quality) in bullet: {bullet!r}"
+            )
+        if not confidence_match:
+            raise ValueError(
+                f"chord state requires confidence=declared|implied "
+                f"in bullet: {bullet!r}"
+            )
+        root_name = identity_match.group(1)
+        quality = identity_match.group(2).strip()
+        try:
+            root_pc = root_name_to_pc(root_name)
+        except ValueError as exc:
+            raise ValueError(
+                f"invalid root in bullet {bullet!r}: {exc}"
+            ) from exc
+        identity = {"root": root_pc, "quality": quality}
+        conf_value = confidence_match.group(1)
+        if conf_value not in VALID_CONFIDENCES:
+            raise ValueError(
+                f"chord state has confidence={conf_value!r} "
+                f"(must be declared/implied) in bullet: {bullet!r}"
+            )
+        confidence = conf_value
+
+    effective_set: list[int] = []
+    if effective_set_match:
+        inner = effective_set_match.group(1).strip()
+        if inner:
+            try:
+                effective_set = [
+                    int(s.strip()) for s in inner.split(",") if s.strip()
+                ]
+            except ValueError as exc:
+                raise ValueError(
+                    f"invalid effective_set in bullet {bullet!r}: {exc}"
+                ) from exc
+
+    return {
+        "from_ms": from_ms,
+        "to_ms": to_ms,
+        "state": state,
+        "identity": identity,
+        "confidence": confidence,
+        "effective_set": effective_set,
+    }
+
+
+def classify_expected(text: str) -> tuple[list[dict] | None, str | None]:
+    """Classify the expected block and parse intervals when structurable.
+
+    Returns ``(intervals, None)`` on a parseable bulleted block,
+    ``(None, "dual_block")`` when a second ``**Expected ...:**`` marker
+    is present (Tier 3 case), or ``(None, "loose_prose")`` when the
+    block has no structurable bullets.
+
+    Raises ``ValueError`` if a bullet has the structured shape but
+    invalid content.
+    """
+    if EXPECTED_MARKER_RE.search(text):
+        return None, "dual_block"
+
+    bullets = split_expected_bullets(text)
+    if not bullets:
+        return None, "loose_prose"
+
+    intervals: list[dict] = []
+    for bullet in bullets:
+        result = parse_expected_bullet(bullet)
+        if result is None:
+            return None, "loose_prose"
+        intervals.append(result)
+
+    if not intervals:
+        return None, "loose_prose"
+    return intervals, None
+
+
 def parse_test(test_id: str, title: str, body: str) -> dict:
     body = body.strip()
     if body.endswith("---"):
@@ -283,6 +463,11 @@ def parse_test(test_id: str, title: str, body: str) -> dict:
     if not expected_prose and not trailing_notes:
         raise ParseError(test_id, "expected section is empty")
 
+    try:
+        expected_intervals, expected_null_reason = classify_expected(expected_raw)
+    except ValueError as exc:
+        raise ParseError(test_id, f"expected block: {exc}") from exc
+
     spec: dict = {
         "id": test_id,
         "title": title,
@@ -291,6 +476,8 @@ def parse_test(test_id: str, title: str, body: str) -> dict:
         "purpose": purpose,
         "midi": midi_events,
         "expected_prose": expected_prose,
+        "expected": expected_intervals,
+        "expected_null_reason": expected_null_reason,
         "trailing_notes": trailing_notes,
         "status": status,
     }
@@ -354,7 +541,105 @@ def write_outputs(specs: list[dict]) -> None:
         f.write("\n")
 
 
+# TODO: extract to a separate test file if this grows past ~50 assertions
+# or if parser scope expands substantially.
+def run_self_tests() -> int:
+    failures: list[str] = []
+
+    def check(label: str, actual, expected) -> None:
+        if actual != expected:
+            failures.append(
+                f"FAIL {label}\n  expected: {expected!r}\n  actual:   {actual!r}"
+            )
+
+    # 1. simple melody interval (T1.1 bullet 1 shape)
+    iv = parse_expected_bullet("t=0 to t=2000: state=melody, effective_set=[60]")
+    check("melody from_ms", iv["from_ms"], 0)
+    check("melody to_ms", iv["to_ms"], 2000)
+    check("melody state", iv["state"], "melody")
+    check("melody identity", iv["identity"], None)
+    check("melody confidence", iv["confidence"], None)
+    check("melody effective_set", iv["effective_set"], [60])
+
+    # 2. chord with full identity/confidence (T1.3 bullet 1 shape)
+    iv = parse_expected_bullet(
+        "t=0 to t=2000: state=chord, identity=(C, major), "
+        "confidence=declared, effective_set=[60,64,67]"
+    )
+    check("chord state", iv["state"], "chord")
+    check("chord identity", iv["identity"], {"root": 0, "quality": "major"})
+    check("chord confidence", iv["confidence"], "declared")
+    check("chord effective_set", iv["effective_set"], [60, 64, 67])
+
+    # 3. open-ended interval (t=N+ form)
+    iv = parse_expected_bullet("t=2000+: state=nothing, effective_set=[]")
+    check("open from_ms", iv["from_ms"], 2000)
+    check("open to_ms", iv["to_ms"], None)
+    check("open state", iv["state"], "nothing")
+    check("open effective_set", iv["effective_set"], [])
+
+    # 4. accidentals → pitch class
+    check("C# pc", root_name_to_pc("C#"), 1)
+    check("Db pc", root_name_to_pc("Db"), 1)
+    check("D♭ pc", root_name_to_pc("D♭"), 1)
+    check("B pc", root_name_to_pc("B"), 11)
+    check("C pc", root_name_to_pc("C"), 0)
+
+    # 5. bullet with trailing parenthetical commentary (T2.3 shape)
+    iv = parse_expected_bullet(
+        "t=400 to t=800: state=melody, effective_set=[60,64] "
+        "(dyad of major third, no escalation — major thirds are "
+        "not power-chord-eligible regardless of duration)"
+    )
+    check("commentary state", iv["state"], "melody")
+    check("commentary effective_set", iv["effective_set"], [60, 64])
+
+    # 6. loose-prose block (no bulleted lines after marker)
+    intervals, reason = classify_expected(
+        "All three sustain past t=100, so sounding-set sees the triad. "
+        "state=chord, identity=(C, major), confidence=declared by t=100."
+    )
+    check("loose-prose intervals", intervals, None)
+    check("loose-prose reason", reason, "loose_prose")
+
+    # 7. dual-expected block (second **Expected ...** marker present)
+    dual = (
+        "All three notes are melody.\n\n"
+        "**Expected (interim, combined rule):** state=chord, "
+        "identity=(C, major), confidence=declared."
+    )
+    intervals, reason = classify_expected(dual)
+    check("dual-block intervals", intervals, None)
+    check("dual-block reason", reason, "dual_block")
+
+    # 8. malformed bullet (parseable shape, invalid state) raises ParseError
+    try:
+        parse_expected_bullet("t=0 to t=100: state=unknown_state, effective_set=[]")
+        failures.append("FAIL malformed-state did not raise ValueError")
+    except ValueError:
+        pass
+
+    # Bonus: chord state missing identity raises.
+    try:
+        parse_expected_bullet("t=0 to t=100: state=chord, confidence=declared")
+        failures.append("FAIL chord-without-identity did not raise")
+    except ValueError:
+        pass
+
+    if failures:
+        for f in failures:
+            print(f, file=sys.stderr)
+        print(f"\n{len(failures)} self-test failure(s)", file=sys.stderr)
+        return 1
+    print("all self-tests passed")
+    return 0
+
+
 def main() -> int:
+    args = sys.argv[1:]
+    if "--self-test" in args:
+        return run_self_tests()
+
     if not CORPUS_PATH.exists():
         print(f"error: corpus not found at {CORPUS_PATH}", file=sys.stderr)
         return 1
@@ -379,9 +664,16 @@ def main() -> int:
 
     by_tier: dict[str, int] = {}
     by_status: dict[str, int] = {}
+    structured_count = 0
+    null_by_reason: dict[str, list[str]] = {}
     for s in specs:
         by_tier[s["tier"]] = by_tier.get(s["tier"], 0) + 1
         by_status[s["status"]] = by_status.get(s["status"], 0) + 1
+        if s["expected"] is not None:
+            structured_count += 1
+        else:
+            reason = s["expected_null_reason"] or "unknown"
+            null_by_reason.setdefault(reason, []).append(s["id"])
 
     rel_dir = SPECS_DIR.relative_to(REPO_ROOT)
     print(f"emitted {len(specs)} test specs to {rel_dir}/")
@@ -389,6 +681,13 @@ def main() -> int:
     print(
         "by status: " + ", ".join(f"{k}={v}" for k, v in sorted(by_status.items()))
     )
+
+    null_total = sum(len(v) for v in null_by_reason.values())
+    print(f"  {structured_count} with structured expected")
+    print(f"  {null_total} with expected: null")
+    for reason in sorted(null_by_reason):
+        ids = ", ".join(sorted(null_by_reason[reason]))
+        print(f"      {reason}: {ids}")
     return 0
 
 

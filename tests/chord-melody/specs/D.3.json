@@ -67,6 +67,8 @@
     }
   ],
   "expected_prose": "- First dyad (t=0 to t=200): state=melody (1 attack, no escalation)\n- Second dyad (t=500 to t=700): state=melody (2 attacks within window, still below threshold of 3)\n- Third dyad (t=1000 to t=1200): state=chord, identity=(G, '5'), confidence=declared. Three attacks within DYAD_REPETITION_WINDOW (2 beats = 1000ms; all three fall within this window from the first attack).",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [
     "Subtle: this test is sensitive to whether DYAD_REPETITION_WINDOW is measured forward from the first attack or rolling. Specify in implementation."
   ],

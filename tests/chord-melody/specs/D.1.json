@@ -27,6 +27,8 @@
     }
   ],
   "expected_prose": "- t=0 to ~DYAD_SUSTAIN_THRESHOLD: state=melody, effective_set=[55,62]. (At 120 BPM with threshold of 1 beat = 500ms, this lasts until t≈500.)\n- After threshold to t=2000: dyad escalates. G+D is a perfect fifth (interval 7). Matches power-chord template. state=chord, identity=(G, '5'), confidence=declared.\n- t=2000+: state=nothing. Chord identity ends because root (G) released.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [],
   "status": "ok"
 }

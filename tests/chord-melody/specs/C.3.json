@@ -37,6 +37,8 @@
     }
   ],
   "expected_prose": "- t=0 to t=1000: state=chord, identity=(C, major), confidence=declared\n- t=1000+: chord identity ends. Remaining set is [64,67] (E+G), a minor third. Dyad clock restarts at t=1000 per the dyad-clock-restart rule.\n- t=1000 to t=3000: state=melody, effective_set=[64,67]. The dyad has been sounding 2000ms post-chord, well past DYAD_SUSTAIN_THRESHOLD (500ms at 120 BPM), so escalation tries to fire. But E+G is a minor third (interval 3), not a perfect fifth (interval 7) — power-chord template doesn't match — escalation produces no chord. state=melody persists.\n- t=3000+: state=nothing.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [],
   "status": "ok"
 }

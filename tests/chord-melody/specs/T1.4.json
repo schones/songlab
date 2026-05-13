@@ -27,6 +27,8 @@
     }
   ],
   "expected_prose": "effective_set=[60,67] is a dyad. Duration (300ms <\nDYAD_SUSTAIN_THRESHOLD) and repetition count (1 < DYAD_REPETITION_\nTHRESHOLD) mean no escalation. state=melody for both notes\nsimultaneously.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [],
   "status": "ok"
 }

@@ -97,6 +97,8 @@
     }
   ],
   "expected_prose": "- Roll 1: state transitions through melody → melody dyad → chord(C, major, declared) by t=60. Holds chord state until t=200.\n- t=200+: state=nothing. Chord identity ends (root C released). Recent-attack buffer ages out within CHORD_CLUSTER_WINDOW.\n- Roll 2: by t=360, state=chord, identity=(C, major), confidence=declared. New chord declaration (chord identity was cleared, so this is a fresh declaration via step 3, not an identity update).\n- t=500+: state=nothing.\n- Roll 3: by t=660, state=chord, identity=(C, major), confidence=declared.\n- t=800+: state=nothing.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [
     "Three discrete declared-chord events separated by nothing. This test fails if CHORD_CLUSTER_WINDOW is wide enough that the recent- attack buffer holds attacks across the inter-chord gap (causing adjacent rolls to merge), or if the window is too narrow to cluster the within-roll attacks (causing each roll to fail to declare)."
   ],

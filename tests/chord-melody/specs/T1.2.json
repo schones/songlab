@@ -37,6 +37,8 @@
     }
   ],
   "expected_prose": "Three discrete melody events. At each attack, the\neffective set is one note; state=melody. No chord is ever\ndetected.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [],
   "status": "ok"
 }

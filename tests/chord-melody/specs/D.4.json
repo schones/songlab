@@ -67,6 +67,8 @@
     }
   ],
   "expected_prose": "With DYAD_REPETITION_WINDOW=2 beats at 120 BPM\n(=1000ms), no two attacks fall within the window simultaneously.\nNo escalation. All three dyads remain state=melody.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [],
   "status": "ok"
 }

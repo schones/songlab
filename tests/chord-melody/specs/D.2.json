@@ -27,6 +27,8 @@
     }
   ],
   "expected_prose": "With DYAD_SUSTAIN_THRESHOLD=1 beat at 120 BPM\n(=500ms), the dyad ends at 300ms (< 500ms). state=melody throughout.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [],
   "status": "ok"
 }

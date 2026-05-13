@@ -67,6 +67,98 @@
     }
   ],
   "expected_prose": "- t=0 to t=1000: state=chord, identity=(C, major), confidence=declared, effective_set=[48,52,55]\n- t=1000 to t=1300: state=chord, identity=(C, major), confidence=declared. C5 is melody-on-top — it's an octave doubling of the root, not a meaningfully different chord.\n- t=1300 to t=1500: state=chord, identity=(C, major), confidence=declared. Back to just the triad.\n- t=1500 to t=1800: state=chord, identity=(C, major), confidence=declared. D5 is melody-on-top — adding D to C-E-G gives C-D-E-G, which doesn't match any chord template. Chord state persists.\n- t=1800 to t=2000: state=chord, identity=(C, major), confidence=declared.\n- t=2000 to t=2300: state=chord, identity=(C, major), confidence=declared. E5 is melody-on-top — octave doubling of the third, not a meaningfully different chord.\n- t=2300 to t=5000: state=chord, identity=(C, major), confidence=declared.\n- t=5000+: state=nothing.",
+  "expected": [
+    {
+      "from_ms": 0,
+      "to_ms": 1000,
+      "state": "chord",
+      "identity": {
+        "root": 0,
+        "quality": "major"
+      },
+      "confidence": "declared",
+      "effective_set": [
+        48,
+        52,
+        55
+      ]
+    },
+    {
+      "from_ms": 1000,
+      "to_ms": 1300,
+      "state": "chord",
+      "identity": {
+        "root": 0,
+        "quality": "major"
+      },
+      "confidence": "declared",
+      "effective_set": []
+    },
+    {
+      "from_ms": 1300,
+      "to_ms": 1500,
+      "state": "chord",
+      "identity": {
+        "root": 0,
+        "quality": "major"
+      },
+      "confidence": "declared",
+      "effective_set": []
+    },
+    {
+      "from_ms": 1500,
+      "to_ms": 1800,
+      "state": "chord",
+      "identity": {
+        "root": 0,
+        "quality": "major"
+      },
+      "confidence": "declared",
+      "effective_set": []
+    },
+    {
+      "from_ms": 1800,
+      "to_ms": 2000,
+      "state": "chord",
+      "identity": {
+        "root": 0,
+        "quality": "major"
+      },
+      "confidence": "declared",
+      "effective_set": []
+    },
+    {
+      "from_ms": 2000,
+      "to_ms": 2300,
+      "state": "chord",
+      "identity": {
+        "root": 0,
+        "quality": "major"
+      },
+      "confidence": "declared",
+      "effective_set": []
+    },
+    {
+      "from_ms": 2300,
+      "to_ms": 5000,
+      "state": "chord",
+      "identity": {
+        "root": 0,
+        "quality": "major"
+      },
+      "confidence": "declared",
+      "effective_set": []
+    },
+    {
+      "from_ms": 5000,
+      "to_ms": null,
+      "state": "nothing",
+      "identity": null,
+      "confidence": null,
+      "effective_set": []
+    }
+  ],
+  "expected_null_reason": null,
   "trailing_notes": [
     "This test verifies the melody-on-top rule (step 2e of classification logic). The bass triad is declared at t=0, and every melody note added on top either (a) duplicates an existing chord tone or (b) doesn't form a new chord template. In both cases, chord state is preserved."
   ],

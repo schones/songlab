@@ -37,6 +37,8 @@
     }
   ],
   "expected_prose": "All three sustain past t=100, so sounding-set sees\nthe triad. state=chord, identity=(C, major), confidence=declared\nby t=100.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [
     "Tuning note: this test passes for any reasonable CHORD_CLUSTER_WINDOW and sounding-set rule. It's a sanity test, not a tuning test."
   ],

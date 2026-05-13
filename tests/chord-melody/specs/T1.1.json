@@ -17,6 +17,27 @@
     }
   ],
   "expected_prose": "- t=0 to t=2000: state=melody, effective_set=[60]\n- t=2000+: state=nothing, effective_set=[]",
+  "expected": [
+    {
+      "from_ms": 0,
+      "to_ms": 2000,
+      "state": "melody",
+      "identity": null,
+      "confidence": null,
+      "effective_set": [
+        60
+      ]
+    },
+    {
+      "from_ms": 2000,
+      "to_ms": null,
+      "state": "nothing",
+      "identity": null,
+      "confidence": null,
+      "effective_set": []
+    }
+  ],
+  "expected_null_reason": null,
   "trailing_notes": [],
   "status": "ok"
 }

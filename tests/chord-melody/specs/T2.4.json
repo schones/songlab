@@ -37,6 +37,8 @@
     }
   ],
   "expected_prose": "Three discrete melody events. Same pitch repeated is\nnot a chord; escalation only applies to 2-note shapes.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [],
   "status": "ok"
 }

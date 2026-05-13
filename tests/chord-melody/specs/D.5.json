@@ -27,6 +27,8 @@
     }
   ],
   "expected_prose": "Held for 6 beats at 120 BPM, well past\nDYAD_SUSTAIN_THRESHOLD. Escalation tries to fire, but the interval\n(major third = 4 semitones) does not match the power-chord template\n(interval 7). No chord declared. state=melody throughout.",
+  "expected": null,
+  "expected_null_reason": "loose_prose",
   "trailing_notes": [],
   "status": "ok"
 }

@@ -37,6 +37,39 @@
     }
   ],
   "expected_prose": "- t=0 to t=1000: state=chord, identity=(C, major), confidence=declared. Even though the bass note is E (this is C major first inversion), the root is C.\n- t=1000 to t=2000: bass E released. Remaining: [67, 72] (G+C). Root (C, MIDI 72) still held → state=chord, identity=(C, major), confidence=implied.\n- t=2000+: state=nothing.",
+  "expected": [
+    {
+      "from_ms": 0,
+      "to_ms": 1000,
+      "state": "chord",
+      "identity": {
+        "root": 0,
+        "quality": "major"
+      },
+      "confidence": "declared",
+      "effective_set": []
+    },
+    {
+      "from_ms": 1000,
+      "to_ms": 2000,
+      "state": "chord",
+      "identity": {
+        "root": 0,
+        "quality": "major"
+      },
+      "confidence": "implied",
+      "effective_set": []
+    },
+    {
+      "from_ms": 2000,
+      "to_ms": null,
+      "state": "nothing",
+      "identity": null,
+      "confidence": null,
+      "effective_set": []
+    }
+  ],
+  "expected_null_reason": null,
   "trailing_notes": [
     "This test depends on `chord-resolver.js` correctly identifying the root for inversions. See OQ5 in the design doc."
   ],
