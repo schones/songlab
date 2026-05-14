@@ -1,7 +1,7 @@
 # SongLab Project Status
 
 **Last updated:** 2026-05-14
-**Branch:** `dev` (active — Cantor v1 shipped through 6B; Phase 2 pivoted to presentational approach, see `docs/cantor-presentational-design.md` and `docs/active-plans/cantor-presentational-build-plan.md`) · `cantor-presentational-spike` (validated spike, source for production work) · `audio-onset-analysis` (classifier arc, paused) · `main` (prod)
+**Branch:** `dev` (active — Cantor v1 shipped through 6B; Phase 2 pivoted to presentational approach, see `docs/cantor-presentational-design.md` and `docs/active-plans/cantor-presentational-build-plan.md`) · `cantor-presentational-spike` (validated spike, source for production work) · `chord-melody-research` (classifier arc, paused) · `main` (prod)
 **Deploy:** Railway from `main`
 **Active roadmap:** `docs/songlab-build-plan.md` (v4) + `docs/cantor-design.md` + `docs/audio-architecture.md`
 **Platform name:** SongLab · SkratchLab (rebrand complete)
@@ -20,7 +20,7 @@
 - Test track infrastructure: `tests/generate_cantor_test_track.py` +
   `tests/cantor-test-track.md`. WAV regenerable from script (gitignored).
 
-**Landed on branch `audio-onset-analysis` (paused, not on dev):**
+**Landed on branch `chord-melody-research` (paused, not on dev):**
 - Onset-driven analysis foundation plus chord/melody classifier
   work (Sessions 1–2 of the classifier arc, plus 2026-05-13's
   parser extension). Arc paused 2026-05-13 in favor of a
@@ -28,7 +28,7 @@
   pieces (TempoState, chord-resolver power-chord template,
   parser extension) remain valid infrastructure. See
   `docs/active-plans/chord-melody-build-plan.md` (on
-  `audio-onset-analysis`) for the pause block and arc record.
+  `chord-melody-research`) for the pause block and arc record.
 
 **Landed on branch `cantor-presentational-spike` (not on dev):**
 - Spike implementation of Cantor Phase 2 as a presentational
@@ -105,7 +105,7 @@ Capability inventory of what's currently shipping on dev:
 
 The active workstream on `dev` is **Cantor v1**. Through April 27–28, prompts 1–6B landed and are verified end-to-end on dev: 3D torus surface, per-frame rotY drift + torusMajorR breathing, chord-detection Hardware-state gating, and constellation snap to wash vertices. A deterministic test-track generator (`tests/generate_cantor_test_track.py`) and section-by-section diagnostic doc were also landed for ongoing audio-pipeline validation.
 
-Cantor surfaced a foundational limitation in `chord-detection.js`: chroma-template matching cannot distinguish a single sustained note's overtone series from a real chord, producing false-positive chord washes on solo melody. The initial response was to fork off `audio-onset-analysis` and rebuild on onset-driven chord/melody classification. That arc ran through 2026-05-13, when the framing was reconsidered: the deeper question was whether Cantor needs to *classify* at all, or whether a *presentational* view (lit triangles + glyphs, no classification step) better serves the philosophy. A one-hour spike on `cantor-presentational-spike` answered that question affirmatively — the presentational approach reads cleanly with real music and removes the classification problem at the root rather than solving it. The classifier arc is paused; presentational is the new Phase 2 path forward. See `docs/cantor-presentational-design.md` for the design and `docs/active-plans/cantor-presentational-build-plan.md` for the 5-session build plan.
+Cantor surfaced a foundational limitation in `chord-detection.js`: chroma-template matching cannot distinguish a single sustained note's overtone series from a real chord, producing false-positive chord washes on solo melody. The initial response was to fork off a research branch (now `chord-melody-research`) and rebuild on onset-driven chord/melody classification. That arc ran through 2026-05-13, when the framing was reconsidered: the deeper question was whether Cantor needs to *classify* at all, or whether a *presentational* view (lit triangles + glyphs, no classification step) better serves the philosophy. A one-hour spike on `cantor-presentational-spike` answered that question affirmatively — the presentational approach reads cleanly with real music and removes the classification problem at the root rather than solving it. The classifier arc is paused; presentational is the new Phase 2 path forward. See `docs/cantor-presentational-design.md` for the design and `docs/active-plans/cantor-presentational-build-plan.md` for the 5-session build plan.
 
 Harmonograph (`/harmonograph`, formerly `/art`) is parked on dev at Stage 2: audio-reactive Y-spin and centripetal morph are wired and validated end-to-end against a deterministic test track (`tests/harmonograph-test-track.wav`), with seven audio-pipeline bugs fixed in the same April 24 session. Real-music tuning ("Montreal") and Stage 1.5 multi-torus stacking are deferred while Cantor takes focus.
 

@@ -314,7 +314,7 @@ concern, possibly a separate visual layer with its own design.
 
 ## Relationship to the classifier arc
 
-The chord/melody classifier (paused on `audio-onset-analysis`
+The chord/melody classifier (paused on `chord-melody-research`
 branch, documented in `chord-melody-classification.md`) was an
 *interpretive* approach to the same underlying problem cantor
 was supposed to solve. It is paused, not closed. Several of its

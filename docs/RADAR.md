@@ -32,7 +32,7 @@ out of awareness.
   transcription) that the presentational view doesn't subsume,
   or a substantial enough research result to warrant promotion.
   See: `docs/active-plans/chord-melody-build-plan.md` (on
-  `audio-onset-analysis`) Status block.
+  `chord-melody-research`) Status block.
 
 - **[2026-05-14] Polyphonic audio detection.** Future
   infrastructure problem. Cantor presentational view (and
@@ -60,7 +60,7 @@ out of awareness.
   a fresh design pass against whatever framing the new work
   inherits, not just formalization of the existing prose tests.
   This is research-work, not tidying.
-  See: `tests/chord-melody/specs/` (on `audio-onset-analysis`);
+  See: `tests/chord-melody/specs/` (on `chord-melody-research`);
   `docs/active-plans/chord-melody-build-plan.md` Status block.
 
 - **[2026-05-12] sus2/sus4 cross-template inversion equivalence in
@@ -89,7 +89,7 @@ out of awareness.
   inventory is documented in the chord-melody build plan's backburner
   section and remains valid reference material.
   See: `docs/active-plans/chord-melody-build-plan.md` (on
-  `audio-onset-analysis`) backburner section.
+  `chord-melody-research`) backburner section.
 
 - **[2026-05-11] OQ namespace collision across design docs.**
   Multiple design docs each have their own OQ1, OQ2, etc., with no

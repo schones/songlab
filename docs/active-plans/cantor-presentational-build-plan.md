@@ -9,7 +9,7 @@ once the spike-to-production promotion happens (Session 1).
 
 ## Context
 
-The chord/melody classifier arc (`audio-onset-analysis`) was paused
+The chord/melody classifier arc (`chord-melody-research`) was paused
 on 2026-05-13 in favor of a presentational approach to cantor:
 lit Tonnetz triangles for sounding triads, dynamic per-note glyphs
 with radial octave offset and velocity-scaled size, harmonograph-style
