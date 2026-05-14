@@ -290,6 +290,13 @@ def cantor():
     return render_template("cantor.html")
 
 
+@app.route("/cantor-spike")
+def cantor_spike():
+    # Presentational throwaway-spike forked from /cantor. No classifier;
+    # lit triangles + sparkle glyphs driven purely by set membership.
+    return render_template("cantor-spike.html")
+
+
 @app.route("/tutorial")
 def tutorial():
     return render_template("tutorial.html")
