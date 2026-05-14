@@ -17,10 +17,58 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-05-14] Chord/melody classification — research-active.**
+  *Priority: low (research, not production).* The classification
+  problem is intrinsically interesting — musically, mathematically,
+  and as a signal-processing challenge — independent of whether it
+  ships into SongLab. Arc paused as production work 2026-05-14;
+  background experimentation continues as bandwidth allows.
+  Production work on Cantor Phase 2 (presentational arc) takes
+  scheduling priority when conflicts arise. Specific threads to
+  add here as they surface: test cases that nag, parameter
+  intuitions worth testing, alternative rule formulations,
+  signal-processing alternatives. Resumption to production
+  triggered by: a future SongLab use case (games, analytics,
+  transcription) that the presentational view doesn't subsume,
+  or a substantial enough research result to warrant promotion.
+  See: `docs/active-plans/chord-melody-build-plan.md` (on
+  `audio-onset-analysis`) Status block.
+
+- **[2026-05-14] Polyphonic audio detection.** Future
+  infrastructure problem. Cantor presentational view (and
+  anything else consuming audio input) is currently limited to
+  monophonic YIN pitch detection. Real multi-voice audio —
+  guitar chords, piano chords through a mic, sung harmony —
+  needs polyphonic detection to drive the view. Candidate
+  approaches in the broader ecosystem: CREPE, Spotify's Basic
+  Pitch, chroma-features-based detection. Not blocking the
+  cantor presentational arc — Session 3 verifies the monophonic
+  path works; polyphonic is its own downstream arc. Specifics of
+  the current pitch-detection architecture and how a polyphonic
+  swap would integrate are TBD in a dedicated planning session
+  when this arc activates.
+  See: `static/shared/pitch-detection.js` (current YIN
+  implementation).
+
+- **[2026-05-14] Chord/melody test corpus needs a full rethink.**
+  The corpus (26 tests in `tests/chord-melody/specs/`) was built
+  against the classifier framing. The pivot to the presentational
+  approach made parts of that framing obsolete, and the question
+  "which tests are even valid under the new framing?" is part of
+  what triggered the pivot itself. If classification research
+  resumes, the corpus is the natural starting point — but it needs
+  a fresh design pass against whatever framing the new work
+  inherits, not just formalization of the existing prose tests.
+  This is research-work, not tidying.
+  See: `tests/chord-melody/specs/` (on `audio-onset-analysis`);
+  `docs/active-plans/chord-melody-build-plan.md` Status block.
+
 - **[2026-05-12] sus2/sus4 cross-template inversion equivalence in
-  chord-resolver.** {root, M2, P5} = {root+5, P4, P5} — every sus4
-  PC set is also a sus2 PC set from a different root, and vice
-  versa. With both at priority 2 and sus2 listed first, unbiased
+  chord-resolver.** *Priority: low — no near-term consumer (chord/melody
+  classifier paused 2026-05-14; Voicing Explorer probabilistic
+  interpretation is research-future).* {root, M2, P5} = {root+5, P4, P5}
+  — every sus4 PC set is also a sus2 PC set from a different root, and
+  vice versa. With both at priority 2 and sus2 listed first, unbiased
   resolveChord() always returns sus2; sus4 requires a preferredRootPC
   bias. Documented inline near the templates and in the chord/melody
   classifier design doc. Future work: the probabilistic interpretation
@@ -35,9 +83,13 @@ out of awareness.
 - **[2026-05-11] Tempo subsystems scattered across SongLab.** TempoState
   is the user-input tempo only. Pre-existing tempo state in
   harmony-state's progressionState, skratch-studio, rhythm/,
-  polyrhythm/, relative-key-trainer. Unification deferred to Session
-  8 of chord/melody arc.
-  See: `docs/active-plans/chord-melody-build-plan.md` backburner section.
+  polyrhythm/, relative-key-trainer. Unification was originally
+  scheduled for Session 8 of the chord/melody arc, which paused
+  2026-05-14. Thread carries forward independently; the review
+  inventory is documented in the chord-melody build plan's backburner
+  section and remains valid reference material.
+  See: `docs/active-plans/chord-melody-build-plan.md` (on
+  `audio-onset-analysis`) backburner section.
 
 - **[2026-05-11] OQ namespace collision across design docs.**
   Multiple design docs each have their own OQ1, OQ2, etc., with no

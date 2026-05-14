@@ -60,6 +60,54 @@ Plan and architect with Claude.ai (Opus for big-picture, Sonnet for
 targeted). Build with Claude Code. Adversarial review with Gemini.
 I manage all git.
 
+### Read-and-report before non-trivial Claude Code builds
+For Claude Code prompts that touch existing code, the default shape
+is: prompt asks Claude Code to read the relevant files, report
+findings, propose a plan, and stop before writing code. Human
+reviews the findings against expectation, sends a go-ahead (possibly
+with corrections), then code lands.
+
+The read phase is doing real work — it grounds Claude Code in the
+actual codebase rather than its training-data priors about how code
+"usually" looks. The pause is doing real work too — it surfaces
+wrong-shape interpretations before they become wrong code.
+
+Skip the pattern when:
+- The prompt is fully greenfield (no existing code to fit into).
+- The edit is trivial (changing a constant, fixing a typo).
+- The prompt itself fully specifies the structure.
+
+For especially load-bearing changes, split into two separate prompts
+— one read-only, one build — with explicit human intervention
+between them. The combined-prompt-with-pause form is the default;
+the two-prompt form is for higher-stakes work.
+
+### Use Claude Code as a reading tool during planning
+Planning conversations in claude.ai benefit from being grounded in
+real code, not Claude.ai's recollection or inference of what the
+code looks like. When a planning conversation touches existing
+code — a module's API surface, a function's behavior, the shape of
+a data structure, the call sites of a thing, or just the general
+territory the plan is about to operate on — proactively use Claude
+Code to read the relevant files and report findings *into the
+planning conversation*. The build, if any, comes later.
+
+This is parallel to read-and-report-before-builds but distinct: the
+goal isn't to prepare a build prompt, it's to keep the planning
+conversation honest. Claude.ai working from a stale or hallucinated
+model of the code produces plans that don't survive contact with
+the actual codebase. Reading can also surface things the
+conversation didn't yet know to ask about — module structures that
+make the original framing wrong, dependencies that change the
+priority order, dead code that should be cleaned up first. Five
+minutes of read-during-planning saves more than five minutes of
+plan-rework later.
+
+Lean toward reading whenever existing code is in the territory of
+the conversation, not just when a specific claim needs verification.
+The cost of an unnecessary read is low; the cost of planning
+against a hallucinated model is high.
+
 ### Standing rules on file scope
 Don't touch the following without explicit lift:
 - harmonograph-view.js
