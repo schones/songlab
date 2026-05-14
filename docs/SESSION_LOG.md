@@ -1,6 +1,332 @@
 # Session Log
 
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
+
+## 2026-05-13 — Cantor arc pivot: from classifier to presentational
+
+### Started
+Session 3 of the chord/melody classifier arc on `audio-onset-analysis`.
+Plan from `docs/active-plans/chord-melody-build-plan.md`: build the
+foundation harness + classifier minimum + comparison logic, get T1.1
+(single sustained note) passing. Start-of-session ritual (second time
+running it): read yesterday's SESSION_LOG entry, propose STATUS.md
+updates from Session 2's landed work, scan RADAR.md for items affected
+by Session 2.
+
+STATUS.md edits proposed and accepted (consolidated entry under
+"Chord/melody classifier arc — Sessions 1–2 complete"; deferred to
+end-of-session commit). RADAR scan complete; the sus2/sus4 entry from
+Session 2 closeout was well-placed, no other items changed status,
+deliberately did not add a "test convention forming" entry yet (decided
+to revisit after a third file wants self-tests).
+
+### Landed before the pivot
+
+**`tools/regenerate-test-json.py` — structured `expected` field**
+Extended the parser to convert bulleted Expected blocks in the
+chord-melody test corpus into structured intervals
+(`{from_ms, to_ms, state, identity, confidence, effective_set}`).
+Always-present fields with explicit nulls; identity emitted as
+`{root: <PC 0-11>, quality: <string>}`. Hard-classifier-shaped;
+future probabilistic interpretation will require a schema rev
+(flagged in code comment). Loose-prose and dual-expected-block
+tests cleanly produce `expected: null` with `expected_null_reason`
+(`'loose_prose'` or `'dual_block'`). Summary print at script
+completion groups outcome by category. `--self-test` flag with
+~25 assertions across 8 categories.
+
+Classification outcome on the current corpus: 10 structured,
+13 loose_prose, 3 dual_block. The illustrative summary in the
+Claude Code prompt (22/4) didn't match what the rules-as-written
+actually produced — tests with narrative-mixed bullets (T2.7, C.3)
+or symbolic times (D.1) demoted to loose_prose, and many tests
+were already prose-only.
+
+Committed on `audio-onset-analysis` (commit `f15e67a`, pushed).
+
+### The pivot
+
+After the parser landed, the planned next step was Y prompt 2 of
+Session 3's four-prompt structure: build the minimum classifier.
+Instead, the session turned.
+
+The trigger was a worry surfaced directly:
+
+> "I had this vision of a cool tool that would allow for a visual
+> interpretation of music — with chords of different flavors
+> displayed distinctly and melodies living above that. But we've
+> spent weeks now and I don't think we're getting closer to this."
+
+That reframed the question from "is our test format elegant?"
+(layer 3 of the classifier infrastructure) to "is the classifier
+the right answer at all?" (layer 1).
+
+Three observations made the doubt sharp:
+
+1. **Cantor has never really worked.** Last week's iteration had
+   notes above C4 silently dropped because they were considered
+   "melody" — broken in a different way than what `_splitPoint`
+   should have produced.
+2. **The harmonograph sparkle was visually cool but didn't represent
+   the music.** Pretty, not meaningful.
+3. **Multiple weeks of work toward the vision; the vision still not
+   reified.**
+
+Walked through what a visual approach could look like without a
+classifier. Three sketches surfaced:
+- (A) Temporal-density clustering — but still doing some interpretation.
+- (B) Pitch-class collapse — just rendering the sounding set.
+- (C) "Lit Tonnetz triangles for any all-three-vertex-PCs-sounding
+  triangle, plus dynamic glyphs per sounding MIDI note, with no
+  chord-vs-melody distinction." Viewer's brain does the work.
+
+(C) felt right. The framing that crystallized it:
+**presentational, not interpretive.** The visualization shows the
+data; the human ear/eye system does the rest. This has a property
+the classifier didn't: it's *correct by construction* — no T3.1
+false-positives, no "is this a chord or a fast melodic run" judgment
+calls, because the visualization makes no such claim.
+
+A second framing landed simultaneously: **the Tonnetz already encodes
+chord shapes geometrically.** A Cmaj7 is *literally* the union of a
+C-major triangle and an E-minor triangle's pitch classes. Lighting
+both triangles is *more honest* than picking one and labeling it
+"the chord." This is also a more elegant home for the kind of harmonic
+ambiguity that the probabilistic-interpretation thread (Session 2 RADAR
+entry) was reaching for — spatial multi-triangle expression instead of
+likelihood lists.
+
+Decision: fork. New approach gets a dedicated branch and a dedicated
+build effort. The classifier arc is *paused*, not closed — its
+artifacts (TempoState from Session 1, chord-resolver power-chord +
+self-tests from Session 2, parser extension from this morning) remain
+valid as general infrastructure and may be useful for future SongLab
+features. But cantor as a *consumer* of the classifier is being shelved.
+
+### Landed after the pivot
+
+**`cantor-presentational-spike` branch off dev.** Throwaway-by-design,
+sized to validate the visual idea in an hour before kids' homecoming.
+
+Used the read-and-report Claude Code pattern (prompt asks Claude Code
+to read relevant files, report findings + proposed plan, *stop before
+code*). Surfaced before any code landed: the existing cantor's 3D
+toroidal lattice (12×4, 96 triangles with `type: 'major'|'minor'`
+field), Canvas 2D rendering, MusicalEventStream subscription, lattice
+visual center at canvas (width/2, height/2), the entire audio
+routing path through chord-detection → HarmonyState (the
+interpretation we wanted to skip).
+
+Three new artifacts:
+- `static/shared/cantor-presentational-view.js` — `CantorPresentationalView`
+  class. Reuses substrate rendering, 3D math, drift+breathing from
+  `cantor-view.js`. Adds: `_notes` map driven by MusicalEventStream;
+  per-frame lit-triangle pass (set membership of vertex PCs in
+  sounding-PC set, back-face attenuation preserved); per-glyph anchor
+  (halo + hot core) at the lattice instance closest to canvas center,
+  offset radially outward by `(floor(midi/12) - 5) * 18px`; particle
+  pool (500 particles, harmonograph-pattern-style) spawning from
+  active glyphs.
+- `templates/cantor-spike.html` — stripped fork of cantor.html. Full
+  viewport, keyboard toggleable, hardware row fixed top-left.
+- `/cantor-spike` route in `app.py`.
+
+Iteration during the hour:
+- Initial spike used a single warm-white fill for lit triangles
+  (`rgba(255, 235, 200, 0.35)`). Recognized in the moment that
+  coloring triangles by their *intrinsic lattice geometry* (major
+  vs minor) is not classifier work — the type is a static property
+  of each triangle, not derived from analyzing the sounding set.
+  Added `LIT_TRIANGLE_MAJOR_RGBA` (warm gold) and
+  `LIT_TRIANGLE_MINOR_RGBA` (cool blue), branching on `tri.type`.
+- First color attempt rendered everything as gray — turned out the
+  alphas were too low (0.30-0.35 multiplied by back-face attenuation
+  ~0.3-0.5 → effective alpha ~0.10-0.17, invisible). Cranked to
+  0.55/0.50.
+- Then *all* triangles rendered as the minor (blue) color despite
+  the bump. Diagnosis: the spike's `_buildLattice3D` had dropped the
+  `type` field when the model copied from cantor-view.js. `tri.type`
+  was `undefined`, `undefined === 'major'` was false, every triangle
+  fell through to minor. Two-line fix to add `type: 'major'` and
+  `type: 'minor'` to the two `triangles.push` sites.
+- Full-window canvas requested mid-iteration ("I want more real
+  estate badly"). Quick Claude Code change to make `#cantor-stage`
+  fill 100vw × 100vh, keyboard toggleable.
+- Audio path added late afternoon via the existing AudioInput +
+  input-provider abstraction. Monophonic YIN via mic_pitch modality,
+  bridged into MusicalEventStream with `source: 'audio'`. Status
+  pill: "monophonic — single notes only." Swap-point comment block
+  in place above `createInputProvider` for the eventual polyphonic
+  detector. **Importantly: bypassed chord-detection.js entirely.**
+  The presentational view never imports HarmonyState or chord-detection.
+- Feedback on MacBook mic from speaker output → mic loop. Solution
+  was environmental (use Scarlett + headphones) rather than
+  architectural; deferred sampler-suppression-when-mic-active as a
+  later thought.
+
+Spike commit on `cantor-presentational-spike` (commit `eb0d33a`,
+not pushed yet).
+
+### Validation
+
+Played through the Launchkey 49 once the colors were right.
+Glissando + plunked-chord sequence (D-G-B → D-F-A → D-F#-A) lit
+up the lattice cleanly: voice-leading visible as triangles shifting
+between adjacent harmonies, the F-to-F# move resolving to D-major
+with no awkward chord-identity-update jank. Tested through
+"Stressed Out," "Jupiter's Faerie" (Johnny Blue Skies, *Passage Du
+Desir*), 12-bar blues. Multi-triangle expression of extended
+harmony (Cmaj7 lighting both C-major triangle and E-minor triangle)
+read as beautiful, not busy. Major→minor swaps on a fixed root
+read clearly via the warm→cool color shift.
+
+The reaction was unprompted and direct: "this is fun."
+
+That was the evaluation. The vision the morning's classifier arc
+was supposed to enable is, instead, working *without* the classifier.
+
+### Setup for next session
+
+The day's work needs to continue in a documentation block tomorrow:
+- **STATUS.md update** — mark the chord/melody arc paused (not closed),
+  note the cantor presentational fork, point at the new docs.
+- **RADAR.md update** — revisit the sus2/sus4 entry's priority now
+  that no near-term classifier or Voicing Explorer work consumes
+  it. Add new threads: polyphonic audio detection as future
+  infrastructure problem; possibly the corpus restructuring finding
+  (now dropped in priority given the arc is paused).
+- **New design doc** — `docs/cantor-presentational-design.md`.
+  Captures the vision, the philosophy ("presentational, not
+  interpretive"), the core mechanisms, what's out of scope (no
+  classifier, no chord-state, no claim that the visualization
+  *tells* you what chord is being played), and the relationship to
+  the classifier arc (sibling, not successor).
+- **New build plan** — `docs/active-plans/cantor-presentational-build-plan.md`.
+  Session-by-session sized work to polish the spike into a real
+  cantor replacement; eventual merge to dev; polyphonic audio
+  as a downstream session.
+- **Pause note for the classifier arc** — short addendum to
+  `docs/active-plans/chord-melody-build-plan.md` marking the arc
+  paused, explaining why, pointing at the new approach.
+- **WORKING_STYLE.md addition** — the read-and-report convention
+  for non-trivial Claude Code prompts touching existing code
+  (text drafted in chat today, ready to drop in).
+
+Open architectural questions to think about over the next day or two:
+- **Polyphonic audio detection.** Real future-work problem. CREPE
+  Pro tier is named in STATUS.md as the upgrade path; Basic Pitch
+  and chroma-features approaches are alternatives. The audio path
+  is architected for the swap; the detector behind input-provider's
+  mic_pitch is the only swappable piece.
+- **Bass Tonnetz layer.** Filtered subset of sounding-PC set driving
+  an independent visual layer (notes below some register threshold).
+  Cheap to add given the current architecture; design doc will
+  capture the *general* mechanism ("filtered subsets drive
+  independent layers"), of which bass Tonnetz is one application.
+- **Spike-to-production path.** The current spike at `/cantor-spike`
+  is throwaway-quality code. Decision needed: does the spike grow
+  into the real cantor replacement (replacing `/cantor`'s view), or
+  does a clean rebuild happen from the design doc? Probably the
+  former, but worth being deliberate about it.
+
+### Calibration notes
+
+- **Pivot question came late.** The "is the classifier the right
+  answer?" doubt could have surfaced at the start of Session 3, or
+  at the start of the arc, or at the start of the week. It surfaced
+  instead halfway through Session 3's parser extension follow-up,
+  after Claude had already been driving the conversation toward
+  Y prompt 2 of a four-prompt session structure. Calibration on
+  Claude's side: when a multi-week arc starts feeling friction-y at
+  the detail level (the test corpus's mixed-prose-and-bullets shape
+  was friction), that's a signal worth treating as load-bearing,
+  not as a quirk to engineer around. Today's friction wasn't really
+  about the parser — it was about whether the corpus existed for
+  the right reasons. Pushed too hard on parser elegance, not hard
+  enough on whether-this-was-worth-doing.
+- **Read-and-report Claude Code pattern is now a working convention.**
+  Used twice today (cantor spike build, audio path addition). Both
+  times the read phase caught structural surprises that would have
+  produced wrong-shape code if skipped. To be added to WORKING_STYLE.md
+  tomorrow. The pattern is: prompt asks Claude Code to read relevant
+  files, report findings + proposed plan, *stop before code*; human
+  reviews findings against expectations, sends go-ahead (with
+  corrections if needed); code lands. Skip the pattern for fully
+  greenfield work, trivial edits, or prompts that fully specify
+  structure. For especially load-bearing changes, split into two
+  separate prompts (read-only + build) with explicit intervention
+  between them.
+- **Music recommendation discipline failed twice.** "Shida" should
+  have triggered a web search instead of memory-based guessing
+  (Shida is a Khruangbin track on *Mordechai*, the album recommended
+  to start the session — context I already had). "Jupiter's Faerie"
+  attribution slip later (Stewart Copeland reference instead of
+  recognizing the Johnny Blue Skies track from *Passage Du Desir*,
+  which is in userMemories context). Both were Claude reaching for
+  confident-sounding answers from memory rather than searching or
+  acknowledging uncertainty. Calibration: from here, music
+  references go through search or get an honest "I don't know
+  which" before recommendations land.
+- **"This is fun" is the right evaluation signal.** Not "does it
+  look polished" or "is the alpha right" — the underlying question
+  is whether the visualization is doing the thing the vision wants.
+  Today's answer was clear and unprompted. That's the gold standard
+  for whether to keep building.
+- **Splitting work across Claude windows is workflow, not paranoia.**
+  Discussed mid-session: new Claude Code window per new task; same
+  window when a prompt is *continuing* a paused task (e.g.,
+  read-and-report → go-ahead). Today's spike used the same window
+  for read-and-report + go-ahead correctly, which is why Claude Code
+  could act on its own findings without re-reading.
+
+### Flagged for later
+
+- **Sus2/sus4 cross-template inversion equivalence** (RADAR thread
+  from 2026-05-12) is now lower priority. No near-term classifier
+  or Voicing Explorer work will consume it. Stays in RADAR active
+  threads but priority should be downgraded in tomorrow's RADAR
+  pass.
+- **Polyphonic audio detection** — new RADAR thread tomorrow. The
+  monophonic limitation of YIN is real and the architectural swap
+  point is in place; the actual implementation is a real problem
+  worth dedicated thought before tackling.
+- **Corpus restructuring finding** — the chord/melody test corpus
+  is much more prose-heavy than initially estimated (10 structured
+  vs 13 loose-prose vs 3 dual-block, not 22/4 as originally guessed).
+  Was originally going to push the build plan; now pushes nothing
+  because the arc is paused. Worth a note in tomorrow's RADAR pass
+  but priority is "future" not "now."
+- **RD-2000 USB cable** — small future-self todo. Cantor's
+  presentational visualization deserves to be played on the
+  RD-2000's weighted action. USB-B-to-USB-A cable is cheap and
+  ubiquitous; an afternoon's worth of sourcing.
+- **Sampler-suppression-when-mic-active** — when the audio path is
+  feeding mic input, the MIDI sampler probably shouldn't *also* be
+  playing through speakers (creates feedback loops). Architectural
+  question, not urgent.
+- **Spike branch's eventual fate** — promote to real cantor
+  replacement (merge into dev as the new `/cantor`), or rebuild
+  cleanly from the design doc with the spike as reference? Decision
+  for the next planning session.
+
+### Out of scope / deferred
+- All of the chord/melody arc's remaining sessions (3–8) are
+  paused. Their corresponding deliverables (classifier build,
+  parameter tuning, cantor-view integration) are not being pursued.
+  Branch `audio-onset-analysis` stays alive but unmerged.
+- T3.1, T3.2, T3.3 in the test corpus — the known-hard cases the
+  classifier wasn't expected to handle — are now moot for cantor
+  but remain in the corpus as design exercises if the classifier is
+  ever revived.
+- The 2026-05-12 chord-resolver self-tests pattern ("test convention
+  forming") observation has not produced a third file yet. Decision
+  about WORKING_STYLE.md promotion deferred indefinitely; presentational
+  cantor's first session may produce a third self-tested file but
+  there's no rush.
+
+
+
+
 ## 2026-04-29 (morning)
 
 
