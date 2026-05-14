@@ -109,7 +109,7 @@ Explicitly *not* required for done:
   voice-leading work
 - M.1 — pending until transcription
 - Audio corpus — deferred until MIDI corpus passes
-- Audit doc update on `audio-onset-analysis` — independent thread
+- Audit doc update on `chord-melody-research` — independent thread
 - Rendering treatment for declared vs implied chord (OQ2) —
   prototype after classifier works
 
@@ -318,7 +318,7 @@ explicitly held with a documented reason).
 
 ## What stays backburner during this arc
 
-- Audit doc on `audio-onset-analysis`
+- Audit doc on `chord-melody-research`
   (`docs/audio-analysis-orchestration.md`) — stale, needs update,
   but doesn't block chord/melody work.
 - Gamification work — `game-flow.js` extraction, adaptive engine
