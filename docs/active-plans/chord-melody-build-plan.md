@@ -15,6 +15,53 @@
 
 ## Status
 
+**2026-05-14 — Arc paused.** The classifier framing was
+reconsidered on 2026-05-13: the deeper question is whether
+Cantor needs to *classify* chord vs melody at all, or whether a
+*presentational* view (lit Tonnetz triangles for sounding
+triads, plus per-note glyphs — no classification step) better
+serves the philosophy. A one-hour spike on
+`cantor-presentational-spike` validated the presentational
+approach with real music. The new path forward for Cantor
+Phase 2 is presentational, not classifier-based.
+
+This arc is paused, not closed. Artifacts produced through
+Sessions 1–2 plus 2026-05-13's parser extension remain valid
+infrastructure:
+- `static/shared/tempo-state.js` (Session 1) — independently
+  useful; cantor's main page already uses it.
+- `chord-resolver.js` power-chord template + inversion
+  verification (Session 2) — independently useful for any
+  consumer of chord-resolver.
+- Parser extension (2026-05-13) — independently useful.
+
+The session-by-session plan below is intact and recoverable
+if/when the arc resumes. Most likely resumption scenario: a
+future use case for chord/melody classification surfaces
+(games, analytics, transcription) that the presentational view
+doesn't subsume.
+
+**Research-active disposition.** This arc is paused as
+*production* work but kept warm as a personal research interest.
+The classification problem is intrinsically interesting (musical,
+mathematical, signal-processing) independent of whether it ever
+ships into SongLab. Background experimentation continues as
+bandwidth allows; specific threads tracked in RADAR.md. Production
+work on Cantor Phase 2 (the presentational arc) takes priority
+when scheduling conflicts arise.
+
+**See:**
+- `docs/cantor-presentational-design.md` (on `dev`) — the
+  presentational design and philosophy.
+- `docs/active-plans/cantor-presentational-build-plan.md` (on
+  `dev`) — the 5-session build plan for the new path forward.
+- `docs/SESSION_LOG.md` 2026-05-13 entry (on `dev`) — the
+  pivot narrative.
+
+---
+
+### Previous status (archived)
+
 **2026-05-11** — Session 1 complete (OQ1 resolved; TempoState
 landed and wired to cantor's main page). Next session: Session 2
 (chord-resolver power-chord extension + OQ5 verification).
@@ -339,3 +386,29 @@ drafted. Definition of done established. Risk tracking started.
   interpretation as exploratory thread.
 - Status block updated: Session 2 complete, Session 3 next
   (foundation harness + T1.1).
+
+### 2026-05-13 — Parser extension (start of Session 3, then pivot)
+- Parser extension prompt landed (start-of-session work for what
+  was planned as Session 3 — foundation harness + T1.1).
+- Mid-day, the framing question surfaced: does Cantor need a
+  classifier at all, or would a presentational view better serve
+  the philosophy? Exploration produced a presentational design;
+  one-hour spike on `cantor-presentational-spike` validated it
+  with real music (Stressed Out, Jupiter's Faerie, 12-bar blues,
+  D-G-B / D-F-A / D-F#-A voice-leading test).
+- Decision: pause this arc, pursue presentational approach for
+  Cantor Phase 2.
+- New design doc `docs/cantor-presentational-design.md` landed
+  on dev. Full pivot narrative in `docs/SESSION_LOG.md` 2026-05-13.
+
+### 2026-05-14 — Arc paused (this addendum)
+- Status block updated to reflect paused state. Previous status
+  preserved as "Previous status (archived)" for the record.
+- Session-by-session plan kept intact for possible future
+  resumption.
+- Research-active disposition noted: arc is paused as production
+  work but kept warm as personal research interest. Specific
+  background threads tracked in RADAR.md.
+- Build plan for the new presentational path created on dev:
+  `docs/active-plans/cantor-presentational-build-plan.md`.
+- STATUS.md updated on dev to reflect the pivot.
