@@ -130,7 +130,7 @@
 
 {% block content %}
 <section id="cantor-stage" class="cn-stage" aria-label="Cantor spike visualization">
-  <!-- CantorPresentationalView mounts its canvas here. -->
+  <!-- CantorView mounts its canvas here. -->
 </section>
 
 <section class="cn-hardware" aria-label="Audio hardware">
@@ -155,8 +155,8 @@
 <script type="module">
   import { KeyboardView }
     from '{{ url_for("static", filename="shared/keyboard-view.js") }}';
-  import { CantorPresentationalView }
-    from '{{ url_for("static", filename="shared/cantor-presentational-view.js") }}';
+  import { CantorView }
+    from '{{ url_for("static", filename="shared/cantor-view.js") }}';
   import { MIDIInput }
     from '{{ url_for("static", filename="shared/midi-input.js") }}';
   import { MusicalEventStream }
@@ -214,7 +214,7 @@
       },
     });
 
-    const view = new CantorPresentationalView();
+    const view = new CantorView();
     view.init('cantor-stage');
     if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
       window.cantorSpike = view;

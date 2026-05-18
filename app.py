@@ -283,10 +283,6 @@ def art():
 
 @app.route("/cantor")
 def cantor():
-    # Sibling visualization to Harmonograph — interprets musical content
-    # (melody, harmony) rather than raw audio features. See
-    # docs/cantor-design.md and static/shared/cantor-view.js. Currently
-    # the v1 scaffold (Section 7); render path is a placeholder.
     return render_template("cantor.html")
 
 

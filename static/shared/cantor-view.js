@@ -82,7 +82,7 @@ const PARTICLE_WIGGLE = 0.35;
 const PARTICLE_GLOW_MUL = 6;
 const PARTICLE_GLOW_ALPHA_INNER = 0.70;
 
-export class CantorPresentationalView {
+export class CantorView {
   constructor() {
     this.container = null;
     this.canvas = null;
@@ -600,4 +600,4 @@ export class CantorPresentationalView {
   }
 }
 
-export default CantorPresentationalView;
+export default CantorView;
