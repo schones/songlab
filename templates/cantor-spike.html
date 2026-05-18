@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+{% block theme %}dark{% endblock %}
+{% block title %}Cantor Spike · SongLab{% endblock %}
+
+{% block head %}
+<style>
+  /* Full-viewport spike — the page is the lattice. Layers over the
+     base.html nav by design. Body scroll is locked. */
+  html, body { overflow: hidden; }
+
+  .cn-stage {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 10;
+    overflow: hidden;
+  }
+
+  /* Toggle button — top-right, low contrast, doesn't compete for focus. */
+  .cn-kb-toggle {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 30;
+    background: rgba(28, 28, 36, 0.55);
+    color: rgba(242, 239, 230, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font: inherit;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+  .cn-kb-toggle:hover {
+    color: rgba(242, 239, 230, 0.90);
+    background: rgba(28, 28, 36, 0.80);
+  }
+  .cn-kb-toggle[aria-pressed="true"] {
+    color: rgba(242, 239, 230, 0.90);
+    background: rgba(212, 160, 60, 0.18);
+    border-color: rgba(212, 160, 60, 0.50);
+  }
+
+  /* Keyboard overlays the bottom of the canvas. Translucent so the
+     lattice stays partially visible behind it. */
+  .cn-keyboard {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    background: rgba(28, 28, 36, 0.55);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 12px 16px 14px;
+    box-sizing: border-box;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .cn-keyboard--hidden { display: none; }
+
+  /* Hardware row — fixed top-left, mirrors the keyboard-toggle. */
+  .cn-hardware {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(28, 28, 36, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 6px;
+    padding: 6px 10px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .cn-hw-select {
+    background: rgba(18, 18, 26, 0.85);
+    color: rgba(242, 239, 230, 0.90);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font: inherit;
+    font-size: 0.78rem;
+    min-width: 220px;
+    cursor: pointer;
+  }
+
+  .cn-hw-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    color: rgba(242, 239, 230, 0.55);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .cn-hw-status[data-state="active"] {
+    color: rgba(242, 239, 230, 0.90);
+  }
+
+  .cn-hw-status[data-state="error"] {
+    color: #E28A8A;
+  }
+
+  .cn-hw-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #555;
+  }
+
+  .cn-hw-status[data-state="active"] .cn-hw-dot {
+    background: #4CAF50;
+    box-shadow: 0 0 6px rgba(76, 175, 80, 0.6);
+  }
+
+  .cn-hw-status[data-state="error"] .cn-hw-dot {
+    background: #E28A8A;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section id="cantor-stage" class="cn-stage" aria-label="Cantor spike visualization">
+  <!-- CantorPresentationalView mounts its canvas here. -->
+</section>
+
+<section class="cn-hardware" aria-label="Audio hardware">
+  <select class="cn-hw-select" id="audio-input-device" title="Audio input device">
+    <option value="">No audio input</option>
+  </select>
+  <span class="cn-hw-status" id="audio-input-status" data-state="idle">
+    <span class="cn-hw-dot"></span>
+    <span class="cn-hw-status-text">Off</span>
+  </span>
+</section>
+
+<button id="cantor-kb-toggle" class="cn-kb-toggle" type="button"
+        aria-pressed="false" title="Show or hide the on-screen keyboard">Keyboard</button>
+
+<section id="cantor-keyboard-section" class="cn-keyboard cn-keyboard--hidden" aria-label="Keyboard">
+  <div id="cantor-keyboard-container"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { KeyboardView }
+    from '{{ url_for("static", filename="shared/keyboard-view.js") }}';
+  import { CantorPresentationalView }
+    from '{{ url_for("static", filename="shared/cantor-presentational-view.js") }}';
+  import { MIDIInput }
+    from '{{ url_for("static", filename="shared/midi-input.js") }}';
+  import { MusicalEventStream }
+    from '{{ url_for("static", filename="shared/musical-event-stream.js") }}';
+  import { NOTE_NAMES, noteToPC }
+    from '{{ url_for("static", filename="shared/transforms.js") }}';
+  import { AudioInput }
+    from '{{ url_for("static", filename="shared/audio-input.js") }}';
+  import { createInputProvider }
+    from '{{ url_for("static", filename="shared/input-provider.js") }}';
+
+  let _toneLoadPromise = null;
+  function loadToneIfNeeded() {
+    if (window.Tone) return Promise.resolve();
+    if (_toneLoadPromise) return _toneLoadPromise;
+    _toneLoadPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Tone.js failed to load'));
+      document.head.appendChild(s);
+    });
+    return _toneLoadPromise;
+  }
+
+  (async function init() {
+    await loadToneIfNeeded();
+
+    KeyboardView.init('cantor-keyboard-container', {
+      showLabels: true,
+      mode: 'both',
+      singleOctaveHighlight: true,
+      preferredOctave: 4,
+      range: { low: 'C3', high: 'C5' },
+      onNotePlay(noteName, octave) {
+        const midi = _noteNameToMidi(noteName, octave);
+        if (midi == null) return;
+        MusicalEventStream.publish({
+          type: 'noteAttack',
+          pitch: midi,
+          velocity: 0.7,
+          source: 'keyboard',
+          timestamp: Date.now(),
+        });
+      },
+      onNoteRelease(noteName, octave) {
+        const midi = _noteNameToMidi(noteName, octave);
+        if (midi == null) return;
+        MusicalEventStream.publish({
+          type: 'noteRelease',
+          pitch: midi,
+          source: 'keyboard',
+          timestamp: Date.now(),
+        });
+      },
+    });
+
+    const view = new CantorPresentationalView();
+    view.init('cantor-stage');
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      window.cantorSpike = view;
+    }
+
+    _initKeyboardToggle();
+    _initMIDI();
+    _initAudioInput();
+  })();
+
+  function _initKeyboardToggle() {
+    const STORAGE_KEY = 'songlab.cantor-spike.keyboardVisible';
+    const section = document.getElementById('cantor-keyboard-section');
+    const btn = document.getElementById('cantor-kb-toggle');
+    if (!section || !btn) return;
+
+    let visible = false;
+    try { visible = localStorage.getItem(STORAGE_KEY) === '1'; } catch (_) { }
+
+    function apply(v) {
+      visible = v;
+      section.classList.toggle('cn-keyboard--hidden', !v);
+      btn.setAttribute('aria-pressed', v ? 'true' : 'false');
+      try { localStorage.setItem(STORAGE_KEY, v ? '1' : '0'); } catch (_) { }
+    }
+
+    apply(visible);
+    btn.addEventListener('click', () => apply(!visible));
+  }
+
+  async function _ensureToneStarted() {
+    if (!window.Tone) return;
+    try {
+      if (window.Tone.context && window.Tone.context.state !== 'running') {
+        await window.Tone.start();
+      }
+    } catch (_) { /* gesture required; user interaction will retry */ }
+  }
+
+  function _midiToNoteName(midi) {
+    const pc = midi % 12;
+    const octave = Math.floor(midi / 12) - 1;
+    return NOTE_NAMES[pc].replace(/♯/g, '#').replace(/♭/g, 'b') + octave;
+  }
+
+  function _noteNameToMidi(noteName, octave) {
+    const pc = noteToPC(noteName);
+    if (Number.isNaN(pc)) return null;
+    return (octave + 1) * 12 + pc;
+  }
+
+  async function _initMIDI() {
+    if (typeof MIDIInput === 'undefined') return;
+
+    try {
+      await MIDIInput.init();
+      if (MIDIInput.isConnected) {
+        console.log('[cantor-spike] MIDI connected:', MIDIInput.activeDevice?.name);
+      } else {
+        console.log('[cantor-spike] No MIDI device detected.');
+      }
+    } catch (e) {
+      console.warn('[cantor-spike] MIDI init failed:', e);
+      return;
+    }
+
+    let sampler = null;
+    try {
+      sampler = await KeyboardView.getSampler();
+    } catch (e) {
+      console.warn('[cantor-spike] Sampler not available; MIDI will publish events but not play audio.', e);
+    }
+
+    MIDIInput.onNoteOn(async (midiNote, velocity, channel) => {
+      if (channel === 10) return;
+      MusicalEventStream.publish({
+        type: 'noteAttack',
+        pitch: midiNote,
+        velocity: velocity / 127,
+        source: 'midi',
+        timestamp: Date.now(),
+        channel,
+      });
+      if (sampler) {
+        try {
+          await _ensureToneStarted();
+          sampler.triggerAttack(_midiToNoteName(midiNote), Tone.now(), velocity / 127);
+        } catch (_) { /* transient — ignore */ }
+      }
+    });
+
+    MIDIInput.onNoteOff((midiNote, channel) => {
+      if (channel === 10) return;
+      MusicalEventStream.publish({
+        type: 'noteRelease',
+        pitch: midiNote,
+        source: 'midi',
+        timestamp: Date.now(),
+      });
+      if (sampler) {
+        try { sampler.triggerRelease(_midiToNoteName(midiNote), Tone.now() + 0.05); }
+        catch (_) { }
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // AUDIO INPUT — mic/interface → MusicalEventStream (source: 'audio')
+  //
+  // Device-selection via AudioInput (dropdown, Scarlett auto-detect).
+  // The selected stream feeds input-provider's mic_pitch modality,
+  // which runs YIN and converts frame-polled pitch into noteOn/noteOff.
+  // We bridge those into MusicalEventStream.publish so the spike's
+  // presentational view reacts identically to MIDI input — no chord
+  // detection, no HarmonyState, no interpretation in the path.
+  //
+  // Monophonic by construction: YIN can't resolve simultaneous pitches,
+  // so strummed chords will only light triangles via overlapping decay
+  // tails. See the swap-point comment below for the upgrade hook.
+  // ═══════════════════════════════════════════════════════════════
+  let _audioProvider = null;
+
+  function _hwEls() {
+    return {
+      select: document.getElementById('audio-input-device'),
+      status: document.getElementById('audio-input-status'),
+      statusText: document.querySelector('#audio-input-status .cn-hw-status-text'),
+    };
+  }
+
+  function _populateAudioDeviceDropdown(devices) {
+    const { select } = _hwEls();
+    if (!select) return;
+    const previous = select.value;
+    const activeId = AudioInput.activeDevice ? AudioInput.activeDevice.deviceId : '';
+    select.innerHTML = '';
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'No audio input';
+    select.appendChild(placeholder);
+
+    for (const d of devices) {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = (d.isInterface ? '🎚 ' : '🎤 ') + d.label;
+      select.appendChild(opt);
+    }
+
+    const desired = activeId || previous || '';
+    if (desired && [...select.options].some(o => o.value === desired)) {
+      select.value = desired;
+    }
+  }
+
+  function _updateAudioInputStatus() {
+    const { status, statusText } = _hwEls();
+    if (!status) return;
+    const active = AudioInput.isActive && AudioInput.activeDevice;
+    status.dataset.state = active ? 'active' : 'idle';
+    statusText.textContent = active ? 'monophonic — single notes only' : 'Off';
+  }
+
+  // Bridge input-provider's noteOn/noteOff into MusicalEventStream.
+  // KeyboardView builds note names with Unicode '♯'; noteToPC handles both.
+  function _audioNoteToMidi(noteName, octave) {
+    const pc = noteToPC(noteName);
+    if (Number.isNaN(pc)) return null;
+    return (octave + 1) * 12 + pc;
+  }
+
+  function _handleAudioNoteOn({ note, octave, velocity }) {
+    const midi = _audioNoteToMidi(note, octave);
+    if (midi == null) return;
+    MusicalEventStream.publish({
+      type: 'noteAttack',
+      pitch: midi,
+      velocity: (typeof velocity === 'number' ? velocity : 100) / 127,
+      source: 'audio',
+      timestamp: Date.now(),
+    });
+  }
+
+  function _handleAudioNoteOff({ note, octave }) {
+    const midi = _audioNoteToMidi(note, octave);
+    if (midi == null) return;
+    MusicalEventStream.publish({
+      type: 'noteRelease',
+      pitch: midi,
+      source: 'audio',
+      timestamp: Date.now(),
+    });
+  }
+
+  function _destroyAudioProvider() {
+    if (_audioProvider) {
+      try { _audioProvider.destroy(); } catch (_) { /* ok */ }
+      _audioProvider = null;
+    }
+  }
+
+  function _startAudioProvider() {
+    _destroyAudioProvider();
+
+    // ── Audio detection layer ──────────────────────────────────────
+    // Monophonic YIN today via input-provider's mic_pitch modality.
+    // Future: swap for a polyphonic detector (CREPE Pro, Basic Pitch,
+    // or chroma-features approach) to enable strummed-chord recognition.
+    // Interface contract: emit noteOn/noteOff events into
+    // MusicalEventStream.publish with source: 'audio'. Everything
+    // upstream (AudioInput, device dropdown) and downstream
+    // (MusicalEventStream subscribers) stays the same.
+    const analyser = (KeyboardView && KeyboardView.getAnalyser)
+      ? KeyboardView.getAnalyser() : null;
+
+    _audioProvider = createInputProvider({
+      gameId: 'cantor-spike',
+      supported: { pitch: { mic: true, interface: true } },
+      analyser,
+    });
+    _audioProvider.on('noteOn', _handleAudioNoteOn);
+    _audioProvider.on('noteOff', _handleAudioNoteOff);
+  }
+
+  async function _initAudioInput() {
+    const { select, status } = _hwEls();
+    if (!select) return;
+
+    let initialDevices = [];
+    try {
+      const { devices } = await AudioInput.init();
+      initialDevices = devices;
+    } catch (e) {
+      console.warn('[cantor-spike] AudioInput init failed:', e);
+      if (status) {
+        status.dataset.state = 'error';
+        const t = status.querySelector('.cn-hw-status-text');
+        if (t) t.textContent = 'Unavailable';
+      }
+      return;
+    }
+
+    _populateAudioDeviceDropdown(initialDevices);
+    // restoreDevice() inside init() may have selected a previous device;
+    // start the spike with mic off so getUserMedia isn't triggered until
+    // the user explicitly picks a device on this page load.
+    AudioInput.disconnect();
+    _updateAudioInputStatus();
+
+    AudioInput.onDeviceChange((devices) => {
+      _populateAudioDeviceDropdown(devices);
+      _updateAudioInputStatus();
+    });
+
+    select.addEventListener('change', async (e) => {
+      const deviceId = e.target.value;
+      _destroyAudioProvider();
+      AudioInput.disconnect();
+
+      if (!deviceId) {
+        _updateAudioInputStatus();
+        return;
+      }
+
+      try {
+        // The change event is a user gesture, so we can resume Tone here.
+        // AudioInput.selectDevice requires a running Tone context to wire
+        // the MediaStreamSource into the shared analyser (cross-context
+        // node wiring is forbidden by Web Audio).
+        if (window.Tone && window.Tone.context && window.Tone.context.state !== 'running') {
+          try { await window.Tone.start(); } catch (_) { }
+        }
+
+        const analyser = (KeyboardView && KeyboardView.getAnalyser)
+          ? KeyboardView.getAnalyser() : null;
+        if (analyser) AudioInput.setAnalyser(analyser);
+
+        const ok = await AudioInput.selectDevice(deviceId);
+        if (!ok) throw new Error('selectDevice returned false');
+
+        _updateAudioInputStatus();
+        _startAudioProvider();
+        _audioProvider.setModality('mic_pitch');
+      } catch (err) {
+        console.error('[cantor-spike] device switch failed:', err);
+        const els = _hwEls();
+        if (els.status) {
+          els.status.dataset.state = 'error';
+          const t = els.status.querySelector('.cn-hw-status-text');
+          if (t) t.textContent = 'Permission denied';
+        }
+      }
+    });
+  }
+</script>
+{% endblock %}
