@@ -167,6 +167,10 @@
     from '{{ url_for("static", filename="shared/audio-input.js") }}';
   import { createInputProvider }
     from '{{ url_for("static", filename="shared/input-provider.js") }}';
+  import { create as createChordDetector }
+    from '{{ url_for("static", filename="shared/chord-detection.js") }}';
+  import * as PitchDetection
+    from '{{ url_for("static", filename="shared/pitch-detection.js") }}';
 
   let _toneLoadPromise = null;
   function loadToneIfNeeded() {
@@ -324,18 +328,22 @@
   // ═══════════════════════════════════════════════════════════════
   // AUDIO INPUT — mic/interface → MusicalEventStream (source: 'audio')
   //
-  // Device-selection via AudioInput (dropdown, Scarlett auto-detect).
-  // The selected stream feeds input-provider's mic_pitch modality,
-  // which runs YIN and converts frame-polled pitch into noteOn/noteOff.
-  // We bridge those into MusicalEventStream.publish so the spike's
-  // presentational view reacts identically to MIDI input — no chord
-  // detection, no HarmonyState, no interpretation in the path.
-  //
-  // Monophonic by construction: YIN can't resolve simultaneous pitches,
-  // so strummed chords will only light triangles via overlapping decay
-  // tails. See the swap-point comment below for the upgrade hook.
+  // Two detectors run in parallel on the same audio stream:
+  //   - Pitch (mic_pitch via input-provider, YIN, real octave)
+  //   - Chord (chord-detection.js, chroma template match, fabricated
+  //     octave 4)
+  // Both publish independently to MusicalEventStream with source:
+  // 'audio'. Coincident events from the two paths will collide visually
+  // — intentional, to be observed during play.
   // ═══════════════════════════════════════════════════════════════
   let _audioProvider = null;
+  let _chordDetector = null;
+  let _silenceWatcherId = null;
+  let _silenceCounter = 0;
+  // MIDI numbers currently sounding from the chord detector — used to
+  // synthesize matching noteRelease events on chord change or silence
+  // (chord-detection emits only on change, not on clear).
+  let _heldChordMidi = new Set();
 
   function _hwEls() {
     return {
@@ -375,7 +383,7 @@
     if (!status) return;
     const active = AudioInput.isActive && AudioInput.activeDevice;
     status.dataset.state = active ? 'active' : 'idle';
-    statusText.textContent = active ? 'monophonic — single notes only' : 'Off';
+    statusText.textContent = active ? 'pitch + chord detection (experimental)' : 'Off';
   }
 
   function _handleAudioNoteOn({ note, octave, velocity }) {
@@ -399,6 +407,104 @@
       source: 'audio',
       timestamp: Date.now(),
     });
+  }
+
+  // ── Chord → MusicalEventStream bridge ──────────────────────────
+  // Chord detector emits PCs without octaves and only on change.
+  // Fabricate octave 4 (MIDI = 60 + pc) and synthesize releases
+  // ourselves on every chord change and on silence.
+  function _chordPCsToMidi(pcs) {
+    return pcs.map((pc) => 60 + pc);
+  }
+
+  function _publishChordReleases() {
+    if (_heldChordMidi.size === 0) return;
+    for (const midi of _heldChordMidi) {
+      MusicalEventStream.publish({
+        type: 'noteRelease',
+        pitch: midi,
+        source: 'audio',
+        timestamp: Date.now(),
+      });
+    }
+    _heldChordMidi.clear();
+  }
+
+  function _publishChordAttacks(pcs) {
+    _publishChordReleases();
+    const newMidis = _chordPCsToMidi(pcs);
+    for (const midi of newMidis) {
+      MusicalEventStream.publish({
+        type: 'noteAttack',
+        pitch: midi,
+        velocity: 0.7,
+        source: 'audio',
+        timestamp: Date.now(),
+      });
+      _heldChordMidi.add(midi);
+    }
+  }
+
+  function _startChordDetection() {
+    if (_chordDetector) return;
+    const analyser = (KeyboardView && KeyboardView.getAnalyser)
+      ? KeyboardView.getAnalyser() : null;
+    if (!analyser) return;
+
+    const sourceQuality = AudioInput.getSourceQuality() || 'mic';
+    try {
+      _chordDetector = createChordDetector({ analyser, sourceQuality });
+    } catch (e) {
+      console.warn('[cantor] chord-detection create failed:', e);
+      _chordDetector = null;
+      return;
+    }
+
+    _chordDetector.start((event) => {
+      // Reuse pitch-detection's flatness signal to reject noise-driven
+      // phantom chord detections. Same threshold as pitch-detection's
+      // own gate.
+      const flatness = (typeof PitchDetection !== 'undefined' &&
+                        PitchDetection.getCurrentFlatness)
+        ? PitchDetection.getCurrentFlatness()
+        : 0;
+      if (flatness > 0.4) return;
+      _publishChordAttacks(event.pitchClasses);
+    });
+
+    // Silence watcher: chord-detection.js only emits on chord *change*,
+    // not on silence. 100 ms poll; 5 consecutive quiet samples (~500 ms)
+    // releases the held chord.
+    if (_silenceWatcherId != null) clearInterval(_silenceWatcherId);
+    _silenceCounter = 0;
+    _silenceWatcherId = setInterval(() => {
+      const data = analyser.getValue();
+      if (!data) return;
+      const arr = data[0] instanceof Float32Array ? data[0] : data;
+      let sum = 0;
+      for (let i = 0; i < arr.length; i++) {
+        if (arr[i] > -60) sum += Math.pow(10, arr[i] / 20);
+      }
+      if (sum < 0.02) _silenceCounter++;
+      else _silenceCounter = 0;
+      if (_silenceCounter >= 5 && _heldChordMidi.size > 0) {
+        _publishChordReleases();
+        _silenceCounter = 0;
+      }
+    }, 100);
+  }
+
+  function _stopChordDetection() {
+    if (_chordDetector) {
+      try { _chordDetector.stop(); } catch (_) { /* ok */ }
+      _chordDetector = null;
+    }
+    if (_silenceWatcherId != null) {
+      clearInterval(_silenceWatcherId);
+      _silenceWatcherId = null;
+    }
+    _silenceCounter = 0;
+    _publishChordReleases();
   }
 
   function _destroyAudioProvider() {
@@ -463,6 +569,7 @@
 
     select.addEventListener('change', async (e) => {
       const deviceId = e.target.value;
+      _stopChordDetection();
       _destroyAudioProvider();
       AudioInput.disconnect();
 
@@ -490,6 +597,7 @@
         _updateAudioInputStatus();
         _startAudioProvider();
         _audioProvider.setModality('mic_pitch');
+        _startChordDetection();
       } catch (err) {
         console.error('[cantor] device switch failed:', err);
         const els = _hwEls();
