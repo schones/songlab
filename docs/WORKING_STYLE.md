@@ -147,6 +147,40 @@ flagged TODO.
    gitignore + regenerate-from-source.
 
 
+## Git command sequences — Claude drafting format
+
+When Claude drafts any git command sequence (between-prompt
+verification, end-of-session push, branch operations, recovery
+from a wrong state), use the following template:
+
+​```
+### [name of operation]
+
+**Starting state:** [what should be true before running]
+e.g. "on branch dev, working tree clean, in sync with origin"
+
+**Commands:**
+1. `git command one`
+   Expected: [what you should see]
+2. `git command two`
+   Expected: [what you should see]
+3. `git wha`   # verification checkpoint
+   Expected: [end state]
+
+**Ending state:** [what should be true after]
+
+**If something looks wrong:** [rollback hint, when applicable]
+​```
+
+Use a `git wha` checkpoint at the end of every non-trivial
+sequence (anything more than one command) and at any point where
+the next command depends on the state being a particular way.
+
+Trivial single-command operations (e.g. `git add docs/STATUS.md`)
+don't need the full template — drafted inline is fine. The
+template is for sequences and for any operation crossing branch
+boundaries.
+
 
 ## When something feels off
 
