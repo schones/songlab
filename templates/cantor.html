@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block theme %}dark{% endblock %}
-{% block title %}Cantor Spike · SongLab{% endblock %}
+{% block title %}Cantor · SongLab{% endblock %}
 
 {% block head %}
 <style>
@@ -129,7 +129,7 @@
 {% endblock %}
 
 {% block content %}
-<section id="cantor-stage" class="cn-stage" aria-label="Cantor spike visualization">
+<section id="cantor-stage" class="cn-stage" aria-label="Cantor visualization">
   <!-- CantorView mounts its canvas here. -->
 </section>
 
@@ -217,7 +217,7 @@
     const view = new CantorView();
     view.init('cantor-stage');
     if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-      window.cantorSpike = view;
+      window.cantor = view;
     }
 
     _initKeyboardToggle();
@@ -226,7 +226,7 @@
   })();
 
   function _initKeyboardToggle() {
-    const STORAGE_KEY = 'songlab.cantor-spike.keyboardVisible';
+    const STORAGE_KEY = 'songlab.cantor.keyboardVisible';
     const section = document.getElementById('cantor-keyboard-section');
     const btn = document.getElementById('cantor-kb-toggle');
     if (!section || !btn) return;
@@ -272,12 +272,12 @@
     try {
       await MIDIInput.init();
       if (MIDIInput.isConnected) {
-        console.log('[cantor-spike] MIDI connected:', MIDIInput.activeDevice?.name);
+        console.log('[cantor] MIDI connected:', MIDIInput.activeDevice?.name);
       } else {
-        console.log('[cantor-spike] No MIDI device detected.');
+        console.log('[cantor] No MIDI device detected.');
       }
     } catch (e) {
-      console.warn('[cantor-spike] MIDI init failed:', e);
+      console.warn('[cantor] MIDI init failed:', e);
       return;
     }
 
@@ -285,7 +285,7 @@
     try {
       sampler = await KeyboardView.getSampler();
     } catch (e) {
-      console.warn('[cantor-spike] Sampler not available; MIDI will publish events but not play audio.', e);
+      console.warn('[cantor] Sampler not available; MIDI will publish events but not play audio.', e);
     }
 
     MIDIInput.onNoteOn(async (midiNote, velocity, channel) => {
@@ -378,16 +378,8 @@
     statusText.textContent = active ? 'monophonic — single notes only' : 'Off';
   }
 
-  // Bridge input-provider's noteOn/noteOff into MusicalEventStream.
-  // KeyboardView builds note names with Unicode '♯'; noteToPC handles both.
-  function _audioNoteToMidi(noteName, octave) {
-    const pc = noteToPC(noteName);
-    if (Number.isNaN(pc)) return null;
-    return (octave + 1) * 12 + pc;
-  }
-
   function _handleAudioNoteOn({ note, octave, velocity }) {
-    const midi = _audioNoteToMidi(note, octave);
+    const midi = _noteNameToMidi(note, octave);
     if (midi == null) return;
     MusicalEventStream.publish({
       type: 'noteAttack',
@@ -399,7 +391,7 @@
   }
 
   function _handleAudioNoteOff({ note, octave }) {
-    const midi = _audioNoteToMidi(note, octave);
+    const midi = _noteNameToMidi(note, octave);
     if (midi == null) return;
     MusicalEventStream.publish({
       type: 'noteRelease',
@@ -431,7 +423,7 @@
       ? KeyboardView.getAnalyser() : null;
 
     _audioProvider = createInputProvider({
-      gameId: 'cantor-spike',
+      gameId: 'cantor',
       supported: { pitch: { mic: true, interface: true } },
       analyser,
     });
@@ -448,7 +440,7 @@
       const { devices } = await AudioInput.init();
       initialDevices = devices;
     } catch (e) {
-      console.warn('[cantor-spike] AudioInput init failed:', e);
+      console.warn('[cantor] AudioInput init failed:', e);
       if (status) {
         status.dataset.state = 'error';
         const t = status.querySelector('.cn-hw-status-text');
@@ -499,7 +491,7 @@
         _startAudioProvider();
         _audioProvider.setModality('mic_pitch');
       } catch (err) {
-        console.error('[cantor-spike] device switch failed:', err);
+        console.error('[cantor] device switch failed:', err);
         const els = _hwEls();
         if (els.status) {
           els.status.dataset.state = 'error';

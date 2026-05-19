@@ -1,27 +1,25 @@
 /**
- * cantor-presentational-view.js — SPIKE
- * =====================================
- * Throwaway visualization for /cantor-spike. No classifier, no
- * chord-state machinery. Just:
+ * cantor-view.js
+ * ==============
+ * Presentational visualization of musical input for the /cantor route.
  *
- *   1. The 3D Tonnetz torus substrate (copy of cantor-view.js's
- *      3D lattice — same orientation, drift, breathing).
- *   2. Lit triangles: whenever all three vertex pitch classes are
- *      in the current sounding set, fill the triangle with a warm
- *      white wash. Set membership only — no chord interpretation.
- *   3. Glyphs per sounding MIDI note: anchor (halo + hot core) at
- *      the note's lattice point with radial outward offset by
- *      octave above C4; harmonograph-style sparkle particles
- *      stream off the anchor while sounding. Size scales with
- *      velocity. Anchor fades exponentially on release (~200ms),
- *      glyph gone by ~300ms. In-flight particles age out naturally.
+ * Renders directly onto a 3D Tonnetz torus without any classifier:
+ *   - Lit triangles fill when all three vertex pitch classes are
+ *     currently sounding, colored by intrinsic major/minor geometry.
+ *   - Per-note glyphs anchor at the note's lattice point, offset
+ *     radially outward by octave above C4, sized by velocity.
+ *   - Particle sparkle streams off each glyph while sounding;
+ *     anchors fade exponentially on release.
  *
- * NOT production code. Hardcoded values. Throwaway-spike rules.
+ * Reads from:
+ *   - MusicalEventStream (noteAttack / noteRelease)
+ *
+ * Exposes: class CantorView { init, destroy }
  */
 
 import { MusicalEventStream } from './musical-event-stream.js';
 
-// ── Lattice (3D torus — copied from cantor-view.js) ──────────────
+// ── Lattice (3D torus) ────────────────────────────────────────
 const GRID_COLS_3D = 12;
 const GRID_ROWS_3D = 4;
 const NEIGHBOR_OFFSETS_3D = [
@@ -43,17 +41,8 @@ const GLYPH_RGB = [212, 160, 60];           // #D4A03C — warm gold
 // `type: 'major' | 'minor'` from lattice construction. Minor runs a
 // touch lower alpha so it doesn't dominate when both qualities are lit.
 // Both are tuning hooks; expect to revisit values.
-const LIT_TRIANGLE_MAJOR_RGBA = 'rgba(255, 200, 120, 0.55)';
-const LIT_TRIANGLE_MINOR_RGBA = 'rgba(90, 140, 210, 0.50)';
-
-
-function _parseRGBA(s) {
-  const m = /rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([0-9.]+)\s*\)/.exec(s);
-  if (!m) return [128, 128, 128, 0.3];
-  return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10), parseFloat(m[4])];
-}
-const LIT_TRIANGLE_MAJOR = _parseRGBA(LIT_TRIANGLE_MAJOR_RGBA);
-const LIT_TRIANGLE_MINOR = _parseRGBA(LIT_TRIANGLE_MINOR_RGBA);
+const LIT_TRIANGLE_MAJOR = [255, 200, 120, 0.55];  // warm — major triads
+const LIT_TRIANGLE_MINOR = [90, 140, 210, 0.50];   // cool — minor triads
 
 // Anchor size base — radius at velocity 0.7. Velocity scales linearly.
 const ANCHOR_BASE_R = 14;
@@ -263,8 +252,6 @@ export class CantorView {
     }
   }
 
-  // ── 3D math (copied from cantor-view.js) ────────────────────────
-
   _uvToXYZ(u, v) {
     const R = this._currentMajorR;
     const r = TORUS_MINOR_R;
@@ -468,7 +455,7 @@ export class CantorView {
     const W = this.width, H = this.height;
     const now = performance.now();
 
-    // Drift + breathing — same constants as cantor-view.js.
+    // Drift + breathing.
     const t = this._elapsed;
     this._currentRotY = this._rotY + (Math.PI * 2 / 45) * t;
     const breathFactor = 1 + 0.05 * Math.sin((Math.PI * 2 / 8) * t);
