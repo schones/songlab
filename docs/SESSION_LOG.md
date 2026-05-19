@@ -189,6 +189,47 @@ and the Claude Code review feeding gamification brainstorm. The
 review is likely to redirect work substantially, so finishing
 cantor cleanly first matters.
 
+
+### Evening addendum — regression discovered during play
+
+Started re-exercising `/cantor` with the Launchkey for the polish
+step. Within minutes: no Tonnetz triangles lighting up, no glyphs
+for chords, and the bottom half of the keyboard producing nothing
+in the console. Console logs showed `0 notes` heartbeat for every
+key below a threshold, `1 notes` above it.
+
+Chromatic-scale diagnostic identified the boundary precisely: C4
+(MIDI 60) silent, C#4 (MIDI 61) registers. Same threshold as v1
+cantor's `_splitPoint`. Verified the regression by switching to
+`cantor-presentational-spike` and serving — low keys work cleanly
+on the spike, chords visualize. The gate was introduced somewhere
+in Session 1's three commits.
+
+Two calibration notes worth marking:
+
+The end-of-Session-1 verification was insufficient. Page-loads,
+lattice-renders, no-console-errors was the bar, and the build
+passed all three. None of those exercise the actual functional
+behavior — playing a chord and seeing a triangle light up is the
+real test. Future cleanup-pass verifications should include
+playing through *at least one chord* before declaring the session
+done. The cost of catching this tonight vs catching it three
+sessions from now would have been very different.
+
+The "the spike was validated against real music two weeks ago"
+fact was load-bearing in the diagnosis. It ruled out "the cutoff
+is original spike behavior" and pointed straight at Session 1's
+diff. Worth being honest that I missed this earlier in the
+session — when Dustin first described the symptom, I treated it
+as three loosely-coupled symptoms (monophonic detection, no
+Tonnetz lit, bottom half silent) before recognizing that one
+register-based gate explains all three at once. The chromatic-
+scale step was the diagnostic that sharpened it.
+
+Tomorrow: regression fix before any polish work. The bounded
+diff (3 commits) and clear symptom (MIDI ≤ 60 gated) make the
+find-and-fix small. Resume Session 2 polish work after.
+
 ### Setup for tomorrow
 
 Update STATUS.md at session start (Dustin's protocol — STATUS at
