@@ -1,7 +1,7 @@
 # SongLab Project Status
 
-**Last updated:** 2026-05-14
-**Branch:** `dev` (active — Cantor v1 shipped through 6B; Phase 2 pivoted to presentational approach, see `docs/cantor-presentational-design.md` and `docs/active-plans/cantor-presentational-build-plan.md`) · `cantor-presentational-spike` (validated spike, source for production work) · `chord-melody-research` (classifier arc, paused) · `main` (prod)
+**Last updated:** 2026-05-19
+**Branch:** `dev` (Cantor v1 shipped through 6B; Phase 2 presentational arc in progress on `cantor`) · `cantor` (active — presentational arc Session 1 landed, Session 2 in progress) · `cantor-presentational-spike` (validated spike, retained as known-good reference) · `chord-melody-research` (classifier arc, paused) · `main` (prod)
 **Deploy:** Railway from `main`
 **Active roadmap:** `docs/songlab-build-plan.md` (v4) + `docs/cantor-design.md` + `docs/audio-architecture.md`
 **Platform name:** SongLab · SkratchLab (rebrand complete)
@@ -30,21 +30,44 @@
   `docs/active-plans/chord-melody-build-plan.md` (on
   `chord-melody-research`) for the pause block and arc record.
 
-**Landed on branch `cantor-presentational-spike` (not on dev):**
+**Landed on branch `cantor-presentational-spike` (retained as reference):**
 - Spike implementation of Cantor Phase 2 as a presentational
   view: lit Tonnetz triangles for sounding triads, dynamic
   per-note glyphs (radial octave offset, velocity-scaled size),
   harmonograph-style particle sparkle, color by triad quality.
   Validated live on Launchkey 49 (Stressed Out, Jupiter's
   Faerie, 12-bar blues, voice-leading test). ~1,123 lines in
-  one commit. Source for hybrid promotion to a new production
-  feature branch (see build plan).
+  one commit. Production-promoted to `cantor` branch via
+  Session 1 cleanup pass (2026-05-18); kept as known-good
+  reference.
+
+**Landed on branch `cantor` (not on dev):**
+- Session 1 of the cantor presentational arc: spike code
+  promoted with cleanup pass. Three commits (`c34305c`,
+  `8c95949`, `155b435`):
+  - B1 — branch setup: spike files copied in via
+    `git checkout cantor-presentational-spike -- <files>`;
+    v1 cantor files removed; v1 `/cantor` route stripped from
+    app.py.
+  - B2 — renames + route registration: module
+    `cantor-presentational-view.js` → `cantor-view.js`,
+    class `CantorPresentationalView` → `CantorView`,
+    template `cantor-spike.html` → `cantor.html`, `/cantor`
+    route registered.
+  - B3 — content cleanup: spike-isms stripped (console
+    prefixes, localStorage key, gameId, dev hook, page title,
+    aria-label); duplicate `_noteNameToMidi`/`_audioNoteToMidi`
+    deduped; vestigial `_parseRGBA` indirection replaced with
+    direct array constants matching `GLYPH_RGB`; stale
+    comments removed.
+
 
 **In progress:**
 - Cantor presentational arc — see
   `docs/active-plans/cantor-presentational-build-plan.md`
-  (5 sessions: cleanup/promotion, polish, audio verification,
-  full audio interface input, merge to dev).
+  (5 sessions: cleanup/promotion ✓ landed,
+  polish, audio verification, full audio interface input,
+  merge to dev). Session 2 (in progress): polish pass.
 
 **Open / deferred:**
 - Constellation z-fade vs hard occlusion on torus back side.
