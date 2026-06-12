@@ -2,6 +2,249 @@
 
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
+
+## ## 2026-05-18 — Documentation cleanup + Session 1 of cantor presentational arc
+
+Two halves: documentation backlog from last week's pivot (five
+tasks, four commits across two branches), then Session 1 of the
+cantor presentational arc (three commits to a new `cantor` branch).
+Ended at a clean stopping point with the validated spike landed
+as production-named code under `/cantor`.
+
+### Documentation cleanup
+
+The 2026-05-14 stopping point left a backlog of mechanical writing
+that had to land before Session 1 could start. STATUS.md needed to
+reflect the pivot, RADAR.md needed updates and one new entry per
+deferred thread, the chord/melody build plan needed a pause block,
+the new presentational build plan needed to exist at all, and
+WORKING_STYLE.md needed the read-and-report convention captured.
+
+Drafted the cantor presentational build plan first as a 5-session
+arc: cleanup pass, polish, audio path verification, full audio
+interface input, merge to dev. Session 4 was originally collapsed
+with Session 3 in an earlier draft; expanded after re-reading the
+kickoff prompt that explicitly named full audio interface input as
+the immediate next item. Build plan + STATUS landed as the first
+commit (`9f41aee`).
+
+The pause addendum to the chord/melody build plan turned out to be
+the most consequential piece of writing. Dustin raised mid-drafting
+that he wants to keep tinkering with the classification problem in
+the background — the production decision (pivot away) and the
+personal-interest decision (still interesting) are different. Added
+a "research-active disposition" paragraph naming the distinction
+explicitly, with production work on Cantor Phase 2 having
+scheduling priority when conflicts arise. The chord/melody build
+plan now states both clearly. (Commit `67d09be`, on the
+audio-onset-analysis branch — which became chord-melody-research
+later in the session.)
+
+RADAR.md only existed on audio-onset-analysis, which surfaced an
+architectural issue: cross-cutting threads by definition outlive
+any single branch and should be visible from dev. Promoted RADAR
+to dev as its own commit (`a5919ee`) before any updates landed —
+the promotion is a structural move worth marking separately from
+the content updates.
+
+RADAR updates and WORKING_STYLE additions then landed together
+(commit `faecf6e`). Three new RADAR entries: chord/melody
+classification as research-active, polyphonic audio detection as
+future infrastructure, and corpus rethink (Dustin corrected my
+initial framing here — the corpus belongs to the classifier
+framing that paused, so resumption needs a fresh design pass, not
+just formalization of prose tests). Plus the sus2/sus4 entry
+deprioritized and tempo subsystems entry updated for the arc
+pause. WORKING_STYLE got two new sections under Workflow
+conventions: the read-and-report-before-builds pattern, and a
+parallel section on using Claude Code as a reading tool during
+planning. The second one was added after Dustin pointed out that
+reading-during-planning earned its own codification separate from
+reading-before-builds.
+
+One correction worth marking: my first draft of the polyphonic
+audio RADAR entry referenced an `audio-architecture.md` Pro tier
+and a CREPE strategy stub that Dustin didn't recognize. I'd pulled
+them from past chat memory without verifying the repo carries
+them. Rewrote with only verifiable claims. Don't assert specifics
+from memory without verification.
+
+**Branch rename: audio-onset-analysis → chord-melody-research.**
+The branch's content had drifted from "onset analysis" to
+encompass the full classifier arc; the new name reflects what the
+branch actually is and matches the research-active disposition
+codified earlier. Mechanics straightforward (`git branch -m`,
+push new name, push -u for tracking, delete old on origin), but
+reference updates carried a real tail — `sed` substitution across
+STATUS, RADAR, both build plans, and the design doc for
+current-state references; SESSION_LOG entries left verbatim as
+historical record. Worth flagging as a pattern: branch renames
+carry a documentation-cleanup tail that's bigger than the rename
+itself. One sentence on STATUS line 108 was a judgment call —
+narrative history embedded in a current-state doc. Dustin's
+hand-edit ("a new branch `audio-onset-analysis` that was
+subsequently renamed as `chord-melody-research`") preserves both
+pieces in one sentence (commit `766aa54`).
+
+Net: six commits across two branches before Session 1 began.
+
+### Session 1 of cantor presentational arc
+
+Build plan called for a hybrid promotion — keep the spike's
+substance (validated 2026-05-13 with real music on the Launchkey),
+fix its rough edges in one focused cleanup pass before any polish
+or feature work, then production-promote. Decided to name the new
+branch simply `cantor` (drop the "presentational" qualifier — it's
+an implementation detail of how cantor works now, not a permanent
+label). Verified that v1 cantor files have substantive history on
+chord-melody-research (TempoState integration, AudioInterpreter v0
+migration, the 6A/6B 3D torus work), so deleting v1 from dev
+doesn't lose anything significant — the evolved v1 lives where it
+conceptually belongs.
+
+Session 1 ran as four Claude Code prompts (one read-and-report
+plus three build prompts B1/B2/B3) with verification checkpoints
+between. The structure worked well — each checkpoint caught a
+different class of issue.
+
+**B1 — branch setup (commit `c34305c`).** Created `cantor` off
+dev, copied spike files in via
+`git checkout cantor-presentational-spike -- <files>`, deleted v1
+files, removed v1 `/cantor` route from app.py. Read-and-report
+had flagged that a cherry-pick approach would conflict (the spike
+commit deletes docs that exist on dev now); manual copy avoided
+the noise. Caught my own verification gap in this commit: B1's
+commit message claimed the v1 route removal, but the app.py edit
+was actually unstaged at commit time. I'd asked for
+`git diff --staged --stat` as verification, which only shows
+staged changes. Resolved in B2 by including the route removal in
+B2's diff and naming it explicitly in the commit message. Honest
+about the small gap in B1's history rather than amending.
+
+**B2 — renames + route registration (commit `8c95949`).** Module
+rename `cantor-presentational-view.js` → `cantor-view.js`, class
+rename `CantorPresentationalView` → `CantorView`, template rename
+`cantor-spike.html` → `cantor.html`, register `/cantor` route in
+app.py. Used `git mv` for rename detection (both renames showed
+99% / 98% similarity). Claude Code correctly surfaced two
+class-rename dependents the prompt hadn't called out (constructor
+call and a comment in the template); both were consequences of
+the explicit rename, not new edits. Worth noting the prompt was
+under-specified — class renames imply their dependents.
+
+Route name decision: picked `/cantor` now rather than deferring to
+Session 5 (merge). The build plan's deferral was about avoiding
+premature commitment, but the name is free (v1 deleted), there's
+no alternative product in the running, and deferring out of pure
+caution wouldn't surface new information. Runtime verified after
+B2 — `python app.py`, `/cantor` renders the renamed template
+cleanly.
+
+**B3 — content cleanup (commit `155b435`).** Originally planned
+as two separate prompts (main pass + a pause-then-resume on the
+RGBA decision), ended up as one bundled commit because Claude
+Code's working tree doesn't auto-stage between prompts and the
+artificial split didn't represent a meaningful content distinction.
+
+Substance: six `[cantor-spike]` console prefixes renamed to
+`[cantor]`; localStorage key, gameId, `window.cantorSpike` dev
+hook, page title, and aria-label all stripped of the "spike"
+suffix; `_noteNameToMidi`/`_audioNoteToMidi` deduplicated (they
+were identical); header doc block rewritten in production tone;
+three stale comments removed that referenced "cantor-view.js"
+from inside what is now cantor-view.js itself.
+
+The RGBA pattern resolution was the most interesting decision.
+Claude Code corrected my faulty premise from the read-and-report
+— I'd asserted `_parseRGBA` was called per-frame, but it actually
+ran twice at module load. The string constants + parse helper
+were vestigial, used only to produce arrays that hot-path
+consumers wanted anyway. Replaced with direct array constants,
+aligning with `GLYPH_RGB`'s existing array-only pattern. The
+read-during-execution loop earned its place here — the right
+answer was in the code, not in my head.
+
+Net diff for B3: −21 lines across both files. Content cleanup
+should shrink files when it removes dead indirection.
+
+Runtime re-verified after B3. Console shows the expected
+environmental noise (Chrome's autoplay restriction warnings,
+AudioInput's documented Tone.js fallback message, favicon 404)
+plus one "ours" line — `[cantor] No MIDI device detected.` —
+which incidentally confirms the prefix substitution worked.
+
+### What's next
+
+Session 2 of the cantor arc: polish pass. Per build plan,
+parameter tuning (sparkle density, octave-offset radius,
+velocity-to-size curve, color saturation), glyph behavior at
+extreme registers, edge cases noticed during live play.
+Specifics deferred until the cleanup landed and the view can be
+re-exercised in its cleaned-up form. Session 2 starts with
+playing through `/cantor` with real music and noting what jars
+— a Dustin step before conversational planning kicks in.
+
+Further out: Session 4 (full audio interface input integration)
+and the Claude Code review feeding gamification brainstorm. The
+review is likely to redirect work substantially, so finishing
+cantor cleanly first matters.
+
+
+### Evening addendum — regression discovered during play
+
+Started re-exercising `/cantor` with the Launchkey for the polish
+step. Within minutes: no Tonnetz triangles lighting up, no glyphs
+for chords, and the bottom half of the keyboard producing nothing
+in the console. Console logs showed `0 notes` heartbeat for every
+key below a threshold, `1 notes` above it.
+
+Chromatic-scale diagnostic identified the boundary precisely: C4
+(MIDI 60) silent, C#4 (MIDI 61) registers. Same threshold as v1
+cantor's `_splitPoint`. Verified the regression by switching to
+`cantor-presentational-spike` and serving — low keys work cleanly
+on the spike, chords visualize. The gate was introduced somewhere
+in Session 1's three commits.
+
+Two calibration notes worth marking:
+
+The end-of-Session-1 verification was insufficient. Page-loads,
+lattice-renders, no-console-errors was the bar, and the build
+passed all three. None of those exercise the actual functional
+behavior — playing a chord and seeing a triangle light up is the
+real test. Future cleanup-pass verifications should include
+playing through *at least one chord* before declaring the session
+done. The cost of catching this tonight vs catching it three
+sessions from now would have been very different.
+
+The "the spike was validated against real music two weeks ago"
+fact was load-bearing in the diagnosis. It ruled out "the cutoff
+is original spike behavior" and pointed straight at Session 1's
+diff. Worth being honest that I missed this earlier in the
+session — when Dustin first described the symptom, I treated it
+as three loosely-coupled symptoms (monophonic detection, no
+Tonnetz lit, bottom half silent) before recognizing that one
+register-based gate explains all three at once. The chromatic-
+scale step was the diagnostic that sharpened it.
+
+Tomorrow: regression fix before any polish work. The bounded
+diff (3 commits) and clear symptom (MIDI ≤ 60 gated) make the
+find-and-fix small. Resume Session 2 polish work after.
+
+### Setup for tomorrow
+
+Update STATUS.md at session start (Dustin's protocol — STATUS at
+the start of next session, not at the end of this one) to
+reflect Session 1 complete and the cantor branch state. Then
+re-exercise `/cantor` with the Launchkey to surface polish
+targets before Session 2 planning.
+
+Consider during Session 2 whether the lattice extraction (Claude
+Code's deferred item from the read-and-report) is worth doing.
+With v1 deleted, the duplication self-resolved — no immediate
+driver to extract, but the question is worth a sentence of
+thought before final disposition.
+
+
 ## 2026-05-13 — Cantor arc pivot: from classifier to presentational
 
 ### Started
