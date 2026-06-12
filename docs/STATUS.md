@@ -1,7 +1,14 @@
 # SongLab Project Status
 
-**Last updated:** 2026-05-19
-**Branch:** `dev` (Cantor v1 shipped through 6B; Phase 2 presentational arc in progress on `cantor`) · `cantor` (active — presentational arc Session 1 landed, Session 2 in progress) · `cantor-presentational-spike` (validated spike, retained as known-good reference) · `chord-melody-research` (classifier arc, paused) · `main` (prod)
+**Last updated:** 2026-06-11
+**Branch:** `dev` (Cantor v1 shipped through 6B; Phase 2
+presentational arc in progress on `cantor`) · `cantor` (active —
+Session 1 landed; Session 2 opened 2026-05-19 but diverted into
+experimental polyphonic chord-detection wiring, commit `66bb368`;
+polish pass not yet done) · `cantor-presentational-spike`
+(validated spike, retained as known-good reference) ·
+`chord-melody-research` (classifier arc, paused) · `main` (prod —
+~20 commits behind dev, last deployed pre-pivot)
 **Deploy:** Railway from `main`
 **Active roadmap:** `docs/songlab-build-plan.md` (v4) + `docs/cantor-design.md` + `docs/audio-architecture.md`
 **Platform name:** SongLab · SkratchLab (rebrand complete)
@@ -60,14 +67,42 @@
     deduped; vestigial `_parseRGBA` indirection replaced with
     direct array constants matching `GLYPH_RGB`; stale
     comments removed.
+    - 2026-05-19 (`66bb368`): polyphonic chord detection wired in
+  templates/cantor.html alongside YIN pitch detection — direct
+  chord-detection.js instantiation mirroring harmonograph's
+  dual-detector pattern; both publish to MusicalEventStream with
+  source: 'audio'. Fabricated octave 4 for chord PCs, flatness
+  gate (> 0.4) against broadband transients, 500ms silence
+  watcher. Marked experimental in the UI ("pitch + chord
+  detection (experimental)"). NOTE: this is outside the build
+  plan's declared scope (polyphonic detection was deferred to a
+  separate arc per RADAR); the framing decision (mirror / x-ray /
+  microscope policy; prefer-mono vs always-both) is explicitly
+  deferred and blocks calling Session 2 done.
 
 
 **In progress:**
 - Cantor presentational arc — see
   `docs/active-plans/cantor-presentational-build-plan.md`
-  (5 sessions: cleanup/promotion ✓ landed,
-  polish, audio verification, full audio interface input,
-  merge to dev). Session 2 (in progress): polish pass.
+  (5 sessions: cleanup/promotion ✓ landed 2026-05-18,
+  polish ⚠ in flight, audio verification, full audio interface
+  input, merge to dev).
+- Session 2 status (as of 2026-05-19, unresumed since): opened
+  with a STATUS update, then diverted into the polyphonic
+  chord-detection wiring above. The build plan's actual Session 2
+  content (parameter tuning, triangle-lighting edge cases,
+  extreme registers) has not started. No SESSION_LOG entry exists
+  for 2026-05-19 — the closeout protocol was skipped; commit
+  message `66bb368` is the only record of that session.
+- ⚠ MIDI ≤ C4 regression (discovered evening 2026-05-18, see
+  SESSION_LOG addendum `f397287`): keys at/below MIDI 60 produced
+  no events; threshold matched v1 cantor's `_splitPoint`. No fix
+  commit exists. `66bb368`'s commit message reports "MIDI input:
+  no regression" in play-testing the next day, so it may have
+  been environmental (v1's persisted
+  `localStorage['songlab.cantor.splitPoint']` is a candidate
+  mechanism — unconfirmed). Status: UNVERIFIED. First action of
+  the next cantor session is a chromatic-scale check below C4.
 
 **Open / deferred:**
 - Constellation z-fade vs hard occlusion on torus back side.
@@ -138,7 +173,46 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 **Next priorities (active):**
 1. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
 2. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
-3. **Polyrhythm Trainer → nav dropdown + landing page.**
+
+- Item "Polyrhythm Trainer not yet in nav dropdown or landing
+  page" (currently ~line 317): **remove — completed.** Route at
+  `app.py:220`, nav link at `templates/base.html:297`, landing
+  card at `templates/index.html:551` (landed 2026-04-10,
+  `115d990`).
+- `_suppressAutoPlay` site count (currently "17 sites", ~line
+  308): **update to 19** occurrences in `templates/explorer.html`
+  (1 declaration, 6 set-true, 6 set-false, a 3-line save/restore
+  pair, 2 reads). Replacement design (source-tagged
+  `HarmonyState.update(state, { source })`) remains sketched in
+  `docs/code-review-opus47.md` (~line 386) and unimplemented.
+- SkratchLab "Clear All" (~lines 117, 316): **still open** —
+  `loopPedal.clearAll()` wired at `studio.js:988` clears
+  blocks/layers but never calls `drawCanvasGrid()` (the separate
+  Clear Canvas button at `studio.js:1064` does).
+- Swing Trainer production 500 (~line 304): **unchanged /
+  unverifiable** — code is correct (diagnostic comment at
+  `app.py:208–218`); suspected Railway deploy-state issue. Note
+  that `main` has not been redeployed since (still at `0d9efe4`),
+  so the "fresh deploy + production stack trace" step has not
+  happened.
+
+- **Registry consolidation candidate:** chord-type data is
+  duplicated across 7+ files with naming and coverage
+  discrepancies (`diminished`/`dim`, `half-dim7`/`hdim7`/`m7b5`,
+  `mΔ7`/`mM7`; power chord and sus2≡sus4 analysis stranded on
+  `chord-melody-research`). Full inventory + canonical JSON spec
+  drafted in `docs/registry-inventory.md` (2026-06-11 audit).
+- **Branch hygiene:** tag `pre-rebase-backup` (`c87329b`)
+  duplicates `84e6587` after the 5/19 rebase — delete when
+  comfortable. Old branches `feature/skratch-integration` and
+  `redesign/landing-page` still exist; confirm merged/abandoned.
+- **Doc-branch skew:** STATUS.md and SESSION_LOG.md on the
+  `cantor` checkout are stale (the branch forked before the
+  5/18–5/19 doc commits on dev). Reading project docs from a
+  `cantor` checkout shows pre-Session-1 state. Consider merging
+  dev's doc commits into `cantor`, or always reading docs from
+  dev.
+
 
 **Backlog:**
 - **Real-audio Harmonograph tuning ("Montreal"):** tune `rmsDbFloor` / `rmsDbCeiling` / `spinSignalExponent` against Allison Russell "Montreal" — opening-minute-to-gospel-chorus arc as the calibration target.
