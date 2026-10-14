@@ -2,7 +2,9 @@ import copy, sys
 from fractions import Fraction
 from music21 import (stream, note, chord, meter, key, clef, tempo, harmony,
                      expressions, bar, spanner, metadata, tie, layout, duration)
-sys.path.insert(0, __file__.rsplit('/', 1)[0])
+# score_src.py (private, gitignored) lives in static/private/, two levels up from this tool.
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'static' / 'private'))
 from score_src import BARS, REPEATS, ENDINGS, TEXT
 
 def dur(s):
