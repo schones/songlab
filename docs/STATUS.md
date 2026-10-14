@@ -1,16 +1,18 @@
 # SongLab Project Status
 
-**Last updated:** 2026-06-11
-**Branch:** `dev` (Cantor v1 shipped through 6B; Phase 2
-presentational arc in progress on `cantor`) · `cantor` (active —
-Session 1 landed; Session 2 opened 2026-05-19 but diverted into
-experimental polyphonic chord-detection wiring, commit `66bb368`;
-polish pass not yet done) · `cantor-presentational-spike`
+**Last updated:** 2026-10-14
+**Branch:** `voicing-explorer` (active — Voicing Explorer analysis
+arc, Sessions 1–3 landed 2026-10-14; Session 3 in the working tree,
+uncommitted at time of writing) · `dev` (Cantor v1 through 6B; MIDI
+multi-port fix `57afaa9`) · `cantor` (presentational arc, Session 2
+polish not resumed since 2026-05-19) · `cantor-presentational-spike`
 (validated spike, retained as known-good reference) ·
 `chord-melody-research` (classifier arc, paused) · `main` (prod —
-~20 commits behind dev, last deployed pre-pivot)
+84 commits behind dev, last deployed pre-pivot)
 **Deploy:** Railway from `main`
-**Active roadmap:** `docs/songlab-build-plan.md` (v4) + `docs/cantor-design.md` + `docs/audio-architecture.md`
+**Local run:** `python3 app.py` with the venv active, port from `.env`
+(`PORT=5001` on the Mac mini — AirPlay Receiver holds 5000)
+**Active roadmap:** `docs/songlab-build-plan.md` (v4) + `docs/active-plans/voicing-explorer-build-plan.md` + `docs/cantor-design.md` + `docs/audio-architecture.md`
 **Platform name:** SongLab · SkratchLab (rebrand complete)
 
 
@@ -94,15 +96,13 @@ polish pass not yet done) · `cantor-presentational-spike`
   extreme registers) has not started. No SESSION_LOG entry exists
   for 2026-05-19 — the closeout protocol was skipped; commit
   message `66bb368` is the only record of that session.
-- ⚠ MIDI ≤ C4 regression (discovered evening 2026-05-18, see
-  SESSION_LOG addendum `f397287`): keys at/below MIDI 60 produced
-  no events; threshold matched v1 cantor's `_splitPoint`. No fix
-  commit exists. `66bb368`'s commit message reports "MIDI input:
-  no regression" in play-testing the next day, so it may have
-  been environmental (v1's persisted
-  `localStorage['songlab.cantor.splitPoint']` is a candidate
-  mechanism — unconfirmed). Status: UNVERIFIED. First action of
-  the next cantor session is a chromatic-scale check below C4.
+- MIDI ≤ C4 regression (discovered evening 2026-05-18, SESSION_LOG
+  addendum `f397287`): **resolved 2026-10-14** during Mac mini
+  setup — chromatic check below C4 passes on the Launchkey.
+  [Dustin: one line on the mechanism — persisted
+  `localStorage['songlab.cantor.splitPoint']` was the suspected
+  cause; confirm or replace.] Related: multi-port MIDI devices now
+  auto-attach on init, preferring the non-DAW port (`57afaa9`).
 
 **Open / deferred:**
 - Constellation z-fade vs hard occlusion on torus back side.
@@ -161,7 +161,30 @@ Capability inventory of what's currently shipping on dev:
 
 ## Current Focus
 
-The active workstream on `dev` is **Cantor v1**. Through April 27–28, prompts 1–6B landed and are verified end-to-end on dev: 3D torus surface, per-frame rotY drift + torusMajorR breathing, chord-detection Hardware-state gating, and constellation snap to wash vertices. A deterministic test-track generator (`tests/generate_cantor_test_track.py`) and section-by-section diagnostic doc were also landed for ongoing audio-pipeline validation.
+**Voicing Explorer analysis arc (2026-10-14, branch `voicing-explorer`)**
+is the active workstream. Motivated by a voiced practice score of
+Brad Mehldau's "Don't Be Sad" (private, gitignored), the arc adds an
+Analyze view that loads a voiced progression and shows per-bar
+interval tension, intervals that rub, named-vs-played chord tones,
+and upper-voice motion, with the shared Tonnetz and a page-owned
+keyboard following the selected bar. Sessions 1–3 of the 7-session
+plan landed in one day: read-and-report (placement decided as a
+standalone `/voicings` page, not an Explorer stage view), the pure
+analysis engine + JSON schema + exporter + fixture (41/41
+self-tests, acceptance numbers match the Python prototype), and the
+page itself (verified in headless Chrome). Next: Session 4 (staff
+rendering, Verovio vs VexFlow decision), Session 5 (melody toggle
+and audio), Session 6 (Explore: generate and rank alternative
+voicings), Session 7 (merge to dev). Plan:
+`docs/active-plans/voicing-explorer-build-plan.md`. Schema:
+`tools/voicings/schema.md`.
+
+Also on 2026-10-14: development moved to a Mac mini (venv Python
+3.12, Node 25, port 5001 via `.env`), the MIDI multi-port
+auto-attach fix landed on dev (`57afaa9`), and the Cantor ≤ C4
+MIDI regression was resolved (see the Cantor block).
+
+The previous active workstream on `dev` is **Cantor v1**. Through April 27–28, prompts 1–6B landed and are verified end-to-end on dev: 3D torus surface, per-frame rotY drift + torusMajorR breathing, chord-detection Hardware-state gating, and constellation snap to wash vertices. A deterministic test-track generator (`tests/generate_cantor_test_track.py`) and section-by-section diagnostic doc were also landed for ongoing audio-pipeline validation.
 
 Cantor surfaced a foundational limitation in `chord-detection.js`: chroma-template matching cannot distinguish a single sustained note's overtone series from a real chord, producing false-positive chord washes on solo melody. The initial response was to fork off a new branch `audio-onset-analysis` that was subsequently renamed as `chord-melody-research` and rebuild on onset-driven chord/melody classification. That arc ran through 2026-05-13, when the framing was reconsidered: the deeper question was whether Cantor needs to *classify* at all, or whether a *presentational* view (lit triangles + glyphs, no classification step) better serves the philosophy. A one-hour spike on `cantor-presentational-spike` answered that question affirmatively — the presentational approach reads cleanly with real music and removes the classification problem at the root rather than solving it. The classifier arc is paused; presentational is the new Phase 2 path forward. See `docs/cantor-presentational-design.md` for the design and `docs/active-plans/cantor-presentational-build-plan.md` for the 5-session build plan.
 
@@ -171,8 +194,9 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 
 **Next priorities (active):**
-1. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
-2. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
+1. **Voicing Explorer Session 4** — staff rendering for the selected bar (Verovio vs VexFlow decision at session start), then Sessions 5–7. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+2. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
+3. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
 
 - Item "Polyrhythm Trainer not yet in nav dropdown or landing
   page" (currently ~line 317): **remove — completed.** Route at
@@ -326,6 +350,59 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - ChordResolver with interval-content fallback
 - Full three-panel bidirectional sync via HarmonyState
 
+### Voicing Explorer — Analyze view — current state (updated 2026-10-14)
+
+**Landed on `voicing-explorer` (Sessions 1–3, 2026-10-14):**
+- `static/shared/voicing-analysis.js` — pure engine: `parseSymbol`,
+  `intervalTension` (exact semitone distance; m2 3, m9 2, TT 2,
+  M2 1, M7 1; all bass+voicing pairs), `melodyTension` (per-pitch
+  duration × weight / beatsPerBar), `namedVsPlayed` (present /
+  omitted / added with degree labels; written spellings drive
+  labels, omitted tones spelled chord-relatively; slash bass counts
+  as named), `voiceMotion` (sorted upper voices, null when counts
+  differ), `analyzeProgression`, `toHarmonyNotes`. Takes intervals
+  from `transforms.js` `CHORD_TYPES`; seven local types
+  (`registry-inventory.md` §9). `selfTest()` — 41/41, incl. the
+  private Don't Be Sad acceptance block when present.
+- Data model `tools/voicings/schema.md` (v1): spelled note names are
+  the source of truth; per bar `symbols[]`, `comp[]` events
+  (bass + voicing, analysis uses the first), `melody[]` events.
+- `tools/voicings/export_json.py` — score source → JSON, no music21;
+  `tests/fixtures/voicing-fixture.json` — 12 bars, one scoring case
+  each; `build.py` import path fixed.
+- `/voicings` page (`templates/voicings.html`, routes in `app.py`
+  incl. `/voicings/data/<name>` — private folder first, then
+  fixture, JSON 404). Modules: `voicing-chart.js` (stacked SVG,
+  section labels, arranged bars faded, motion row, focusable bars
+  with arrow-key stepping), `voicing-keyboard.js` (page-owned
+  C2–B5, bass gold / voicing blue / melody green reserved),
+  `voicing-detail.js`. Shared `TonnetzNeighborhood` +
+  `ChordBubbleRenderer` mounted; selection published as
+  `source:'user'` notes — no `progressionState`, no auto-play.
+- Verified in headless Chrome: bar 2 / 17 / 1 acceptance values on
+  screen, keyboard roles, glow worm updates, `?piece=fixture`,
+  `?piece=nope` not-found state, phone-width scroll.
+
+**In progress:**
+- Session 4: staff rendering for the selected bar.
+
+**Open / deferred:**
+- Melody toggle + audio (Session 5); Explore mode (Session 6);
+  merge to dev with clean-clone check (Session 7).
+- Exporter emits comp events only at chord-voice onsets; bass
+  pickup walks under a silent chord voice (bars 4, 20) are not
+  events in v1.
+- `/voicings` is not in the nav; not-found state shows the default
+  C-major Tonnetz (no key to anchor on).
+- Chord-symbol suffix table lives in the engine
+  (`SUFFIX_TO_TYPE`); fold into the canonical registry when
+  `chord-types.json` lands.
+
+**Public surfaces (debugging):**
+- `window.__voicings` on `/voicings`: `{ state, select, chart,
+  keyboard, detail, bubble }`.
+- Self-test: `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
+
 ### Chord Progression Engine
 - Multi-path glow worm visualization (animated playthrough with fading trails)
 - Fixed Tonnetz center during progression playback
@@ -341,6 +418,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - `harmony-state.js` — pub/sub state model, **setChord/highlightChord** for extended chord types
 - `tonnetz-neighborhood.js` — SVG renderer with chord-quality coloring, **extension node rendering**
 - `keyboard-view.js` — real piano proportions, highlight layer, click interaction, **extension ring highlights**, shared `Tone.Analyser` owner
+- `voicing-analysis.js` — voiced-progression analysis engine (pure; see Voicing Explorer — Analyze view). `voicing-chart.js`, `voicing-keyboard.js`, `voicing-detail.js` — page-owned views for `/voicings`; the keyboard is deliberately independent of `keyboard-view.js` (exact-octave role coloring without a do-not-touch lift)
 - `resonance-view.js` — radial FFT Tonnetz visualization, HarmonyState-gated, chord-function coloring, Spectrum-matched particle dynamics. **April 20:** refactored to instance-based `DEFAULT_PARAMS` for live tuning; sparkler defaults; perpendicular wiggle; new tunables (`blobFillAlpha`, `peakMagThreshold`, `particleDeceleration`)
 - `harmonograph-view.js` — verbatim fork of `resonance-view.js` for the `/harmonograph` sandbox (formerly `/art`, renamed 2026-04-24). Class `HarmonographView`. Adds grid motion (rotation + circular sway, lattice as rigid body), chord-triangle highlights (gold fill on Tonnetz triangles whose vertex PCs are all active), and a 3D mode (`mode3D` flag) with a 12×4 toroidal lattice on a torus-to-sphere morphable surface, manual world-axis rotation, and 96 always-visible triads tinted warm/cool with continuous back-face alpha. Will diverge freely from the canonical Explorer version.
 - `chord-wheel.js` — dual-ring circle of fifths
@@ -400,6 +478,8 @@ See `docs/songlab-build-plan.md` (v4) for the full phased roadmap:
 - **`pitch-detection.js` uses deprecated `ScriptProcessorNode`** — Chrome logs a deprecation warning. Functional for now. AudioWorklet migration tracked in `docs/audio-architecture.md` Open Question 1.
 - **Swing Trainer 500 on production** — could not reproduce locally (April 17). Template extends base.html correctly. Likely Railway deploy state issue. Need fresh deploy + production stack trace capture. See `docs/KNOWN-ISSUES.md`.
 - **Railway cold start** — ~15s first load after inactivity (hobby tier), warn testers
+- **Port 5000 unavailable on the Mac mini** — macOS AirPlay Receiver (Control Center) listens on 5000 and answers 403. `.env` sets `PORT=5001`; `app.py` reads it. Scripts or prompts that assume 5000 will hit AirPlay, not Flask.
+- **Global SVG `max-width` rule** squashes wide inline SVGs on narrow screens; `voicing-chart.js` pins its width inline. Any future scrollable SVG panel needs the same.
 - **Rhythm Lab + Strum Patterns mic paths disabled** — dead route calls commented out, TODO points to onset-detection.js migration. Keyboard/spacebar input still works.
 - **Harmony Trainer still uses server-side pitch detection** — `/process_audio_chunk` → librosa. Migration guide in `templates/harmony.html` comment block.
 - **`_suppressAutoPlay` load-bearing** — 17 sites in explorer.html. Code review recommends source-tagged HarmonyState.update(). Deferred.
@@ -430,6 +510,9 @@ See `docs/songlab-build-plan.md` (v4) for the full phased roadmap:
 | `docs/visual-engine-spec.md` | Generative art engine spec (Tonnetz-driven, post-launch) |
 | `docs/explorer-spec.md` | Explorer design, panel specs, canonical orientation |
 | `docs/voicing-explorer-spec.md` | Voicing Explorer — chord shapes, glow worm paths, projections |
+| `docs/active-plans/voicing-explorer-build-plan.md` | **Voicing Explorer analysis arc** — 7-session plan, Decisions, open questions |
+| `tools/voicings/schema.md` | Voiced-progression JSON schema (v1) consumed by `voicing-analysis.js` |
+| `docs/registry-inventory.md` | Chord-type registry audit + canonical JSON spec (§9: voicing-analysis local types) |
 | `docs/content-architecture.md` | Content model, topic schema, lens system |
 | `docs/game-flow-pattern.md` | Learn → Practice → Test pattern (to be updated with audit findings) |
 | `docs/auth-architecture.md` | Supabase auth, profile migration, security checklist |

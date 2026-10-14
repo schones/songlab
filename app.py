@@ -16,6 +16,7 @@ Routes:
 from datetime import datetime
 import io
 import os
+import re
 import struct
 import time
 
@@ -25,7 +26,7 @@ load_dotenv()  # loads .env in local dev; no-op in production
 import numpy as np
 import librosa
 import requests as http_requests
-from flask import Flask, jsonify, redirect, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
 
 from chord_detector import ChordDetector
 from game_engine import (
@@ -288,6 +289,35 @@ def cantor():
     # docs/cantor-design.md and static/shared/cantor-view.js. Currently
     # the v1 scaffold (Section 7); render path is a placeholder.
     return render_template("cantor.html")
+
+
+@app.route("/voicings")
+def voicings():
+    # Voicing Explorer — Analyze view. Loads a voiced progression by name
+    # (?piece=) through /voicings/data/<name>. See
+    # docs/active-plans/voicing-explorer-build-plan.md and
+    # tools/voicings/schema.md.
+    return render_template("voicings.html")
+
+
+_VOICING_PIECE_RE = re.compile(r"^[a-z0-9-]+$")
+
+
+@app.route("/voicings/data/<name>")
+def voicings_data(name):
+    """Serve a voiced-progression JSON: static/private/<name>.json first
+    (gitignored, local only), then tests/fixtures/voicing-<name>.json."""
+    if not _VOICING_PIECE_RE.match(name):
+        return jsonify(error="invalid piece name", piece=name), 404
+    base = os.path.dirname(os.path.abspath(__file__))
+    candidates = (
+        (os.path.join(base, "static", "private"), f"{name}.json"),
+        (os.path.join(base, "tests", "fixtures"), f"voicing-{name}.json"),
+    )
+    for directory, filename in candidates:
+        if os.path.isfile(os.path.join(directory, filename)):
+            return send_from_directory(directory, filename, mimetype="application/json")
+    return jsonify(error="not found", piece=name), 404
 
 
 @app.route("/tutorial")

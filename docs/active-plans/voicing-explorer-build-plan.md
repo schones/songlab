@@ -1,7 +1,7 @@
 # Voicing Explorer — Build Plan
 
-**Status:** Draft — to be integrated with the project-wide build plan
-review (2026-10-15)
+**Status:** Active — Session 1 complete (2026-10-14); to be integrated
+with the project-wide review.
 **Started:** 2026-10-14
 **Companion to:** `docs/voicing-explorer-spec.md` (v0.3)
 **Branch strategy:** new feature branch `voicing-explorer` off `dev`.
@@ -121,8 +121,19 @@ Don't Be Sad data from the private folder.
 - Acceptance: engine output matches the mockup's numbers for bars
   1–20 (comp-only and with melody), e.g. bar 2 = 3, bar 3 = 1,
   bar 17 = 4 (comp) / 5.0 (with melody).
-- Add `static/private/` to `.gitignore`.
-- Move the score-building scripts into `tools/voicings/`.
+- JSON schema for voiced progressions (per bar: chord symbol(s) with
+  beat offsets, bass, voicing as MIDI numbers, melody notes with
+  durations, source tag, section label).
+- Exporter: `tools/voicings/export_json.py` →
+  `static/private/dont-be-sad.json`, built from the private
+  `score_src.py`.
+- Synthetic test fixture (~8 bars, public, checked in) isolating each
+  scoring case: m2, M2, m9, tritone, M7; omitted and added chord
+  tones; melody weighting by duration; voice motion with matched and
+  unmatched voice counts.
+- ~~Add `static/private/` to `.gitignore`.~~ Done (commit `1541bff`).
+- ~~Move the score-building scripts into `tools/voicings/`.~~ Done
+  (commit `1541bff`).
 
 ### Session 3 — Analyze page: chart, keyboard, rubs, named vs played
 
@@ -162,13 +173,35 @@ Route and placement final; STATUS / SESSION_LOG updated; private-data
 handling verified on a clean clone (page works, shows "no private
 data" state, nothing private in git history).
 
+## Decisions
+
+- **Placement** (decided 2026-10-14, Session 1): standalone `/voicings`
+  page (Flask route + template) mounting shared modules
+  (`TonnetzNeighborhood`, `ChordBubbleRenderer`). Not an Explorer stage
+  view: a seventh stage view would hide the Tonnetz while the chart is
+  visible, and Explorer's chord-mode machinery (auto-play subscriber,
+  `_suppressAutoPlay`) conflicts with bar-by-bar analysis. This departs
+  from `voicing-explorer-spec.md`'s "mode within the existing
+  Explorer"; the spec's composable-panel principle is honored at the
+  module level.
+- **MIDI convention:** the engine uses standard MIDI (C4 = 60); it
+  converts to `{note, octave}` only when publishing to HarmonyState as
+  `source:'user'` (the only octave-faithful path).
+- **Registries:** the engine takes chord intervals from `transforms.js`
+  `CHORD_TYPES` and defines locally only what transforms lacks (7♯11,
+  maj9♯5, m9, slash bass). Logged in `registry-inventory.md`.
+- **Engine owns chord-symbol parsing and named-vs-played:**
+  `chord-resolver.js` spells sharps-only and requires exact PC-set
+  size, so it can't identify rootless or incomplete voicings.
+
 ## Open questions
 
-- **Placement.** The spec says the Voicing Explorer is "a mode/layer
-  within the existing Explorer, not a separate page." A whole-piece
-  tension timeline may not fit the 3-panel layout. Options: a new
-  composable Explorer panel/tab, or a separate `/analyze` page that
-  reuses Explorer panels. Decide after Session 1.
+- **Keyboard for `/voicings`** (decide in Session 3):
+  `keyboard-view.js` only places exact octaves for `source:'user'` and
+  ignores `an.color`; role coloring would need a DOM overlay keyed on
+  `data-note`. Leaning toward a small page-owned keyboard instead
+  (covers the melody range to ~F5, no coupling to keyboard-view
+  internals, no do-not-touch lift).
 - **Tension weights.** Current weights are a first guess. Candidates
   for later: beat-position weighting (downbeat dissonance counts more),
   register weighting (low-register rubs are muddier), and whether

@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block theme %}dark{% endblock %}
+{% block title %}Voicings · SongLab{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Page frame ───────────────────────────────────────────── */
+  .vp-page {
+    display: flex; flex-direction: column; gap: var(--space-lg, 16px);
+    padding: var(--space-lg, 16px) var(--space-xl, 24px) var(--space-2xl, 32px);
+    box-sizing: border-box; min-height: calc(100vh - 72px);
+    background: var(--bg-base, #15151B); color: var(--text-primary, #F2EFE6);
+  }
+  .vp-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-sm, 8px) var(--space-lg, 16px); }
+  .vp-title { margin: 0; font-family: var(--font-family-display); font-size: var(--font-size-xl); font-weight: var(--font-weight-medium); letter-spacing: -0.01em; }
+  .vp-title__piece { color: var(--accent-gold, #D4A03C); }
+  .vp-meta { margin: 0; color: var(--text-secondary); font-size: var(--font-size-sm); }
+  .vp-meta span + span::before { content: '·'; margin: 0 8px; color: var(--text-muted); }
+  .vp-piece-form { margin-left: auto; display: flex; gap: 6px; align-items: center; font-size: var(--font-size-xs); color: var(--text-muted); }
+  .vp-piece-form input { width: 11em; padding: 4px 8px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font: inherit; }
+  .vp-piece-form button { padding: 4px 10px; border-radius: var(--radius-md); border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text-secondary); font: inherit; cursor: pointer; }
+
+  .vp-banner { padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-raised); color: var(--text-secondary); font-size: var(--font-size-xs); }
+  .vp-banner--error { border-color: var(--accent-coral); color: var(--text-primary); }
+  .vp-banner code { color: var(--accent-gold); }
+  .vp-banner[hidden] { display: none; }
+
+  /* ── Panels ───────────────────────────────────────────────── */
+  .vp-panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-md, 12px) var(--space-lg, 16px); min-width: 0; }
+  .vp-panel__label { font-size: var(--font-size-2xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: 0 0 var(--space-sm, 8px); }
+
+  .vp-detail { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.4fr) minmax(240px, 1fr); gap: var(--space-lg, 16px); }
+  .vp-tonnetz { position: relative; height: 380px; border-radius: var(--radius-md); overflow: hidden; background: var(--bg-deep); }
+  .vp-tonnetz svg { width: 100%; height: 100%; }
+  .vp-side { display: flex; flex-direction: column; gap: var(--space-lg, 16px); }
+
+  .vp-keyboard-panel { padding-bottom: var(--space-lg, 16px); }
+
+  .vp-empty .vp-panel { opacity: 0.55; }
+
+  @media (max-width: 1000px) {
+    .vp-detail { grid-template-columns: 1fr 1fr; }
+    .vp-detail > .vp-panel--tonnetz { grid-column: 1 / -1; }
+  }
+  @media (max-width: 700px) {
+    .vp-page { padding: var(--space-md, 12px) var(--space-lg, 16px) var(--space-xl, 24px); }
+    .vp-detail { grid-template-columns: 1fr; }
+    .vp-detail > .vp-panel--tonnetz { grid-column: auto; }
+    .vp-tonnetz { height: auto; aspect-ratio: 1 / 1; }
+    .vp-piece-form { margin-left: 0; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="vp-page" id="vp-page">
+  <header class="vp-header">
+    <h1 class="vp-title">Voicings <span class="vp-title__piece" id="vp-piece-title">…</span></h1>
+    <p class="vp-meta" id="vp-meta"></p>
+    <form class="vp-piece-form" id="vp-piece-form">
+      <label for="vp-piece-input">piece</label>
+      <input id="vp-piece-input" name="piece" type="text" pattern="[a-z0-9-]+" placeholder="dont-be-sad">
+      <button type="submit">Load</button>
+    </form>
+  </header>
+
+  <div class="vp-banner" id="vp-banner" hidden role="status"></div>
+
+  <section class="vp-panel" aria-label="Tension per bar">
+    <p class="vp-panel__label">Tension per bar — click or use ← → to select</p>
+    <div id="vp-chart"></div>
+  </section>
+
+  <section class="vp-detail" aria-label="Selected bar">
+    <div class="vp-side">
+      <div class="vp-panel">
+        <p class="vp-panel__label">Selected bar</p>
+        <div id="vp-info"></div>
+      </div>
+    </div>
+    <div class="vp-panel vp-panel--tonnetz">
+      <p class="vp-panel__label">Tonnetz</p>
+      <div class="vp-tonnetz" id="vp-tonnetz"></div>
+    </div>
+    <div class="vp-side">
+      <div class="vp-panel">
+        <p class="vp-panel__label">Intervals that rub</p>
+        <div id="vp-rubs"></div>
+      </div>
+      <div class="vp-panel">
+        <p class="vp-panel__label">Named vs played</p>
+        <div id="vp-nvp"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="vp-panel vp-keyboard-panel" aria-label="Keyboard">
+    <p class="vp-panel__label">Keyboard — <span style="color:var(--accent-gold)">bass</span>, <span style="color:var(--accent-blue-bright)">voicing</span></p>
+    <div id="vp-keyboard"></div>
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { HarmonyState }          from "{{ url_for('static', filename='shared/harmony-state.js') }}";
+  import { TonnetzNeighborhood }   from "{{ url_for('static', filename='shared/tonnetz-neighborhood.js') }}";
+  import { ChordBubbleRenderer }   from "{{ url_for('static', filename='shared/chord-bubble-renderer.js') }}";
+  import { analyzeProgression, toHarmonyNotes } from "{{ url_for('static', filename='shared/voicing-analysis.js') }}";
+  import { VoicingChart }          from "{{ url_for('static', filename='shared/voicing-chart.js') }}";
+  import { VoicingKeyboard }       from "{{ url_for('static', filename='shared/voicing-keyboard.js') }}";
+  import { VoicingDetail }         from "{{ url_for('static', filename='shared/voicing-detail.js') }}";
+
+  const DEFAULT_PIECE = 'dont-be-sad';
+  const FIXTURE_PIECE = 'fixture';
+
+  // ── Page state: one object, one setter ──────────────────────────
+  const state = { piece: null, progression: null, analysis: null, selectedBar: null };
+
+  const els = {
+    page:   document.getElementById('vp-page'),
+    title:  document.getElementById('vp-piece-title'),
+    meta:   document.getElementById('vp-meta'),
+    banner: document.getElementById('vp-banner'),
+    form:   document.getElementById('vp-piece-form'),
+    input:  document.getElementById('vp-piece-input'),
+  };
+
+  // ── Views ───────────────────────────────────────────────────────
+  const chart    = new VoicingChart('vp-chart', { onSelect: select });
+  const detail   = new VoicingDetail({ info: 'vp-info', rubs: 'vp-rubs', nvp: 'vp-nvp' });
+  const keyboard = new VoicingKeyboard('vp-keyboard', { low: 'C2', high: 'B5' });
+
+  // Tonnetz: shared modules, non-interactive. The glow-worm renderer must
+  // be created AFTER TonnetzNeighborhood.init so its subscriber runs after
+  // the grid re-render.
+  TonnetzNeighborhood.init('vp-tonnetz', { interactive: false });
+  const bubble = new ChordBubbleRenderer('vp-tonnetz');
+
+  // ── Selection ───────────────────────────────────────────────────
+  function select(barNumber) {
+    if (!state.analysis) return;
+    const bar = state.analysis.bars.find(b => b.bar === barNumber);
+    if (!bar) return;
+    state.selectedBar = barNumber;
+    const data = state.progression.bars.find(b => b.bar === barNumber);
+    const comp = (data && data.comp && data.comp[0]) || null;
+
+    chart.setSelected(barNumber);
+    detail.render(bar, comp);
+    keyboard.render(comp ? { bass: comp.bass, voicing: comp.voicing } : {});
+
+    // Publish exactly these pitches. source:'user' is the only path the
+    // shared Tonnetz treats as octave-faithful Note Mode. No progressionState.
+    const notes = comp ? toHarmonyNotes([comp.bass, ...(comp.voicing || [])]) : [];
+    HarmonyState.update({
+      activeNotes: notes,
+      activeTriads: [], activeChord: null, activeTransform: null, activeInterval: null,
+    });
+  }
+
+  // ── Loading ─────────────────────────────────────────────────────
+  function showBanner(text, isError) {
+    els.banner.innerHTML = text;
+    els.banner.classList.toggle('vp-banner--error', !!isError);
+    els.banner.hidden = false;
+  }
+  function hideBanner() { els.banner.hidden = true; }
+
+  function renderEmpty(name) {
+    state.piece = name; state.progression = null; state.analysis = null; state.selectedBar = null;
+    els.title.textContent = name;
+    els.meta.textContent = '';
+    els.page.classList.add('vp-empty');
+    document.getElementById('vp-chart').querySelectorAll('.vc-wrap').forEach(w => (w.textContent = ''));
+    detail.clear();
+    keyboard.clear();
+    HarmonyState.update({ activeNotes: [], activeTriads: [], activeChord: null, activeTransform: null, activeInterval: null });
+  }
+
+  async function fetchPiece(name) {
+    const res = await fetch(`/voicings/data/${encodeURIComponent(name)}`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    return res.json();
+  }
+
+  async function load(name, { explicit }) {
+    hideBanner();
+    let progression = await fetchPiece(name);
+    let loadedName = name;
+
+    if (!progression && !explicit && name === DEFAULT_PIECE) {
+      progression = await fetchPiece(FIXTURE_PIECE);
+      loadedName = FIXTURE_PIECE;
+      if (progression) {
+        showBanner('Showing the test fixture; private pieces live in <code>static/private/</code>.', false);
+      }
+    }
+
+    if (!progression) {
+      renderEmpty(name);
+      showBanner(`No data for <code>${name}</code>. Private pieces live in <code>static/private/&lt;name&gt;.json</code>; try <code>?piece=fixture</code>.`, true);
+      return;
+    }
+
+    state.piece = loadedName;
+    state.progression = progression;
+    state.analysis = analyzeProgression(progression);
+    els.page.classList.remove('vp-empty');
+    els.title.textContent = progression.title || loadedName;
+    els.meta.innerHTML = [
+      progression.key ? `${progression.key} major` : null,
+      progression.timeSignature,
+      progression.tempo ? `♩ = ${progression.tempo}` : null,
+      `${progression.bars.length} bars`,
+    ].filter(Boolean).map(s => `<span>${s}</span>`).join('');
+    els.input.value = loadedName;
+
+    // Anchor the shared Tonnetz on the piece's key, depth 3 so all twelve
+    // pitch classes are on the grid for Note Mode's compact cluster.
+    HarmonyState.update({
+      tonnetzCenter: { root: progression.key || 'C', quality: 'major' },
+      tonnetzDepth: 3,
+    });
+
+    chart.render(progression, state.analysis, null);
+    const firstWithComp = progression.bars.find(b => b.comp && b.comp.length) || progression.bars[0];
+    if (firstWithComp) select(firstWithComp.bar);
+  }
+
+  els.form.addEventListener('submit', e => {
+    e.preventDefault();
+    const name = els.input.value.trim();
+    if (!/^[a-z0-9-]+$/.test(name)) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('piece', name);
+    history.replaceState(null, '', url);
+    load(name, { explicit: true });
+  });
+
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get('piece');
+  load(requested || DEFAULT_PIECE, { explicit: !!requested });
+
+  // Debug handle for the browser console (no behaviour depends on it).
+  window.__voicings = { state, select, chart, keyboard, detail, bubble };
+</script>
+{% endblock %}

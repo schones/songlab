@@ -3,6 +3,196 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-10-14 — Mac mini setup, MIDI multi-port fix, Voicing Explorer Sessions 1–3
+
+Long day, three arcs. Morning: new machine online and two MIDI
+fixes. Then a new feature arc, the Voicing Explorer analysis view,
+run as three Claude Code sessions in the read-report-stop-build
+shape, each gated by a go-ahead. Ended with a working `/voicings`
+page verified in a browser, Session 3 uncommitted in the tree.
+
+### Landed
+
+**Setup (Mac mini).** Project venv (Python 3.12, Flask 3.1), Node
+25.8, Google Chrome present, no Playwright. macOS AirPlay Receiver
+holds port 5000, so `.env` carries `PORT=5001` and `app.py` reads
+it; CLAUDE.md's run instruction updated accordingly.
+
+**MIDI (`57afaa9`, on dev).** `midi-input.js` auto-attaches
+multi-port devices on init: the Launchkey MK4 enumerates as
+separate "MIDI Out" and "DAW Out" ports, and the old
+single-input-only branch never attached. Now prefers the port
+whose name doesn't contain "DAW".
+
+**Cantor ≤ C4 MIDI regression resolved.** The 2026-05-18 evening
+finding (keys at/below MIDI 60 silent on `/cantor`) is cleared;
+chromatic check below C4 passes. [Dustin: one line on the
+mechanism — persisted `localStorage['songlab.cantor.splitPoint']`
+was the standing hypothesis.]
+
+**Voicing Explorer Session 1 — read-and-report** (no code).
+Grounded the plan in the actual modules:
+- `chord-resolver.js` spells sharps-only and requires an exact
+  PC-set size, so it cannot name rootless or incomplete voicings
+  (Gmaj7 played as G | A–B–D falls to the interval string). Degree
+  labels exist only in `keyboard-view.js`'s extension table.
+- `keyboard-view.js` places exact octaves only for `source:'user'`
+  and never applies `an.color`; role coloring would need a DOM
+  overlay keyed on `data-note`.
+- HarmonyState has no bass/slash concept; the only octave-faithful
+  path is `activeNotes` with `source:'user'`. `toggleNote` clears
+  a loaded progression and `setProgression` wipes `activeNotes`,
+  so the analysis page must not use `progressionState`.
+- Explorer's stage views are a hardcoded switch inside a
+  4,263-line template; the reusable contract is the module shape
+  (`init`/subscribe/`destroy`), not the template.
+- `static/private/` and `tools/voicings/` already existed from
+  the morning commit (`1541bff`); the plan's Session 2 housekeeping
+  was done.
+Build plan updated with a Decisions section (commit `1541bff` for
+the plan draft; the Session 1 edits are in the tree).
+
+**Voicing Explorer Session 2 — data model + engine (`0bc91a7`).**
+- `tools/voicings/schema.md` (v1). Spelled note names are the
+  source of truth; comp is a list of events per bar; the analysis
+  uses the first event.
+- `tools/voicings/export_json.py`: `score_src.py` → JSON without
+  music21. Comp events keyed to chord-voice onsets, including
+  bass-voice notes sounding at that moment; bass-voice onsets as
+  fallback when the chord voice is silent all bar. Play order
+  derived from repeats + endings (matches `build.py`'s 72-bar
+  order). `build.py` import path fixed for the moved source.
+- `static/shared/voicing-analysis.js`: `parseNote`, `parseSymbol`,
+  `intervalTension`, `melodyTension`, `namedVsPlayed`,
+  `voiceMotion`, `analyzeProgression`, `toHarmonyNotes`, exported
+  `selfTest()`. Intervals from `transforms.js` `CHORD_TYPES`
+  (`m9` already exists there as `min9`); seven local types.
+  Runner: `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
+  — sidesteps the piped-stdin relative-import problem in RADAR
+  because the module resolves imports from its own location.
+- `tests/fixtures/voicing-fixture.json`: 12 bars isolating m2,
+  M7-vs-m9 by register, slash bass, tritone, duration-weighted
+  melody, A7♯11/C♯ → D♯, written B♭ over G → ♭3, motion 6 / null /
+  0, hold bar, two-event comp.
+- `docs/registry-inventory.md` §9 + coverage-table row.
+- 41/41 self-tests; acceptance against the private JSON: bar 2 = 3,
+  bar 3 = 1, bar 17 = 4 comp / 5.0 with melody, bar 1 omitted F♯·7
+  added A·9.
+
+**Voicing Explorer Session 3 — `/voicings` page (uncommitted).**
+- `app.py`: `/voicings` and `/voicings/data/<name>` (name regex
+  `^[a-z0-9-]+$`, `static/private/<name>.json` then
+  `tests/fixtures/voicing-<name>.json`, `send_from_directory`,
+  JSON 404).
+- `templates/voicings.html` on the dark tokens, extends base. One
+  state object, one `select(bar)` that fans out to chart, detail,
+  keyboard, and `HarmonyState.update` with `toHarmonyNotes(...)`.
+  No `?piece=` → Don't Be Sad, falling back to the fixture with a
+  banner; explicit unknown piece → not-found state.
+- `static/shared/voicing-chart.js` (stacked SVG in the five
+  interval colors, section brackets, arranged bars faded, motion
+  row, `role="button"` bars with aria-labels, roving tabindex,
+  ← → stepping scoped to chart focus, horizontal scroll with
+  scroll-into-view on phones), `voicing-keyboard.js` (page-owned
+  C2–B5, gold/blue/green roles, written spellings as labels),
+  `voicing-detail.js` (symbol + tags, bass/voicing chips, rubs
+  list, named-vs-played).
+- Verified in headless Chrome driven over the DevTools protocol
+  (Node's built-in WebSocket + Chrome's `--remote-debugging-port`,
+  no Playwright needed). All requested checks passed, plus
+  screenshots at 1400px and 390px.
+
+### Diagnosed / decided
+
+- **Placement:** standalone `/voicings` page mounting the shared
+  Tonnetz and glow-worm modules. A seventh Explorer stage view
+  would hide the Tonnetz while the chart is visible, and Explorer's
+  chord-mode machinery (auto-play subscriber, `_suppressAutoPlay`)
+  conflicts with bar-by-bar analysis. Departs from the spec's
+  "mode within the Explorer"; the composable-panel principle is
+  honored at the module level.
+- **Spelled names are the source of truth**, midi derived. Degree
+  labels come from the written letter (B♭ over G is ♭3, not ♯9);
+  strict chord-relative spelling applies only to omitted tones,
+  which have no written form.
+- **Prototype-vs-engine differences are intentional**, found by a
+  44-bar comparison against `dont-be-sad.analysis.json`: motion
+  uses sorted upper voices (the prototype compared music21
+  chord-voice notes only, so its bar 18→19 = 14 is an artifact;
+  engine gives 11); a slash bass counts as a named tone even when
+  outside the chord type (B♭maj9♯5/F lists F·5 as present);
+  melody-vs-melody intervals are not scored; 0.01 rounding noise
+  where the prototype rounded per rub.
+- **Tension scoring is exact semitone distance** — only 1, 2, 6,
+  11, 13 score. Confirmed from the prototype: 14 and 18 occur in
+  the data and were never scored.
+- **Keyboard for `/voicings` is page-owned**, not `keyboard-view.js`
+  — exact-octave role coloring without a do-not-touch lift.
+- **Phone chart squash** was a global stylesheet `max-width` rule
+  on SVGs, not a scroll bug; fixed by pinning the chart's width
+  inline.
+
+### Setup for next session
+
+- Branch `voicing-explorer`. Committed: `57afaa9` (dev + branch),
+  `1541bff`, `0bc91a7`. Uncommitted in the tree: Session 3
+  (`app.py`, `templates/voicings.html`, three `voicing-*.js`
+  modules), the Session 1 build-plan edits, STATUS, SESSION_LOG,
+  CLAUDE.md.
+- Private data: `static/private/score_src.py`,
+  `dont-be-sad.json` (regenerate with
+  `python3 tools/voicings/export_json.py`),
+  `dont-be-sad.analysis.json` (the Python prototype's output,
+  reference only). None of it is tracked.
+- Run: venv active, `python3 app.py`, http://127.0.0.1:5001/voicings.
+- Session 4 opens with the Verovio-vs-VexFlow decision for staff
+  rendering.
+
+### Calibration notes
+
+- **Reverse-engineer the prototype before building the engine.**
+  Reading `dont-be-sad.analysis.json` row by row produced the exact
+  scoring rules in an hour and surfaced the chord-voice motion
+  artifact before it could be enshrined as "correct".
+- **Propose-then-STOP worked three times in a row.** Each session's
+  proposal drew one or two corrections (spelled names, comp as
+  events, the data route, keyboard navigation) that would have been
+  rework after code.
+- **"Verify in the browser" means drive it, not curl it.** The SVG
+  squash and the scroll-into-view miss were invisible to the
+  engine self-test and to route smoke tests; a headless Chrome
+  session over CDP caught both in minutes.
+- **Spot machine assumptions early.** `python3 app.py` on port 5000
+  silently talks to AirPlay on this machine; the 403s looked like a
+  Flask problem for one round.
+
+### Flagged for later
+
+- `/voicings` has no nav entry. Decide alongside the
+  `/harmonograph` front-door question.
+- Exporter v1 drops bass-voice motion under a silent chord voice
+  (bars 4 and 20 pickup walks). Session 5 playback will want it —
+  a `bassLine` field or per-onset events.
+- Base nav stacks tall at phone width on every dark page
+  (pre-existing, visible in the 390px screenshot).
+- `registry-inventory.md` says `transforms.js` has 18 entries; it
+  has 17.
+- `SESSION_LOG.md`'s 2026-05-18 heading reads `## ##`.
+- Nunito renders ♯ nearly as `#` at heading sizes; cosmetic.
+- STATUS "Cantor" block still carries the 2026-05-19 Session 2
+  diversion note; untouched today beyond the C4 line.
+
+### Out of scope / deferred
+
+- Melody toggle, staff, audio (Sessions 4–5); Explore mode
+  (Session 6); merge to dev and clean-clone check (Session 7).
+- Multi-event comp analysis (the schema keeps all events; the
+  engine uses the first).
+- Folding the engine's suffix table and local chord types into the
+  canonical registry — waits for `chord-types.json`.
+- `keyboard-view.js` lift for role-aware octave placement and
+  `an.color` — not needed now that the page owns its keyboard.
+
 ## ## 2026-05-18 — Documentation cleanup + Session 1 of cantor presentational arc
 
 Two halves: documentation backlog from last week's pivot (five
