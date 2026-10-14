@@ -5,3 +5,4 @@ __pycache__/
 venv/
 *.wav
 docs/songlab.code-workspace
+static/private/
