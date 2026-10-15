@@ -16,6 +16,8 @@ in quarter notes.
 | `beatsPerBar` | number | Quarter notes per bar (3 for 3/4, 3 for 6/8). The engine falls back to deriving it from `timeSignature`. |
 | `tempo` | int | BPM, quarter note. |
 | `form` | object, optional | `repeats: [[start, end], …]`, `endings: {"1": [a, b], "2": [a, b]}`, `playOrder: [bar, …]` (repeats and endings expanded). For playback; the analysis ignores it. |
+| `chordSymbols` | string, optional | `"derived"` when the chord symbols are our harmonic reading rather than part of the source (rags carry none). Absent = symbols come from the source. |
+| `attribution` | object, optional | For committed public fixtures: `source`, `edition`, `license`, `url`, `typesetter`, and `notes` (free text, e.g. the reduction rules applied). Ignored by the engine. |
 | `bars` | array | One entry per written bar, ascending. |
 
 ## Bar
@@ -28,6 +30,7 @@ in quarter notes.
 | `symbols` | array | `[{ beat, symbol }]` in beat order. Empty array = hold: the engine carries the previous bar's last symbol forward. |
 | `annotation` | string \| null | Free text from parenthesised figures, e.g. `"C7 on repeat"`. Not a symbol. |
 | `comp` | array | Comp events, see below. May be empty (no comp in the bar). |
+| `bassLine` | array, optional | The bass voice as written, see below. When present the staff draws its bass voice from it; comp events keep `bass` for the analysis. |
 | `melody` | array | Melody events, see below. May be empty. |
 
 Chord symbols: root letter + accidental, suffix, optional `/bass`.
@@ -42,8 +45,8 @@ still scores tension, named-vs-played is null).
 |---|---|---|
 | `beat` | number | Onset within the bar, 0-based. |
 | `dur` | number | Sustained length in quarters. |
-| `bass` | note | Lowest sounding comp note at the onset. |
-| `voicing` | note[] | Every other comp note, ascending. |
+| `bass` | note | The bass under this chord, by lookback: the most recent bass-voice onset at or before the onset in this bar, sounding or not; else a bass tied or still sounding (through the bar line) from the previous bar; else the lowest chord note. |
+| `voicing` | note[] | Every other comp note sounding at the onset, ascending (chord notes plus any further bass-voice notes, e.g. the upper note of an octave). |
 | `arp` | true, optional | Arpeggiated. Absent otherwise. |
 | `tie` | true, optional | Ties into the next bar. Absent otherwise. |
 
@@ -51,9 +54,23 @@ The analysis uses the **first event** of each bar (v1). Later events
 are kept for playback and for Explore mode.
 
 Exporter rule: an event begins at each chord-voice onset and includes
-the bass-voice notes sounding at that moment. If the chord voice is
-silent all bar, bass-voice onsets are used. Bass-voice motion under a
-silent chord voice is not exported as an event in v1.
+the bass-voice notes sounding at that moment; `bass` follows the
+lookback above. If the chord voice is silent all bar, bass-voice onsets
+are used. Bass-voice rhythm that does not coincide with chord onsets
+lives in `bassLine`, not in comp events.
+
+## Bass event (`bassLine`)
+
+| Field | Type | Notes |
+|---|---|---|
+| `beat` | number | Onset within the bar. |
+| `dur` | number | Quarters. |
+| `note` | note | Spelled, with octave. One note per event: the lower note of an octave or dyad. |
+| `tie` | true, optional | Ties into the next bar. |
+| `arp` | true, optional | Arpeggiated. |
+
+The exporter writes `bassLine` for every bar (possibly empty). Hand-written
+files may omit it; the staff then draws the bass from comp events.
 
 ## Melody event
 

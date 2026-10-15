@@ -21,10 +21,18 @@ Token grammar (per voice string, space separated):
     dur              quarters: "1", ".5", "1/3"
 
 Comp events are keyed to chord-voice onsets: each one carries the chord
-voice's notes plus whatever the bass voice is sounding at that moment.
-If the chord voice is silent for the whole bar, bass-voice onsets are
-used instead. Bass-voice motion under a silent chord voice (the pickup
-walks in bars 4 and 20) is not exported as an event in v1.
+voice's notes plus whatever else the bass voice is sounding at that
+moment. comp.bass is found by lookback (bass_for_onset): the most recent
+bass onset at or before the chord onset in this bar, sounding or not;
+else a bass tied or still sounding from the previous bar; else the
+lowest chord note. If the chord voice is silent for the whole bar,
+bass-voice onsets are used instead.
+
+The bass voice itself is exported verbatim as the bar's bassLine (one
+note per event, the lowest of a dyad), so held basses under later chord
+attacks and bass walks under a sustained chord survive the export.
+
+Check: python3 tools/voicings/check_export.py
 """
 import argparse
 import importlib.util
@@ -118,7 +126,47 @@ def num(fr):
 
 # ── Bar conversion ───────────────────────────────────────────────────
 
-def comp_events(bass_text, chord_text):
+def lowest(pitches):
+    return min(pitches, key=lambda p: p[1])
+
+
+def bass_for_onset(bass_ev, t, prev_bass_ev=None, beats_per_bar=None):
+    """comp.bass lookback for a chord onset at beat t.
+    Returns ((spelled, midi), how) with how in {'bar', 'prev'}, or (None, 'chord')
+    when the caller should fall back to the lowest chord note.
+      'bar'  — most recent bass onset at or before t in this bar, sounding or not
+      'prev' — the previous bar's last bass note, tied into this bar or still
+               sounding at the bar line (its duration reaches the bar's end)
+    """
+    prior = [b for b in bass_ev if not b['rest'] and b['beat'] <= t]
+    if prior:
+        return lowest(prior[-1]['pitches']), 'bar'
+    last = [b for b in (prev_bass_ev or []) if not b['rest']]
+    if last:
+        b = last[-1]
+        reaches_barline = beats_per_bar is not None and b['beat'] + b['dur'] >= beats_per_bar
+        if b['tie'] or reaches_barline:
+            return lowest(b['pitches']), 'prev'
+    return None, 'chord'
+
+
+def bass_line(bass_text):
+    """The bass voice as written: [{beat, dur, note, tie?, arp?}], one note per
+    event (the lowest of a dyad); rests and grace notes are dropped."""
+    out = []
+    for ev in parse_voice(bass_text):
+        if ev['rest']:
+            continue
+        rec = {'beat': num(ev['beat']), 'dur': num(ev['dur']), 'note': lowest(ev['pitches'])[0]}
+        if ev['tie']:
+            rec['tie'] = True
+        if ev['arp']:
+            rec['arp'] = True
+        out.append(rec)
+    return out
+
+
+def comp_events(bass_text, chord_text, prev_bass_ev=None, beats_per_bar=None):
     bass_ev = parse_voice(bass_text)
     chord_ev = parse_voice(chord_text)
     onsets = [ev for ev in chord_ev if not ev['rest']]
@@ -140,11 +188,16 @@ def comp_events(bass_text, chord_text):
             uniq.append((sp, mid))
         if not uniq:
             continue
+        bass, how = (None, 'chord')
+        if keyed_to_chord:
+            bass, how = bass_for_onset(bass_ev, ev['beat'], prev_bass_ev, beats_per_bar)
+        if bass is None:
+            bass = uniq[0]
         rec = {
             'beat': num(ev['beat']),
             'dur': num(ev['dur']),
-            'bass': uniq[0][0],
-            'voicing': [sp for sp, _ in uniq[1:]],
+            'bass': bass[0],
+            'voicing': [sp for sp, mid in uniq if mid != bass[1]],
         }
         arp = ev['arp'] or any(b['arp'] for b in bass_ev
                                if not b['rest'] and b['beat'] <= ev['beat'] < b['beat'] + b['dur'])
@@ -198,7 +251,7 @@ def convert_symbol(fig):
     return s
 
 
-def convert_bar(n, entry, section, source):
+def convert_bar(n, entry, section, source, prev_bass_ev=None, beats_per_bar=None):
     syms, mel, bass, chv = entry
     symbols, annotation = [], None
     for off, fig in syms:
@@ -212,7 +265,8 @@ def convert_bar(n, entry, section, source):
         'source': source,
         'symbols': symbols,
         'annotation': annotation,
-        'comp': comp_events(bass, chv),
+        'comp': comp_events(bass, chv, prev_bass_ev, beats_per_bar),
+        'bassLine': bass_line(bass),
         'melody': melody_events(mel),
     }
 
@@ -278,11 +332,12 @@ def main():
     num_, den = (int(x) for x in args.time.split('/'))
     beats_per_bar = num(Fraction(num_ * 4, den))
 
-    bars = []
+    bars, prev_bass_ev = [], None
     for n in sorted(src.BARS):
         section = section_for(n, getattr(src, 'TEXT', {}))
         source = 'arranged' if n >= args.arranged_from else 'transcribed'
-        bars.append(convert_bar(n, src.BARS[n], section, source))
+        bars.append(convert_bar(n, src.BARS[n], section, source, prev_bass_ev, beats_per_bar))
+        prev_bass_ev = parse_voice(src.BARS[n][2])
 
     repeats = getattr(src, 'REPEATS', {'start': [], 'end': []})
     endings = getattr(src, 'ENDINGS', {})
@@ -304,7 +359,7 @@ def main():
 
     # sanity: every bar's comp + melody fit the bar
     for b in bars:
-        for ev in b['comp'] + b['melody']:
+        for ev in b['comp'] + b['bassLine'] + b['melody']:
             if ev['beat'] + ev['dur'] > beats_per_bar + 1e-9:
                 print(f"warn: bar {b['bar']} event exceeds bar length: {ev}", file=sys.stderr)
 

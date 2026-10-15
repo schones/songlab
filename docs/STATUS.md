@@ -181,11 +181,16 @@ gap (events only at chord-voice onsets, so held basses are displaced
 and bass walks dropped) and a tension gap (weights match exact spans
 up to 13 semitones only). The tension step landed the same evening
 (option B: compound intervals reduced mod 12, per-class octave
-discounts — m2 and tritone 2/3, M2 and M7 0). Next:
-Session 4.5 (Joplin rag fixture as public ground truth, optional
-per-bar `bassLine`, `comp.bass` redefined, analysis over every comp
-event, staff bass from `bassLine`), then Session 5 (melody toggle and
-audio), Session 6 (Explore: generate and rank alternative voicings),
+discounts — m2 and tritone 2/3, M2 and M7 0). Session 4.5 began
+the same day: steps 1–2 landed (optional per-bar `bassLine` in the
+schema and exporter, `comp.bass` by three-way lookback, the staff's
+bass voice drawn from `bassLine`, `check_export.py`). Next: step 3
+(Maple Leaf Rag fixture from Mutopia's public-domain LilyPond via a
+converter into the score_src grammar, with a mandatory MIDI check),
+step 4 (analysis over every comp event: max aggregate, melody by
+time overlap, motion last-to-first plus within-bar with optimal
+assignment on mismatched voice counts), then Session 5 (melody
+toggle and audio), Session 6 (Explore: generate and rank alternative voicings),
 Session 7 (merge to dev). Plan:
 `docs/active-plans/voicing-explorer-build-plan.md`. Schema:
 `tools/voicings/schema.md`.
@@ -206,7 +211,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 **Next priorities (active):**
 1. ~~**Voicing Explorer — tension option B**~~ — landed 2026-10-15 (uncommitted): spans reduced mod 12, `OCTAVE_DISCOUNTS = {m2: 2/3, M2: 0, TT: 2/3, M7: 0}`; comp-only numbers inside one octave unchanged; compound minor 2nds and tritones now score (bar 26 0 → 1.333, bar 28 3 → 4.333), major 9ths/14ths do not (see SESSION_LOG).
-2. **Voicing Explorer Session 4.5** — (a) public-domain Joplin rag fixture (IMSLP edition) as ground truth; (b) optional per-bar `bassLine[]` (same event shape as `melody`) in the schema and exporter; (c) `comp.bass` redefined as the most recent bass onset at or before the chord onset, sounding or not; (d) analysis over every comp event instead of only the first; (e) staff draws the bass voice from `bassLine` when present. Then Session 5 (melody toggle and audio), 6, 7. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+2. **Voicing Explorer Session 4.5** — steps 1–2 ~~(`bassLine` in schema + exporter; `comp.bass` by lookback; staff bass from `bassLine`)~~ landed 2026-10-15. Remaining: step 3, Maple Leaf Rag A strain as a public fixture (Mutopia-2011/11/13-23, Public Domain, LilyPond → `ly_to_src.py` → score_src grammar → exporter; reduction: melody = top RH note, bass = lower note of octaves, RH inner tones dropped; mandatory MIDI check against Mutopia's MIDI; chord symbols ours, marked `chordSymbols: "derived"`); step 4, analysis over every comp event (max aggregate with the chart stack from the max event, melody by time overlap, motion last-to-first plus within-bar, optimal assignment when voice counts differ). Then Session 5 (melody toggle and audio), 6, 7. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
 3. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
 4. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
 
@@ -417,22 +422,45 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - Verified in headless Chrome at 1400 / 390 px: bars 1, 2, 10, 17,
   19, 26, 44; click → keyboard ring; ← → stepping; rapid stepping.
 
+**Built on `voicing-explorer` (Session 4.5 steps 1–2, 2026-10-15, uncommitted):**
+- Schema v1 gains an optional per-bar `bassLine[]` (bass voice as
+  written: `beat`, `dur`, `note`, optional `tie`/`arp`; one note per
+  event, the lower note of a dyad) and optional document fields
+  `chordSymbols: "derived"` and `attribution` for public fixtures.
+  `comp[].bass` is now defined by lookback: the most recent
+  bass-voice onset at or before the chord onset in the bar, sounding
+  or not; else a bass tied or still sounding (reaching the bar line)
+  from the previous bar; else the lowest chord note.
+- `tools/voicings/export_json.py` emits `bassLine` for every bar and
+  applies the lookback (`bass_for_onset`); comp events otherwise
+  unchanged (re-export diff: comp/melody/symbols identical in all 44
+  bars). Known reductions: grace notes in bass walks are dropped
+  (bars 4, 20); bar 20's opening bass dyad keeps only its lower note
+  in `bassLine` (the upper note survives in the comp voicing).
+- `tools/voicings/check_export.py` — exporter self-test, 19/19:
+  all three lookback branches, dyads, ties, arps, silent voices, and
+  the private shapes for bars 4, 20, 25–27 plus a comp-unchanged
+  diff against the exported JSON.
+- `voicing-staff-model.js` draws the bass voice from `bassLine` when
+  present (held basses on the downbeat, walks under a held chord),
+  matches bass ties through the neighbours' `bassLine`, and includes
+  the sounding bass in arpeggios; falls back to comp events when a
+  bar has no `bassLine` (the public fixture). `selfTest()` 58/58.
+  Verified in headless Chrome on bars 4, 20, 25, 26, 27.
+
 **In progress:**
-- Session 4.5 — see Next priorities. Tension option B landed
-  2026-10-15 (uncommitted).
+- Session 4.5 steps 3–4 — see Next priorities.
 
 **Open / deferred:**
 - Session 5 (melody toggle + audio) follows 4.5; Explore mode
   (Session 6); merge to dev with clean-clone check (Session 7).
-- Exporter creates comp events only at chord-voice onsets (traced
-  2026-10-15 on bars 25–27): a bass that starts before the first
-  chord is folded into the chord's event and takes its beat and
-  duration (bars 25–27 show the bass a beat late; bar 26 as two
-  re-struck quarters), and bass onsets after the chord onset are
-  dropped (walks in bars 4, 20). Schema v1 cannot express a held
-  bass under later chord attacks. Fix is Session 4.5's `bassLine`.
 - Analysis scores only the first comp event per bar: bar 26's
-  second chord (A♭3–D4 tritone) is never scored. Until 4.5 lands.
+  second chord (A♭3–D4 tritone) is never scored. Until 4.5 step 4.
+- Keyboard, detail panel and Tonnetz show the first comp event's
+  bass and voicing; a selected-event notion arrives with step 4.
+- `bassLine` reductions (grace notes dropped, dyads reduced to the
+  lower note) are documented, not fixed; revisit if a piece needs
+  them.
 - Spike files to delete when ready: `templates/spikes/`,
   `static/spikes/staff/`, the `/voicings/spike-staff` route in the
   `if app.debug:` block of `app.py`.
@@ -453,6 +481,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - Self-tests:
   `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
   `node --input-type=module -e "import('./static/shared/voicing-staff-model.js').then(m => m.selfTest())"`
+  `python3 tools/voicings/check_export.py`
 
 ### Chord Progression Engine
 - Multi-path glow worm visualization (animated playthrough with fading trails)

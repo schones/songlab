@@ -22,6 +22,12 @@
  * match goes to model.warnings instead. The last bar draws unmatched ties.
  * Incoming ties use the same matching against the previous bar's last event.
  *
+ * Bass voice. When the bar carries a bassLine (schema v1, optional), the bass
+ * staff's second voice is drawn from it as written — held basses under later
+ * chord attacks, walks under a sustained chord — and comp[].bass is ignored
+ * for layout. Without a bassLine the bass voice falls back to comp[].bass at
+ * each comp event. Bass ties match the neighbours' bassLine the same way.
+ *
  * Accidentals carry per letter + octave per staff within the bar, key-aware;
  * tied-in notes show none.
  *
@@ -222,18 +228,33 @@ function buildBarModel(progression, barNumber, { split = SPLIT_MIDI } = {}) {
 
   const bassItems = [], lowerItems = [], upperItems = [], melItems = [];
   const comp = bar.comp || [], melody = bar.melody || [];
+  const bassLine = Array.isArray(bar.bassLine) ? bar.bassLine : null;
   comp.forEach((ev, i) => {
     const isFirst = i === 0 && Math.abs(ev.beat) < EPS, isLast = i === comp.length - 1;
     const note = (name, role) => {
       const m = midiOf(name);
       return { name, tieIn: isFirst && compIn.has(m), tieOut: tieOutFor(ev.tie, m, compOut, isLast, role, name) };
     };
-    bassItems.push({ beat: ev.beat, dur: ev.dur, src: i, notes: [note(ev.bass, 'bass')] });
+    if (!bassLine) bassItems.push({ beat: ev.beat, dur: ev.dur, src: i, notes: [note(ev.bass, 'bass')] });
     const lower = [], upper = [];
     for (const name of ev.voicing || []) (midiOf(name) >= split ? upper : lower).push(note(name, 'voicing'));
     if (lower.length) lowerItems.push({ beat: ev.beat, dur: ev.dur, src: i, notes: lower });
     if (upper.length) upperItems.push({ beat: ev.beat, dur: ev.dur, src: i, notes: upper });
   });
+  if (bassLine) {
+    // Bass ties match the neighbours' bassLine; a neighbour without one offers its comp bass.
+    const prevBL = !prev ? null : Array.isArray(prev.bassLine) ? lastOf(prev.bassLine) : (prevComp ? { note: prevComp.bass, tie: prevComp.tie } : null);
+    const nextBL = !next ? null : Array.isArray(next.bassLine) ? firstAtZero(next.bassLine) : (nextComp ? { note: nextComp.bass } : null);
+    const blIn  = prevBL && prevBL.tie ? midiOf(prevBL.note) : null;
+    const blOut = next ? (nextBL ? new Set([midiOf(nextBL.note)]) : new Set()) : null;
+    bassLine.forEach((ev, i) => {
+      const m = midiOf(ev.note);
+      bassItems.push({ beat: ev.beat, dur: ev.dur, notes: [{
+        name: ev.note, tieIn: i === 0 && Math.abs(ev.beat) < EPS && m === blIn,
+        tieOut: tieOutFor(ev.tie, m, blOut, i === bassLine.length - 1, 'bass', ev.note),
+      }] });
+    });
+  }
   melody.forEach((ev, i) => {
     const m = midiOf(ev.note);
     melItems.push({ beat: ev.beat, dur: ev.dur, notes: [{
@@ -255,17 +276,27 @@ function buildBarModel(progression, barNumber, { split = SPLIT_MIDI } = {}) {
   markAccidentals([voices.melody, voices.upper], keyAcc);
   markAccidentals([voices.lower, voices.bass], keyAcc);
 
-  // Arpeggiated comp events → id lists across all three comp voices.
-  const arps = comp.map((ev, i) => ev.arp
-    ? [voices.bass, voices.lower, voices.upper].flat().filter(e => e.src === i).flatMap(e => e.notes.map(n => n.id))
-    : null).filter(ids => ids && ids.length);
+  // Arpeggiated comp events → id lists across the voicing voices plus the bass
+  // note sounding at (or most recently before) the chord onset.
+  const bassAt = beat => {
+    if (!bassLine) return null;
+    const prior = voices.bass.filter(e => !e.rest && e.beat <= beat + EPS);
+    return prior.length ? prior[prior.length - 1] : null;
+  };
+  const arps = comp.map((ev, i) => {
+    if (!ev.arp) return null;
+    const ids = [voices.bass, voices.lower, voices.upper].flat().filter(e => e.src === i).flatMap(e => e.notes.map(n => n.id));
+    const b = bassAt(ev.beat);
+    if (b) ids.unshift(...b.notes.map(n => n.id));
+    return ids;
+  }).filter(ids => ids && ids.length);
 
   return {
     bar: barNumber, section: bar.section, source: bar.source,
     keyName, keyFifths, meter: { count, unit }, beatsPerBar,
     symbols: barSymbols(bars, idx),
     arps, arp: arps.length > 0,
-    voices, split,
+    voices, split, bassFrom: bassLine ? 'bassLine' : 'comp',
     prev: prev ? prev.bar : null, next: next ? next.bar : null,
     warnings,
   };
@@ -435,6 +466,27 @@ async function selfTest() {
   assert('split pieces are tied internally',                (() => { const m = buildBarModel({ ...SYN, bars: [{ ...SYN.bars[0], comp: [{ beat: 0, dur: 2.5, bass: 'C3', voicing: ['E3'] }] }] }, 1);
                                                                return [vals(m.voices.bass), !!m.voices.bass[0].notes[0].tieNext]; })(), [['h', '8', '8'], true]);
 
+  // ── bassLine: bass voice from the bar's bassLine when present ────
+  console.log('  bassLine');
+  const BL = { ...SYN, bars: [
+    { bar: 1, section: 'T', source: 'user', symbols: [{ beat: 0, symbol: 'Cmaj7' }], annotation: null,
+      comp: [{ beat: 1, dur: 1, bass: 'C3', voicing: ['E4', 'G4'] }, { beat: 2, dur: 1, bass: 'C3', voicing: ['F4', 'A4'], arp: true }],
+      bassLine: [{ beat: 0, dur: 3, note: 'C3', tie: true }], melody: [] },
+    { bar: 2, section: 'T', source: 'user', symbols: [], annotation: null,
+      comp: [{ beat: 0, dur: 1, bass: 'C3', voicing: ['E4'] }],
+      bassLine: [{ beat: 0, dur: 1, note: 'C3' }, { beat: 1, dur: 1, note: 'D3' }, { beat: 2, dur: 1, note: 'E3' }], melody: [] },
+  ] };
+  const l1 = buildBarModel(BL, 1), l2 = buildBarModel(BL, 2);
+  assert('held bass under two chords: one dotted half at beat 0',  [names(l1.voices.bass), vals(l1.voices.bass), l1.bassFrom], [['C3'], ['h.'], 'bassLine']);
+  assert('chords still rest at beat 0 in their own voice',           names(l1.voices.upper), ['rest', 'E4+G4', 'F4+A4']);
+  assert('bass tie out matched by bar 2\'s bassLine at beat 0',     [flagged(l1.voices.bass, 'tieOut'), l1.warnings], [['C3'], []]);
+  assert('bar 2 bass tie in',                                        flagged(l2.voices.bass, 'tieIn'), ['C3']);
+  assert('walk under one chord: three bass notes',                   names(l2.voices.bass), ['C3', 'D3', 'E3']);
+  assert('arp on the second chord spans F4+A4 and the held bass',    l1.arps.map(ids => ids.length), [3]);
+  assert('MEI: bass layer starts with the note, no leading rest',    /<layer n="[12]"><note [^>]*pname="c" oct="3"/.test(toMEI(l1)), true);
+  const noBL = { ...BL, bars: BL.bars.map(({ bassLine, ...rest }) => rest) };
+  assert('without bassLine: comp path, bass re-struck per event',    [names(buildBarModel(noBL, 1).voices.bass), buildBarModel(noBL, 1).bassFrom], [['rest', 'C3', 'C3'], 'comp']);
+
   // ── Fixture smoke pass ───────────────────────────────────────────
   const fixURL = new URL('../../tests/fixtures/voicing-fixture.json', import.meta.url);
   const fixture = JSON.parse(fs.readFileSync(fixURL, 'utf8'));
@@ -457,8 +509,16 @@ async function selfTest() {
     assert('bar 17: melody tie out matched in bar 18',          [flagged(B(17).voices.melody, 'tieOut').length, B(17).warnings], [1, []]);
     assert('bar 19: 1 tie in (melody), 5 ties out',             [flagged(Object.values(B(19).voices).flat(), 'tieIn').length, flagged(Object.values(B(19).voices).flat(), 'tieOut').length], [1, 5]);
     assert('bar 10: triplet on beat 3',                         vals(B(10).voices.melody), ['h', '8³', '8³', '8³']);
-    assert('bar 26: two comp events, 7 comp notes',             sound(B(26).voices.bass) + sound(B(26).voices.lower) + sound(B(26).voices.upper), 7);
+    assert('bar 26: two comp events, 6 comp notes (one held bass, was 7 re-struck before bassLine)', sound(B(26).voices.bass) + sound(B(26).voices.lower) + sound(B(26).voices.upper), 6);
     assert('bar 1: no previous, no ties in',                    [B(1).prev, flagged(Object.values(B(1).voices).flat(), 'tieIn')], [null, []]);
+    if (prog.bars.every(b => Array.isArray(b.bassLine))) {
+      assert('bassLine: bars 25–27 bass is a dotted half on the downbeat', [25, 26, 27].map(n => vals(B(n).voices.bass)), [['h.'], ['h.'], ['h.']]);
+      assert('bassLine: bar 26 bass is one note under two chords',  [names(B(26).voices.bass), names(B(26).voices.lower)], [['F2'], ['rest', 'A3+D4', 'A♭3+D4']]);
+      assert('bassLine: bar 20 walk draws four bass notes',          vals(B(20).voices.bass), ['q', 'q', '8', '8']);
+      assert('bassLine: bar 4 walk draws four bass notes',           vals(B(4).voices.bass), ['q', 'q', '8', '8']);
+    } else {
+      console.log('  (private JSON has no bassLine — re-export to test the bass voice)');
+    }
     assert('bar 44: no next, no warnings',                      [B(44).next, B(44).warnings], [null, []]);
     const allWarnings = prog.bars.flatMap(b => B(b.bar).warnings);
     console.log(`  (${allWarnings.length} tie warning${allWarnings.length === 1 ? '' : 's'} across ${prog.bars.length} bars${allWarnings.length ? ':\n    ' + allWarnings.join('\n    ') : ''})`);

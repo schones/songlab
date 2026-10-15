@@ -3,6 +3,96 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-10-15 (evening) — Voicing Explorer Session 4.5, steps 1–2: bassLine, bass lookback, staff bass from bassLine
+
+Read-and-report for the whole 4.5 session (five goals), then steps 1
+and 2 built as one unit and stopped for commit. Steps 3 (Maple Leaf
+Rag fixture) and 4 (analysis over every comp event) follow as their
+own commits.
+
+### Landed
+- `tools/voicings/schema.md` — optional per-bar `bassLine[]` (bass
+  voice as written: `beat`, `dur`, `note`, optional `tie`/`arp`, one
+  note per event); `comp[].bass` redefined by three-way lookback;
+  `voicing` definition clarified (chord notes plus any further
+  bass-voice notes sounding at the onset); optional document fields
+  `chordSymbols: "derived"` and `attribution` for public fixtures.
+- `tools/voicings/export_json.py` — `bass_line()` emits the bass
+  voice per bar; `bass_for_onset()` implements the lookback (most
+  recent bass onset at or before the chord onset in this bar,
+  sounding or not; else the previous bar's last bass note when tied
+  or reaching the bar line; else the lowest chord note);
+  `comp_events` / `convert_bar` / `main` thread the previous bar's
+  bass events and beats-per-bar through. Re-export of the private
+  piece: comp, melody and symbols byte-identical in all 44 bars;
+  only `bassLine` added.
+- `tools/voicings/check_export.py` (new) — exporter self-test, 19/19:
+  the three lookback branches plus the two no-bass cases, octave
+  dyad, chord voice silent, held bass, walk with grace dropped, dyad
+  + tie, arp, silent bass; private acceptance for bars 4, 20, 25–27
+  and a comp-unchanged diff against the exported JSON.
+- `static/shared/voicing-staff-model.js` — bass voice from
+  `bassLine` when present (comp events as fallback); bass ties
+  matched through the neighbours' `bassLine` (or a neighbour's comp
+  bass); arpeggio spans the voicing plus the bass note sounding at
+  or most recently before the chord onset; model reports
+  `bassFrom`. `selfTest()` 58/58 (eight new cases; one re-baselined:
+  bar 26 has 6 comp notes on the staff, not 7, since the bass is one
+  held note).
+- Verified in headless Chrome on bars 4, 20, 25, 26, 27: walks of
+  quarter, quarter, eighth, eighth under the tied-in chord (4, 20);
+  dotted-half bass on the downbeat under chords from beat 1 (25–27);
+  bar 26 one held F2 under both chords. No tie warnings.
+- `docs/STATUS.md` updated.
+
+### Diagnosed / decided
+- **"Still sounding from the previous bar"** is implemented as: the
+  previous bar's last bass note either carries a tie flag or lasts to
+  the bar line. A bass that stopped before the bar line does not
+  carry over; the chord's lowest note becomes the bass. The private
+  piece never exercises the second or third branch (every chord
+  onset has a bass onset at or before it in its own bar), so those
+  branches are covered by synthetic cases only.
+- **Reductions in `bassLine`, documented not fixed:** grace notes in
+  bass walks are dropped (bars 4 and 20 have a grace before the
+  eighth-note pair); a bass-voice dyad keeps only its lower note
+  (bar 20's opening dyad) while the upper note still reaches the comp
+  event's voicing. Both are consequences of the one-note event shape
+  shared with `melody`.
+- **Rag source decided:** Maple Leaf Rag, Mutopia-2011/11/13-23,
+  Public Domain (CC public-domain mark), LilyPond 2.14.2 from a
+  reproduction of the 1899 edition, typeset by Chris Sawer. A strain
+  (16 bars, written as 17 with the two endings; pickup dropped).
+  Conversion through a limited-subset LilyPond reader into the
+  score_src grammar so the rag tests the exporter too; the fixture is
+  a reduction (melody = top RH note, bass = lower note of octaves, RH
+  inner tones dropped), to be stated in `attribution.notes` and the
+  schema doc; a mandatory MIDI check against Mutopia's MIDI (every
+  fixture note at the same onset and pitch; top and bottom MIDI notes
+  at each onset match melody and bass).
+- **Analysis per event (step 4) decided:** bar total = max over comp
+  events, chart stack from the max event; melody scored per event by
+  time overlap (bar 26 with melody becomes 2.0, not 3.333); motion
+  last-to-first across bars plus within-bar steps, with optimal
+  assignment (brute force over pairings, ≤ 5 voices) when voice
+  counts differ instead of n/a.
+
+### Setup for next session
+- Tree: Session 4 + tension option B + 4.5 steps 1–2 uncommitted.
+  Spike files present, awaiting deletion. Private JSON regenerated
+  (gitignored).
+- Next: step 3 (rag fixture + `ly_to_src.py` + MIDI check), stop;
+  step 4 (analysis per event + page event selection), stop; then
+  Session 5.
+- Self-tests: `voicing-analysis.js` 51/51, `voicing-staff-model.js`
+  58/58, `check_export.py` 19/19.
+
+### Flagged for later
+- Keyboard, detail and Tonnetz still show the first comp event; the
+  selected-event notion comes with step 4.
+- Bass dyads and grace notes in `bassLine` if a piece ever needs
+  them (would need `notes[]` or a grace flag on bass events).
+
 ## 2026-10-15 — Voicing Explorer Session 4: staff renderer spike, staff panel, two read-only traces
 
 One day, four Claude Code prompts in the read-report-stop-build
