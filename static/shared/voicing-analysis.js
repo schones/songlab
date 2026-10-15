@@ -427,9 +427,11 @@ function namedVsPlayed(symbolOrParsed, pitches) {
  * voicing is empty.
  *
  * @returns {{ total:number, perVoice:Array<{from,to,delta}>, matched:number,
- *             unmatched:Array<{side:'from'|'to', midi:number}> }|null}
+ *             unmatched:Array<{side:'from'|'to', midi:number, name:string}> }|null}
  */
 function voiceMotion(prevVoicing, voicing) {
+  const names = new Map();   // midi → spelled name as given (first wins)
+  for (const n of [...(prevVoicing || []), ...(voicing || [])]) { const m = toMidi(n); if (!isNaN(m) && !names.has(m)) names.set(m, typeof n === 'string' ? n : parseNote(m).name + parseNote(m).octave); }
   const a = (prevVoicing || []).map(toMidi).filter(m => !isNaN(m)).sort((x, y) => x - y);
   const b = (voicing || []).map(toMidi).filter(m => !isNaN(m)).sort((x, y) => x - y);
   if (!a.length || !b.length) return null;
@@ -452,7 +454,7 @@ function voiceMotion(prevVoicing, voicing) {
     const other = large[best.pick[i]];
     return prevIsSmall ? { from: m, to: other, delta: other - m } : { from: other, to: m, delta: m - other };
   }).sort((x, y) => x.from - y.from);
-  const unmatched = large.map((m, j) => (best.pick.includes(j) ? null : { side: prevIsSmall ? 'to' : 'from', midi: m })).filter(Boolean);
+  const unmatched = large.map((m, j) => (best.pick.includes(j) ? null : { side: prevIsSmall ? 'to' : 'from', midi: m, name: names.get(m) })).filter(Boolean);
   return { total: best.cost, perVoice, matched: small.length, unmatched };
 }
 
@@ -686,7 +688,7 @@ async function selfTest() {
   assert('bar 8  written B♭ over Gmaj7 labels ♭3',       fmt(M(8).namedVsPlayed.added), ['B♭·♭3']);
   assert('bar 8  comp-only has no added tones',          fmt(C(8).namedVsPlayed.added), []);
   assert('bar 9→10 three voices up 2 each → 6',          C(10).motion.total, 6);
-  assert('bar 10→11 three voices into four: optimal assignment 3, one unmatched', [C(11).motion.total, C(11).motion.unmatched], [3, [{ side: 'to', midi: 59 }]]);
+  assert('bar 10→11 three voices into four: optimal assignment 3, one unmatched', [C(11).motion.total, C(11).motion.unmatched.map(u => [u.side, u.midi])], [3, [['to', 59]]]);
   assert('bar 12 hold carries G7',                       [C(12).hold, C(12).effectiveSymbol], [true, 'G7']);
   assert('bar 11→12 identical voicing → motion 0',       C(12).motion.total, 0);
   assert('midi-only voicing spells chord-relatively',    fmt(namedVsPlayed('A7#11', [49, 55, 63]).present), ['C♯·3', 'G·♭7', 'D♯·♯11']);
@@ -733,9 +735,9 @@ async function selfTest() {
            [B(pm, 26).events.map(e => e.total), B(pm, 26).events[0].melody.rubs.map(r => r.melody + '/' + r.against + ':' + r.contribution)], [[2, 2], ['C5/F♯4:0.667']]);
     assert('bar 26 event 2 is scored against B♭7/F (the symbol at beat 2): D·3 A♭·♭7 F·5, omitted B♭·R',
            [B(pc, 26).events[1].symbol, fmt(B(pc, 26).events[1].namedVsPlayed.present), fmt(B(pc, 26).events[1].namedVsPlayed.omitted)], ['B♭7/F', ['D·3', 'F·5', 'A♭·♭7'], ['B♭·R']]);
-    assert('bar 26 motion in = 8 (F3→A3, B♭3→D4; F♯4 free)',   [B(pc, 26).motion.total, B(pc, 26).motion.unmatched], [8, [{ side: 'to', midi: 66 }]]);
-    assert('bar 26 motion within = 1 (A3→A♭3, D4 stays; F♯4 free)', [B(pc, 26).motionWithin.total, B(pc, 26).motionWithin.steps[0].unmatched], [1, [{ side: 'from', midi: 66 }]]);
-    assert('bar 27 motion in = 1 from bar 26\'s last event (A♭3→G3; B♭3 free)', [B(pc, 27).motion.total, B(pc, 27).motion.unmatched], [1, [{ side: 'to', midi: 58 }]]);
+    assert('bar 26 motion in = 8 (F3→A3, B♭3→D4; F♯4 free)',   [B(pc, 26).motion.total, B(pc, 26).motion.unmatched], [8, [{ side: 'to', midi: 66, name: 'F♯4' }]]);
+    assert('bar 26 motion within = 1 (A3→A♭3, D4 stays; F♯4 free)', [B(pc, 26).motionWithin.total, B(pc, 26).motionWithin.steps[0].unmatched], [1, [{ side: 'from', midi: 66, name: 'F♯4' }]]);
+    assert('bar 27 motion in = 1 from bar 26\'s last event (A♭3→G3; B♭3 free, spelled as written)', [B(pc, 27).motion.total, B(pc, 27).motion.unmatched], [1, [{ side: 'to', midi: 58, name: 'B♭3' }]]);
     assert('bar 37 (2nd ending) takes its motion from bar 28, its performance predecessor', B(pc, 37).predecessor, 28);
     const single = pc.bars.filter(b => b.events.length === 1);
     assert('regression: every single-event bar (' + single.length + ') keeps its comp total = intervalTension(first event)',

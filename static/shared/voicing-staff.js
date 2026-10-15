@@ -12,8 +12,10 @@
  *   staff.render(progression, 17);   // async; the latest call wins
  *   staff.highlight(noteId);         // or null to clear
  *
- * onNoteClick receives { id, midi, name, role, bar } for a notehead, or null
- * when the user clicks empty staff area.
+ * onNoteClick receives { id, midi, name, role, bar, event } for a notehead
+ * (event = comp event index for comp notes, null for bassLine / melody
+ * notes), or null when the user clicks empty staff area. setEvent(index)
+ * dims the comp notes of the other events.
  */
 
 import { buildBarModel, toMEI } from './voicing-staff-model.js';
@@ -53,6 +55,7 @@ const CSS = /* css */ `
 /* Verovio strokes use currentColor; fills default to black. Role-colored notes carry their own fill/color attributes and win. */
 .vs-svg g.note { cursor: pointer; }
 .vs-svg g.note.vs-note--hit { filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 6px rgba(255,255,255,0.8)); }
+.vs-svg g.note.vs-note--dim { opacity: 0.3; }
 .vs-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; font-size: var(--font-size-xs, 12px); color: var(--text-muted, #8A8678); pointer-events: none; }
 .vs-wrap[data-state="ready"] .vs-status { display: none; }
 .vs-wrap[data-state="loading"] .vs-svg, .vs-wrap[data-state="error"] .vs-svg { opacity: 0.3; }
@@ -78,9 +81,10 @@ class VoicingStaff {
     this._container = typeof container === 'string' ? document.getElementById(container) : container;
     this._onNoteClick = options.onNoteClick || (() => {});
     this._colors = resolveColors();
-    this._hits = new Map();     // svg id → { id, midi, name, role, bar }
+    this._hits = new Map();     // svg id → { id, midi, name, role, bar, event }
     this._hitEl = null;
     this._token = 0;
+    this._event = null;
     this.model = null;
 
     if (!document.getElementById('vs-styles')) {
@@ -105,10 +109,14 @@ class VoicingStaff {
     });
   }
 
-  /** Render one bar. Resolves when drawn, or when superseded by a later call. */
-  async render(progression, barNumber) {
+  /**
+   * Render one bar. Resolves when drawn, or when superseded by a later call.
+   * @param {{ event?: number|null }} [options]  comp event to keep bright (others dimmed)
+   */
+  async render(progression, barNumber, options = {}) {
     const token = ++this._token;
     this._hits.clear(); this._hitEl = null;
+    this._event = options.event ?? null;
     this.model = buildBarModel(progression, barNumber);
     if (!this.model) { this._setState('error', `No data for bar ${barNumber}`); return; }
     for (const w of this.model.warnings) console.warn(`[voicing-staff] ${w}`);
@@ -127,9 +135,24 @@ class VoicingStaff {
     if (!tk.loadData(mei)) { this._setState('error', 'Notation could not be engraved for this bar'); return; }
     this._svgHost.innerHTML = tk.renderToSVG(1);
     for (const ev of Object.values(this.model.voices).flat()) for (const n of ev.notes) {
-      if (this._svgHost.querySelector(`#${CSS_escape(n.id)}`)) this._hits.set(n.id, { id: n.id, midi: n.midi, name: n.name, role: n.role, bar: barNumber });
+      if (this._svgHost.querySelector(`#${CSS_escape(n.id)}`)) this._hits.set(n.id, { id: n.id, midi: n.midi, name: n.name, role: n.role, bar: barNumber, event: ev.event ?? null });
     }
+    this._applyEventDim();
     this._setState('ready', '');
+  }
+
+  /** Keep one comp event's notes bright and dim the others' (null = all bright). */
+  setEvent(index) {
+    this._event = index ?? null;
+    this._applyEventDim();
+  }
+
+  _applyEventDim() {
+    for (const [id, hit] of this._hits) {
+      const el = this._svgHost.querySelector(`#${CSS_escape(id)}`);
+      if (!el) continue;
+      el.classList.toggle('vs-note--dim', this._event != null && hit.event != null && hit.event !== this._event);
+    }
   }
 
   /** Highlight one note group by id; null clears. */
@@ -141,7 +164,7 @@ class VoicingStaff {
 
   clear() {
     this._token++;
-    this.model = null; this._hits.clear(); this._hitEl = null;
+    this.model = null; this._hits.clear(); this._hitEl = null; this._event = null;
     this._svgHost.innerHTML = '';
     this._setState('empty', '');
   }

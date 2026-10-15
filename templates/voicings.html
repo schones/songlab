@@ -67,7 +67,7 @@
   <div class="vp-banner" id="vp-banner" hidden role="status"></div>
 
   <section class="vp-panel" aria-label="Tension per bar">
-    <p class="vp-panel__label">Tension per bar — click or use ← → to select</p>
+    <p class="vp-panel__label">Tension per bar — click or use ← → to select a bar, Shift+← → to step comp events</p>
     <div id="vp-chart"></div>
   </section>
 
@@ -120,7 +120,7 @@
   const FIXTURE_PIECE = 'fixture';
 
   // ── Page state: one object, one setter ──────────────────────────
-  const state = { piece: null, progression: null, analysis: null, selectedBar: null };
+  const state = { piece: null, progression: null, analysis: null, selectedBar: null, selectedEvent: null };
 
   const els = {
     page:   document.getElementById('vp-page'),
@@ -132,11 +132,15 @@
   };
 
   // ── Views ───────────────────────────────────────────────────────
-  const chart    = new VoicingChart('vp-chart', { onSelect: select });
-  const detail   = new VoicingDetail({ info: 'vp-info', rubs: 'vp-rubs', nvp: 'vp-nvp' });
+  const chart    = new VoicingChart('vp-chart', { onSelect: select, onStepEvent: stepEvent });
+  const detail   = new VoicingDetail({ info: 'vp-info', rubs: 'vp-rubs', nvp: 'vp-nvp' }, { onSelectEvent: selectEvent });
   const keyboard = new VoicingKeyboard('vp-keyboard', { low: 'C2', high: 'B5' });
-  // Verovio loads lazily on the first staff render; a clicked notehead rings its key.
-  const staff    = new VoicingStaff('vp-staff', { onNoteClick: note => keyboard.setHighlight(note ? note.midi : null) });
+  // Verovio loads lazily on the first staff render. A clicked notehead rings its
+  // key; a comp note of another event also selects that event.
+  const staff    = new VoicingStaff('vp-staff', { onNoteClick: note => {
+    if (note && note.event != null && note.event !== state.selectedEvent) selectEvent(note.event);
+    keyboard.setHighlight(note ? note.midi : null);
+  } });
 
   // Tonnetz: shared modules, non-interactive. The glow-worm renderer must
   // be created AFTER TonnetzNeighborhood.init so its subscriber runs after
@@ -144,27 +148,56 @@
   TonnetzNeighborhood.init('vp-tonnetz', { interactive: false });
   const bubble = new ChordBubbleRenderer('vp-tonnetz');
 
-  // ── Selection ───────────────────────────────────────────────────
-  function select(barNumber) {
+  // ── Selection: a bar, and a comp event within it ─────────────────
+  // The selected event defaults to the bar's max-tension event, so every
+  // panel agrees with the chart's stack on arrival. Detail, keyboard,
+  // Tonnetz and the staff's bright notes all read from that event.
+  function select(barNumber, eventIndex = null) {
     if (!state.analysis) return;
     const bar = state.analysis.bars.find(b => b.bar === barNumber);
     if (!bar) return;
+    const sameBar = state.selectedBar === barNumber;
     state.selectedBar = barNumber;
-    const data = state.progression.bars.find(b => b.bar === barNumber);
-    const comp = (data && data.comp && data.comp[0]) || null;
+    state.selectedEvent = bar.events.length
+      ? Math.min(Math.max(eventIndex == null ? (bar.maxEvent ?? 0) : eventIndex, 0), bar.events.length - 1)
+      : null;
+    const event = state.selectedEvent == null ? null : bar.events[state.selectedEvent];
 
     chart.setSelected(barNumber);
-    detail.render(bar, comp);
-    keyboard.render(comp ? { bass: comp.bass, voicing: comp.voicing } : {});
-    staff.render(state.progression, barNumber);   // async; latest selection wins
+    detail.render(bar, state.selectedEvent);
+    keyboard.render(event ? { bass: event.bass, voicing: event.voicing } : {});
+    if (sameBar && staff.model && staff.model.bar === barNumber) staff.setEvent(state.selectedEvent);
+    else staff.render(state.progression, barNumber, { event: state.selectedEvent });   // async; latest selection wins
 
     // Publish exactly these pitches. source:'user' is the only path the
     // shared Tonnetz treats as octave-faithful Note Mode. No progressionState.
-    const notes = comp ? toHarmonyNotes([comp.bass, ...(comp.voicing || [])]) : [];
+    const notes = event ? toHarmonyNotes([event.bass, ...(event.voicing || [])]) : [];
     HarmonyState.update({
       activeNotes: notes,
       activeTriads: [], activeChord: null, activeTransform: null, activeInterval: null,
     });
+  }
+
+  function selectEvent(index) {
+    if (state.selectedBar == null) return;
+    select(state.selectedBar, index);
+  }
+
+  // Shift+←/→: previous / next comp event, crossing into the neighbouring
+  // bar (chart order) at the ends of a bar.
+  function stepEvent(delta) {
+    if (!state.analysis || state.selectedBar == null) return;
+    const bars = state.analysis.bars;
+    let idx = bars.findIndex(b => b.bar === state.selectedBar);
+    let ev = state.selectedEvent == null ? (delta > 0 ? -1 : 0) : state.selectedEvent;
+    ev += delta;
+    while (idx >= 0 && idx < bars.length && (ev < 0 || ev >= bars[idx].events.length)) {
+      idx += delta;
+      if (idx < 0 || idx >= bars.length) return;
+      ev = delta > 0 ? 0 : bars[idx].events.length - 1;
+    }
+    if (idx < 0 || idx >= bars.length) return;
+    select(bars[idx].bar, ev);
   }
 
   // ── Loading ─────────────────────────────────────────────────────
@@ -176,7 +209,7 @@
   function hideBanner() { els.banner.hidden = true; }
 
   function renderEmpty(name) {
-    state.piece = name; state.progression = null; state.analysis = null; state.selectedBar = null;
+    state.piece = name; state.progression = null; state.analysis = null; state.selectedBar = null; state.selectedEvent = null;
     els.title.textContent = name;
     els.meta.textContent = '';
     els.page.classList.add('vp-empty');
@@ -252,6 +285,6 @@
   load(requested || DEFAULT_PIECE, { explicit: !!requested });
 
   // Debug handle for the browser console (no behaviour depends on it).
-  window.__voicings = { state, select, chart, keyboard, detail, bubble, staff };
+  window.__voicings = { state, select, selectEvent, stepEvent, chart, keyboard, detail, bubble, staff };
 </script>
 {% endblock %}

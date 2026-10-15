@@ -3,12 +3,51 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
-## 2026-10-15 (evening) — Voicing Explorer Session 4.5, steps 1–4a: bassLine, bass lookback, staff bass from bassLine, Maple Leaf Rag fixture, engine per comp event
+## 2026-10-15 (evening) — Voicing Explorer Session 4.5 complete: bassLine, bass lookback, staff bass from bassLine, Maple Leaf Rag fixture, engine and page per comp event
 
-Read-and-report for the whole 4.5 session (five goals), then steps 1
-and 2 built as one unit and committed, then step 3 (the public rag
-fixture with its converter and MIDI check), then step 4a (engine
-only). Step 4b (the page's selected-event notion) follows.
+Read-and-report for the whole 4.5 session (five goals), then four
+commits: steps 1+2 (bass rhythm), step 3 (the public rag fixture
+with its converter and MIDI check), step 4a (engine per comp event),
+step 4b (the page's selected event). Dustin deleted the staff spike
+between 4a and 4b. Session 5 (melody toggle + audio) is next.
+
+### Landed (step 4b — the page's selected event)
+- `templates/voicings.html`: `select(bar, eventIndex?)` with
+  `state.selectedEvent` (default `maxEvent`), `selectEvent(index)`,
+  `stepEvent(delta)` (Shift+←/→, crossing bar boundaries in chart
+  order); keyboard and Tonnetz publish the selected event's pitches;
+  the staff re-renders only on a bar change and otherwise just
+  re-dims.
+- `voicing-detail.js` rewritten around `render(bar, eventIndex)`:
+  event chips (consecutive identical events collapsed with a count;
+  click selects), symbol / bass / voicing / tension of the event,
+  motion "into" vs "step" with free voices by written name, rubs
+  (comp + melody when present), named-vs-played of the event.
+- `voicing-chart.js`: `onStepEvent` option, fired on Shift+←/→.
+- `voicing-staff-model.js`: every comp-derived piece carries its
+  comp event index (`event`); `voicing-staff.js`: hits carry it,
+  `setEvent(index)` dims the other events' comp notes,
+  `render(…, { event })`.
+- `voicing-analysis.js`: `unmatched[].name` (spelled as written) so
+  the page can say "free: B♭3" rather than a sharp-spelled midi.
+- Headless at 1400 / 390: private 25–27, rag 9 / 12 / 16; chip,
+  staff-note and Shift+arrow selection incl. across 26→27 and 9→10;
+  console clean. Self-tests 64/64, 70/70, 25/25, MIDI 0 mismatches.
+
+### Diagnosed / decided (step 4b)
+- **Default event = maxEvent** so the chart's stack, the rubs list,
+  the keyboard and the Tonnetz agree on arrival; the first-event
+  default would have kept bar 26 inconsistent.
+- **Dimming scope:** only comp notes of other events dim; `bassLine`
+  and melody notes are not per-event and stay bright. Clicking a
+  bassLine or melody note rings its key without changing the event.
+- **Chips collapse identical runs** (same symbol, bass, voicing) so
+  the rag's chord-on-every-eighth bars show one chip ("Bdim7 ×4");
+  selecting such a chip selects the run's first event, and
+  Shift+arrows still walk the individual events.
+- **"n/a (no previous voicing)"** appears where the predecessor's
+  last event has an empty voicing (rag bar 8's bare octave basses →
+  bar 9), which is correct for the data.
 
 ### Landed (step 4a — engine per comp event)
 - `voicing-analysis.js`: `analyzeProgression` scores every comp
@@ -203,8 +242,7 @@ only). Step 4b (the page's selected-event notion) follows.
   Session 5.
 - Self-tests: `voicing-analysis.js` 64/64, `voicing-staff-model.js`
   70/70, `check_export.py` 25/25, `check_midi.py` 0 mismatches.
-- Next: step 4b (page: selected event through detail, keyboard,
-  Tonnetz; chart motion row), stop; then Session 5.
+- Next: Session 5 — melody toggle and audio.
 
 ### Flagged for later
 - Keyboard, detail and Tonnetz still show the first comp event; the

@@ -191,8 +191,11 @@ exporter, verified against Mutopia's MIDI by `check_midi.py`), and
 step 4a (engine: analysis over every comp event — max aggregate,
 melody by time overlap, motion last-to-first by performance
 predecessor plus within-bar, optimal assignment on mismatched voice
-counts). Next: step 4b (page, detail, keyboard, Tonnetz switch to a
-selected-event notion), then Session 5 (melody
+counts), and step 4b (the page: a selected comp event within the
+selected bar, defaulting to the max-tension event; event chips;
+chip / staff-note / Shift+arrow selection; detail, keyboard, Tonnetz
+and the staff's bright notes all read from that event). Session 4.5
+is complete. Next: Session 5 (melody
 toggle and audio), Session 6 (Explore: generate and rank alternative voicings),
 Session 7 (merge to dev). Plan:
 `docs/active-plans/voicing-explorer-build-plan.md`. Schema:
@@ -214,7 +217,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 **Next priorities (active):**
 1. ~~**Voicing Explorer — tension option B**~~ — landed 2026-10-15 (uncommitted): spans reduced mod 12, `OCTAVE_DISCOUNTS = {m2: 2/3, M2: 0, TT: 2/3, M7: 0}`; comp-only numbers inside one octave unchanged; compound minor 2nds and tritones now score (bar 26 0 → 1.333, bar 28 3 → 4.333), major 9ths/14ths do not (see SESSION_LOG).
-2. **Voicing Explorer Session 4.5** — steps 1–3 and 4a ~~(`bassLine`; `comp.bass` by lookback; staff bass from `bassLine`; Maple Leaf Rag fixture + converter + MIDI check; engine per comp event)~~ landed 2026-10-15. Remaining: step 4b — the page gains a selected-event notion: detail rubs / named-vs-played / keyboard / Tonnetz follow the selected event (default: the max-tension event, which the chart stack already shows), with a way to step through a bar's events; the chart's motion row may add the within-bar total. Then Session 5 (melody toggle and audio), 6, 7. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+2. **Voicing Explorer Session 5** — melody toggle ("Include melody" through engine, chart, keyboard, staff, lists; the staff already always draws the melody) and audio (play the selected bar / event through Tone.js + Salamander). Then Session 6 (Explore: generate and rank alternative voicings), Session 7 (merge to dev with a clean-clone check). Session 4.5 ~~(steps 1–4b)~~ complete 2026-10-15. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
 3. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
 4. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
 
@@ -530,16 +533,36 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   the comp's first onset is no longer charged against it — and the
   fixture's count-mismatch motion (null → 3). 
 
+**Built on `voicing-explorer` (Session 4.5 step 4b, 2026-10-15, uncommitted):**
+- `/voicings` has a selected comp event within the selected bar
+  (`state.selectedEvent`, default the bar's `maxEvent`, so every
+  panel agrees with the chart's stack on arrival). Selection: event
+  chips in the Selected bar panel (one per group of consecutive
+  identical events, e.g. "Bdim7 ×4", showing beat, symbol, tension),
+  a click on a comp note of another event on the staff, or
+  Shift+←/→ while the chart has focus (steps events, crossing into
+  the neighbouring bar; plain ←/→ still steps bars).
+- Detail (`voicing-detail.js`, `render(bar, eventIndex)`), keyboard,
+  Tonnetz and the staff's bright notes read from the selected event:
+  its symbol, bass, voicing, tension, rubs (comp, plus melody rubs
+  when the analysis carries them), named-vs-played, and motion —
+  "into" from the performance predecessor for the first event, the
+  within-bar "step" for later ones, with free voices listed by their
+  written names (the engine now puts `name` on `unmatched`). The
+  staff dims the comp notes of the other events
+  (`VoicingStaff.setEvent`, `vs-note--dim`); bassLine and melody
+  notes stay bright. The per-bar `namedVsPlayed` field is no longer
+  read by the page.
+- Verified in headless Chrome at 1400 / 390 px: private bars 25–27
+  and rag bars 9, 12, 16; chip click, staff-note click, Shift+→
+  across the 26→27 and 9→10 bar boundaries and back; console clean.
+
 **In progress:**
-- Session 4.5 step 4b — see Next priorities.
+- Nothing; Session 5 next.
 
 **Open / deferred:**
 - Session 5 (melody toggle + audio) follows 4.5; Explore mode
   (Session 6); merge to dev with clean-clone check (Session 7).
-- Keyboard, detail panel and Tonnetz still show the first comp
-  event's bass and voicing while the chart shows the max event's
-  stack (bar 26: chart says 2 from the B♭7/F chord, detail lists the
-  first chord's rub). Step 4b resolves this with a selected event.
 - Melody over a comp rest is unscored even when a `bassLine` note is
   still sounding (bar 25's beat-0 melody over the held G2); scoring
   melody against the bass line's own timing is a later refinement.
@@ -548,9 +571,6 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   them.
 - Rag staff: sixteenths are unbeamed (beaming is a known polish
   item), so the rag's melody reads busier than the PDF.
-- Spike files to delete when ready: `templates/spikes/`,
-  `static/spikes/staff/`, the `/voicings/spike-staff` route in the
-  `if app.debug:` block of `app.py`.
 - Verovio self-hosting under `static/vendor/` deferred: Flask /
   gunicorn serve static files uncompressed (7.3 MB vs 2.1 MB gzip
   from the CDN). The URL is one constant in `voicing-staff.js`.
@@ -563,8 +583,9 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   `chord-types.json` lands.
 
 **Public surfaces (debugging):**
-- `window.__voicings` on `/voicings`: `{ state, select, chart,
-  keyboard, detail, bubble, staff }`.
+- `window.__voicings` on `/voicings`: `{ state, select, selectEvent,
+  stepEvent, chart, keyboard, detail, bubble, staff }`;
+  `select(bar, eventIndex?)`.
 - Self-tests:
   `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
   `node --input-type=module -e "import('./static/shared/voicing-staff-model.js').then(m => m.selfTest())"`

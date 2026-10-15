@@ -94,7 +94,9 @@ const compMidis = ev => new Set([ev.bass, ...(ev.voicing || [])].map(midiOf));
  * into tied pieces, triplets are grouped.
  * items: [{ beat, dur, src, notes: [{ name, tieIn, tieOut }] }]
  *   tieOut: 'bar' (into the next bar) | 'next' (into the next event here) | null
- * events: [{ beat, q, dur, dots, tuplet, rest, hidden?, wholeBar?, src?, notes }]
+ * events: [{ beat, q, dur, dots, tuplet, rest, hidden?, wholeBar?, src?, event, notes }]
+ *   src = comp event index on the first piece of a comp-derived item (arpeggios);
+ *   event = comp event index on every piece (null for bassLine / melody items)
  */
 function layoutVoice(items, { beatsPerBar, bar, voice, role }) {
   const out = [];
@@ -119,7 +121,7 @@ function layoutVoice(items, { beatsPerBar, bar, voice, role }) {
           accidShow: null,
         };
       });
-      const ev = { beat: c, ...d, rest: false, notes, src: pi === 0 ? it.src : undefined };
+      const ev = { beat: c, ...d, rest: false, notes, src: pi === 0 ? it.src : undefined, event: it.src ?? null };
       c += d.q;
       return ev;
     });

@@ -72,11 +72,13 @@ function _el(tag, attrs = {}, text) {
 class VoicingChart {
   /**
    * @param {string|Element} container
-   * @param {{ onSelect?: (bar:number) => void }} [options]
+   * @param {{ onSelect?: (bar:number) => void, onStepEvent?: (delta:number) => void }} [options]
+   *   onStepEvent fires on Shift+←/→ (step the selected comp event; the page decides what that means).
    */
   constructor(container, options = {}) {
     this._container = typeof container === 'string' ? document.getElementById(container) : container;
     this._onSelect = options.onSelect || (() => {});
+    this._onStepEvent = options.onStepEvent || null;
     this._progression = null;
     this._analysis = null;
     this._selected = null;
@@ -256,9 +258,15 @@ class VoicingChart {
     // motion row label
     svg.appendChild(_el('text', { class: 'vc-axis-label', x: L.axisW - 6, y: plotBot + L.numbersH + 13, 'text-anchor': 'end' }, 'mov'));
 
-    // arrow keys step the selection while the chart has focus
+    // arrow keys step the selection while the chart has focus; Shift+arrows step the comp event
     svg.addEventListener('keydown', e => {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (e.shiftKey && this._onStepEvent) {
+        e.preventDefault();
+        this._onStepEvent(e.key === 'ArrowRight' ? 1 : -1);
+        this.focusSelected();
+        return;
+      }
       const idx = bars.findIndex(b => b.bar === this._selected);
       if (idx < 0) return;
       const next = bars[idx + (e.key === 'ArrowRight' ? 1 : -1)];
