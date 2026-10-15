@@ -67,6 +67,29 @@ silent chord voice is not exported as an event in v1.
 Grace notes and rests are not exported. Melody-vs-voicing tension sums
 `dur` per pitch within the bar and weights by `dur / beatsPerBar`.
 
+## Tension scoring
+
+Every pair among the first comp event's bass + voicing notes is scored
+(melody pitches are scored against every comp note when the melody is
+included, weighted by `dur / beatsPerBar`). A pair's span in semitones
+is reduced mod 12 to its interval class; the class weight is multiplied
+by the class's octave discount for each extra octave. Minor 2nds and
+tritones keep rubbing across octaves; major 2nds and major 7ths are
+extensions beyond the first octave, not rubs. Constants
+(`TENSION_WEIGHTS`, `OCTAVE_DISCOUNTS`) live in
+`static/shared/voicing-analysis.js`.
+
+| Class (span mod 12) | Weight | Octave discount | Examples |
+|---|---|---|---|
+| 1 — minor 2nd | 3 | 2/3 | m2 (1) 3 · m9 (13) 2 · m16 (25) 1.333 |
+| 2 — major 2nd | 1 | 0 | M2 (2) 1 · M9 (14) 0 |
+| 6 — tritone | 2 | 2/3 | TT (6) 2 · TT + octave (18) 1.333 |
+| 11 — major 7th | 1 | 0 | M7 (11) 1 · M14 (23) 0 |
+| anything else | 0 | — | unisons, 3rds, 4ths, 5ths, 6ths, minor 7ths, octaves, in any register |
+
+The chart's stacked series use five buckets: `m2`, `m9` (class 1 in any
+compound register), `TT` (any register), `M2`, `M7`.
+
 ## Note
 
 A spelled pitch with octave: `"B♭4"`, `"F♯3"`, `"C4"`. ASCII `"Bb4"`,

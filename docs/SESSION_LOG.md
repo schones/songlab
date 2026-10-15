@@ -34,6 +34,24 @@ next sessions. Session 4 is uncommitted in the tree.
 - `static/shared/voicing-keyboard.js` — `setHighlight(midi)` ring,
   cleared by `render()`. Nine lines.
 - `docs/STATUS.md` updated (this entry's companion).
+- **Tension option B** in `voicing-analysis.js` (evening, two
+  passes): spans reduced mod 12 to a class, `TENSION_WEIGHTS = {1: 3,
+  2: 1, 6: 2, 11: 1}` × a per-class octave discount via
+  `tensionWeight(span)`; the 13-semitone special case is gone (m9 =
+  3 × 2/3 = 2). First pass used one `OCTAVE_DISCOUNT = 2/3` for every
+  class, which made major 9ths and 14ths score 0.667 and moved seven
+  acceptance numbers. Second pass (Dustin's refinement):
+  `OCTAVE_DISCOUNTS = {1: 2/3, 2: 0, 6: 2/3, 11: 0}` — minor 2nds and
+  tritones keep rubbing across octaves, major 2nds and 7ths are
+  extensions beyond the first octave. Rub labels name compounds (m9,
+  m16, TT+8); `voicing-detail.js` spells them out; the chart keeps
+  its five buckets (class-1 compounds → `m9`). Documented in
+  `tools/voicings/schema.md` "Tension scoring". Self-test 51/51. Under the per-class table only two acceptance
+  numbers move from the original exact-span values, both because a
+  compound minor 2nd or tritone now counts: private with-melody bar
+  16 (2.67 → 3.556, G4 over C♯3 is a tritone + octave) and bar 26
+  (2.0 → 3.333, F2–F♯4 is a minor 16th). Fixture bars 1 and 6 and
+  private bars 17 and 18 are back at their original values.
 
 ### Diagnosed / decided
 - **Verovio over VexFlow.** MEI converter 60 lines vs 103 for
@@ -83,9 +101,12 @@ next sessions. Session 4 is uncommitted in the tree.
   cannot see; bar 26's second chord (A♭3–D4 tritone) is ignored
   because the analysis reads the first comp event only. Decided:
   option B — reduce the span mod 12 to a class, weights unchanged,
-  times `OCTAVE_DISCOUNT = 2/3` per extra octave. Reproduces every
-  current acceptance number (m9 = 3 × 2/3 = 2); bar 26 comp → 1.35,
-  bar 27 → 0.67, bar 25 stays 0; bars 6 and 17 comp unchanged.
+  times an octave discount per extra octave. My claim that one
+  2/3 discount "reproduces every acceptance number" was wrong for
+  with-melody bars (major 9ths started scoring); the per-class table
+  fixed that by design, not by tuning. m9 = 3 × 2/3 = 2 either way;
+  bar 26 comp → 1.333, bar 27 stays 0 (E♭2–D4 is a M14, now an
+  extension), bar 25 stays 0; bars 6 and 17 comp unchanged.
 
 ### Setup for next session
 - Tree: Session 4 files uncommitted (two new shared modules, the

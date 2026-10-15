@@ -14,6 +14,8 @@ import { INTERVAL_SERIES } from './voicing-chart.js';
 
 const INTERVAL_COLOR = Object.fromEntries(INTERVAL_SERIES.map(s => [s.key, s.color]));
 const INTERVAL_NAME  = Object.fromEntries(INTERVAL_SERIES.map(s => [s.key, s.label]));
+/** Compound rub labels from the engine (minor 2nds and tritones keep rubbing across octaves). */
+Object.assign(INTERVAL_NAME, { m16: 'minor 16th', 'TT+8': 'tritone + octave', 'TT+15': 'tritone + two octaves' });
 
 const CSS = /* css */ `
 .vd-symbol { font-size: var(--font-size-xl, 1.8rem); font-weight: 500; letter-spacing: -0.01em; color: var(--text-primary); margin: 0; }

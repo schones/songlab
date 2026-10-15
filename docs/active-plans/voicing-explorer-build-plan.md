@@ -57,9 +57,12 @@ Both rest on the same three pieces, built once:
    durations, source tag (`transcribed` | `arranged` | `user`),
    section label. The mockup's per-bar arrays are a working draft of
    this; formalize as a schema.
-2. **Analysis engine** — pure JS, no DOM: interval scoring (exact
-   semitone distance; current weights m2 3, m9 2, tritone 2, M2 1,
-   M7 1), melody-vs-voicing scoring weighted by duration,
+2. **Analysis engine** — pure JS, no DOM: interval scoring (span
+   reduced mod 12 to its class; weights m2 3, M2 1, tritone 2, M7 1,
+   times a per-class octave discount — 2/3 for m2 and tritone, so
+   m9 = 2; 0 for M2 and M7, which are extensions beyond the octave —
+   changed 2026-10-15 from exact spans up to 13), melody-vs-voicing
+   scoring weighted by duration,
    named-vs-played (present / omitted / added, with degree labels and
    key-aware spelling), voice motion between bars (only when voice
    counts match). Analyze uses it to explain; Explore uses it to rank.

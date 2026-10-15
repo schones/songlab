@@ -20,7 +20,13 @@
  * Exports:
  *   parseNote, parseSymbol, intervalTension, melodyTension,
  *   namedVsPlayed, voiceMotion, analyzeProgression, toHarmonyNotes,
- *   TENSION_WEIGHTS, INTERVAL_LABELS, LOCAL_CHORD_TYPES, selfTest
+ *   tensionWeight, TENSION_WEIGHTS, OCTAVE_DISCOUNTS, INTERVAL_LABELS,
+ *   LOCAL_CHORD_TYPES, selfTest
+ *
+ * Tension: every bass/voicing pair (and each melody pitch against every
+ * comp note, weighted by duration) is reduced to its interval class
+ * (span mod 12) and scored by TENSION_WEIGHTS × OCTAVE_DISCOUNTS[class]
+ * per extra octave. See tools/voicings/schema.md "Tension scoring".
  *
  * Self-test (from the repo root):
  *   node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"
@@ -32,10 +38,39 @@ import { CHORD_TYPES, pcToNote } from './transforms.js';
 // CONSTANTS
 // ════════════════════════════════════════════════════════════════════
 
-/** Tension weight by exact semitone distance. Anything else scores 0. */
-const TENSION_WEIGHTS = { 1: 3, 2: 1, 6: 2, 11: 1, 13: 2 };
-const INTERVAL_LABELS = { 1: 'm2', 2: 'M2', 6: 'TT', 11: 'M7', 13: 'm9' };
+/**
+ * Tension weight by interval class (span mod 12), and the per-class
+ * discount applied once per extra octave. Minor 2nds and tritones keep
+ * rubbing in any register (m9 = 3 × 2/3 = 2, m16 = 3 × (2/3)², tritone
+ * + octave = 2 × 2/3); major 2nds and major 7ths are extensions beyond
+ * the first octave, not rubs (M9 = M14 = 0). Classes not listed score
+ * 0 in any register.
+ */
+const TENSION_WEIGHTS  = { 1: 3, 2: 1, 6: 2, 11: 1 };
+const OCTAVE_DISCOUNTS = { 1: 2 / 3, 2: 0, 6: 2 / 3, 11: 0 };
+/** Simple-interval label per class; compounds are named by _intervalLabel. */
+const INTERVAL_LABELS = { 1: 'm2', 2: 'M2', 6: 'TT', 11: 'M7' };
+const _COMPOUND_LABELS = { 1: ['m2', 'm9', 'm16'], 2: ['M2', 'M9', 'M16'], 6: ['TT', 'TT+8', 'TT+15'], 11: ['M7', 'M14', 'M21'] };
+/** byInterval buckets (the chart's series). Class-1 compounds keep the 'm9' bucket; other classes bucket by simple label. */
 const INTERVAL_KEYS   = ['m2', 'M2', 'TT', 'M7', 'm9'];
+
+/** Weight for a span in semitones: class weight × OCTAVE_DISCOUNTS[class]^(extra octaves), 0 for unweighted classes. */
+function tensionWeight(span) {
+  const c = span % 12, o = Math.floor(span / 12);
+  const w = TENSION_WEIGHTS[c];
+  if (!w) return 0;
+  return o === 0 ? w : w * Math.pow(OCTAVE_DISCOUNTS[c], o);
+}
+function _intervalLabel(span) {
+  const c = span % 12, o = Math.floor(span / 12);
+  const names = _COMPOUND_LABELS[c];
+  return names ? (names[o] || `${names[0]}+${o}8va`) : null;
+}
+function _intervalBucket(span) {
+  const c = span % 12;
+  if (c === 1) return span > 12 ? 'm9' : 'm2';
+  return INTERVAL_LABELS[c] || null;
+}
 
 /**
  * Chord types transforms.js lacks. Same shape as CHORD_TYPES entries.
@@ -227,7 +262,7 @@ function _round(x) { return Math.round(x * 1000) / 1000; }
 
 /**
  * Interval tension of a comp voicing: every pair among bass + voicing,
- * scored by exact semitone distance (TENSION_WEIGHTS).
+ * scored by interval class with an octave discount (tensionWeight).
  *
  * @param {string|number} bass
  * @param {Array<string|number>} voicing
@@ -243,14 +278,14 @@ function intervalTension(bass, voicing) {
   for (let i = 0; i < notes.length; i++) {
     for (let j = i + 1; j < notes.length; j++) {
       const d = notes[j].midi - notes[i].midi;
-      const w = TENSION_WEIGHTS[d];
+      const w = tensionWeight(d);
       if (!w) continue;
-      const label = INTERVAL_LABELS[d];
-      byInterval[label] += w;
-      rubs.push({ lo: notes[i].raw, hi: notes[j].raw, semitones: d, label, weight: w });
+      const bucket = _intervalBucket(d);
+      byInterval[bucket] = _round(byInterval[bucket] + w);
+      rubs.push({ lo: notes[i].raw, hi: notes[j].raw, semitones: d, label: _intervalLabel(d), weight: _round(w) });
     }
   }
-  const score = INTERVAL_KEYS.reduce((s, k) => s + byInterval[k], 0);
+  const score = _round(INTERVAL_KEYS.reduce((s, k) => s + byInterval[k], 0));
   return { score, byInterval, rubs };
 }
 
@@ -286,12 +321,12 @@ function melodyTension(melody, bass, voicing, beatsPerBar) {
   for (const m of [...perPitch.values()].sort((a, b) => a.midi - b.midi)) {
     for (const c of comp) {
       const d = Math.abs(m.midi - c.midi);
-      const w = TENSION_WEIGHTS[d];
+      const w = tensionWeight(d);
       if (!w) continue;
-      const label = INTERVAL_LABELS[d];
+      const bucket = _intervalBucket(d);
       const contribution = w * m.dur / beatsPerBar;
-      byInterval[label] = _round(byInterval[label] + contribution);
-      rubs.push({ melody: m.raw, against: c.raw, semitones: d, label, dur: m.dur, contribution: _round(contribution) });
+      byInterval[bucket] = _round(byInterval[bucket] + contribution);
+      rubs.push({ melody: m.raw, against: c.raw, semitones: d, label: _intervalLabel(d), dur: m.dur, contribution: _round(contribution) });
     }
   }
   const score = _round(INTERVAL_KEYS.reduce((s, k) => s + byInterval[k], 0));
@@ -466,14 +501,14 @@ function toHarmonyNotes(notes) {
 // ════════════════════════════════════════════════════════════════════
 
 export {
-  TENSION_WEIGHTS, INTERVAL_LABELS, LOCAL_CHORD_TYPES,
+  tensionWeight, TENSION_WEIGHTS, OCTAVE_DISCOUNTS, INTERVAL_LABELS, LOCAL_CHORD_TYPES,
   parseNote, parseSymbol, intervalTension, melodyTension, namedVsPlayed,
   voiceMotion, analyzeProgression, toHarmonyNotes, selfTest,
 };
 
 if (typeof window !== 'undefined') {
   window.VoicingAnalysis = {
-    TENSION_WEIGHTS, INTERVAL_LABELS, LOCAL_CHORD_TYPES,
+    tensionWeight, TENSION_WEIGHTS, OCTAVE_DISCOUNTS, INTERVAL_LABELS, LOCAL_CHORD_TYPES,
     parseNote, parseSymbol, intervalTension, melodyTension, namedVsPlayed,
     voiceMotion, analyzeProgression, toHarmonyNotes,
   };
@@ -505,6 +540,18 @@ async function selfTest() {
 
   console.log('\n─── voicing-analysis.js self-test ───\n');
 
+  // ── Unit: tension weights (class × per-class octave discount) ────
+  assert('OCTAVE_DISCOUNTS: m2 and TT 2/3, M2 and M7 0',  OCTAVE_DISCOUNTS, { 1: 2 / 3, 2: 0, 6: 2 / 3, 11: 0 });
+  assert('1 (m2) → 3',                                    tensionWeight(1), 3);
+  assert('13 (m9 = m2 + octave) → 2',                     tensionWeight(13), 2);
+  assert('25 (m2 + two octaves) → 3 × (2/3)² = 4/3',      tensionWeight(25), 3 * (2 / 3) ** 2);
+  assert('18 (tritone + octave) → 2 × 2/3',               tensionWeight(18), 2 * (2 / 3));
+  assert('14 (M9) → 0: an extension, not a rub',          tensionWeight(14), 0);
+  assert('23 (M14 = M7 + octave) → 0',                    tensionWeight(23), 0);
+  assert('10 (m7) → 0',                                   tensionWeight(10), 0);
+  assert('M9 pair produces no rub',                        intervalTension('C3', ['D4']).rubs, []);
+  assert('25 buckets as m9, label m16',                    (({ byInterval, rubs }) => [byInterval.m9, rubs[0].label])(intervalTension('F2', ['F♯4'])), [1.333, 'm16']);
+
   // ── Unit: notes & symbols ─────────────────────────────────────────
   assert('parseNote("B♭4").midi = 70', parseNote('B♭4').midi, 70);
   assert('parseNote("Bb4") ≡ parseNote("B-4") (midi)', parseNote('Bb4').midi, parseNote('B-4').midi);
@@ -526,7 +573,7 @@ async function selfTest() {
   const M = n => mel.bars.find(b => b.bar === n);
 
   console.log('\n  fixture: tests/fixtures/voicing-fixture.json');
-  assert('bar 1  m2 cluster alone → 3',                 C(1).total, 3);
+  assert('bar 1  m2 cluster alone → 3 (C2–B3 M14 is an extension, 0)', C(1).total, 3);
   assert('bar 1  rub labels = [m2]',                     C(1).comp.rubs.map(r => r.label), ['m2']);
   assert('bar 2  M7 (11 semitones) → 1',                 C(2).total, 1);
   assert('bar 3  same PCs at 13 semitones (m9) → 2',     C(3).total, 2);
@@ -537,7 +584,7 @@ async function selfTest() {
   assert('bar 5  Gm7/F → 3 (first comp event only)',     C(5).total, 3);
   assert('bar 5  present ♭3 5 ♭7; omitted R; added 9',   [fmt(C(5).namedVsPlayed.present), fmt(C(5).namedVsPlayed.omitted), fmt(C(5).namedVsPlayed.added)],
     [['B♭·♭3', 'D·5', 'F·♭7'], ['G·R'], ['A·9']]);
-  assert('bar 6  A7♯11/C♯ → TT 2',                       C(6).total, 2);
+  assert('bar 6  A7♯11/C♯ → TT 2 (C♯3–D♯4 M9 is an extension, 0)', C(6).total, 2);
   assert('bar 6  D♯ spelled as ♯11; omitted A·R E·5',    [fmt(C(6).namedVsPlayed.present), fmt(C(6).namedVsPlayed.omitted)],
     [['C♯·3', 'G·♭7', 'D♯·♯11'], ['A·R', 'E·5']]);
   assert('bar 7  comp 0, melody m2 2 beats of 4 → 1.5',  [C(7).total, M(7).total], [0, 1.5]);
@@ -567,9 +614,9 @@ async function selfTest() {
     assert('bars 1→2→3 upper-voice motion 1, 2',   [B(pc, 2).motion.total, B(pc, 3).motion.total], [1, 2]);
     assert('bar 4 hold carries E♭maj7, motion 0',  [B(pc, 4).effectiveSymbol, B(pc, 4).motion.total], ['E♭maj7', 0]);
     assert('bars 18→19 motion 11 (sorted upper voices)', B(pc, 19).motion.total, 11);
-    near  ('bar 16 with melody 2.67',              B(pm, 16).total, 2.67);
+    near  ('bar 16 with melody 3.556 (was 2.67 before option B: G4/C♯3 tritone + octave now 2 × 2/3 × 2/3 beats)', B(pm, 16).total, 3.556);
     near  ('bar 18 with melody 4.0',               B(pm, 18).total, 4.0);
-    near  ('bar 26 with melody 2.0',               B(pm, 26).total, 2.0);
+    near  ('bar 26 with melody 3.333 (was 2.0 before option B: F2–F♯4 m16 1.333)', B(pm, 26).total, 3.333);
     assert('bar 26 slash bass F (not in maj9♯5) is present as 5', fmt(B(pc, 26).namedVsPlayed.present), ['D·3', 'F♯·♯5', 'A·7', 'F·5']);
   } else {
     console.log('\n  acceptance: static/private/dont-be-sad.json not present — skipped');

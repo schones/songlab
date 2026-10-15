@@ -179,8 +179,9 @@ role, melody always drawn, notes clickable through to the keyboard.
 Tracing bars 25–27 through source → JSON → staff exposed an exporter
 gap (events only at chord-voice onsets, so held basses are displaced
 and bass walks dropped) and a tension gap (weights match exact spans
-up to 13 semitones only). Next: a small tension step (option B,
-compound intervals reduced mod 12 with `OCTAVE_DISCOUNT = 2/3`), then
+up to 13 semitones only). The tension step landed the same evening
+(option B: compound intervals reduced mod 12, per-class octave
+discounts — m2 and tritone 2/3, M2 and M7 0). Next:
 Session 4.5 (Joplin rag fixture as public ground truth, optional
 per-bar `bassLine`, `comp.bass` redefined, analysis over every comp
 event, staff bass from `bassLine`), then Session 5 (melody toggle and
@@ -204,7 +205,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 
 **Next priorities (active):**
-1. **Voicing Explorer — tension option B** (small, separate step before 4.5): compound intervals reduced mod 12 with one named constant `OCTAVE_DISCOUNT = 2/3` per extra octave. Reproduces every current acceptance number (m9 stays 2); bar 26 comp 0 → 1.35 (F2–F♯4), bar 27 0 → 0.67 (E♭2–D4), bar 25 stays 0.
+1. ~~**Voicing Explorer — tension option B**~~ — landed 2026-10-15 (uncommitted): spans reduced mod 12, `OCTAVE_DISCOUNTS = {m2: 2/3, M2: 0, TT: 2/3, M7: 0}`; comp-only numbers inside one octave unchanged; compound minor 2nds and tritones now score (bar 26 0 → 1.333, bar 28 3 → 4.333), major 9ths/14ths do not (see SESSION_LOG).
 2. **Voicing Explorer Session 4.5** — (a) public-domain Joplin rag fixture (IMSLP edition) as ground truth; (b) optional per-bar `bassLine[]` (same event shape as `melody`) in the schema and exporter; (c) `comp.bass` redefined as the most recent bass onset at or before the chord onset, sounding or not; (d) analysis over every comp event instead of only the first; (e) staff draws the bass voice from `bassLine` when present. Then Session 5 (melody toggle and audio), 6, 7. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
 3. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
 4. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
@@ -365,8 +366,10 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 **Landed on `voicing-explorer` (Sessions 1–3, 2026-10-14):**
 - `static/shared/voicing-analysis.js` — pure engine: `parseSymbol`,
-  `intervalTension` (exact semitone distance; m2 3, m9 2, TT 2,
-  M2 1, M7 1; all bass+voicing pairs), `melodyTension` (per-pitch
+  `intervalTension` (interval class = span mod 12; m2 3, M2 1, TT 2,
+  M7 1, × per-class `OCTAVE_DISCOUNTS` per extra octave — m2 and TT
+  2/3 so m9 = 2, M2 and M7 0 so M9 = M14 = 0; all bass+voicing
+  pairs; option B landed 2026-10-15), `melodyTension` (per-pitch
   duration × weight / beatsPerBar), `namedVsPlayed` (present /
   omitted / added with degree labels; written spellings drive
   labels, omitted tones spelled chord-relatively; slash bass counts
@@ -415,8 +418,8 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   19, 26, 44; click → keyboard ring; ← → stepping; rapid stepping.
 
 **In progress:**
-- Tension option B (small step), then Session 4.5 — see Next
-  priorities.
+- Session 4.5 — see Next priorities. Tension option B landed
+  2026-10-15 (uncommitted).
 
 **Open / deferred:**
 - Session 5 (melody toggle + audio) follows 4.5; Explore mode
@@ -430,9 +433,6 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   bass under later chord attacks. Fix is Session 4.5's `bassLine`.
 - Analysis scores only the first comp event per bar: bar 26's
   second chord (A♭3–D4 tritone) is never scored. Until 4.5 lands.
-- Tension weights match exact spans up to 13 semitones only;
-  compound intervals (F2–F♯4 = 25, E♭2–D4 = 23) score 0. Option B
-  is the next step.
 - Spike files to delete when ready: `templates/spikes/`,
   `static/spikes/staff/`, the `/voicings/spike-staff` route in the
   `if app.debug:` block of `app.py`.
