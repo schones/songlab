@@ -187,10 +187,12 @@ schema and exporter, `comp.bass` by three-way lookback, the staff's
 bass voice drawn from `bassLine`, `check_export.py`), then step 3
 (Maple Leaf Rag A strain as a public, committed fixture: Mutopia's
 public-domain LilyPond → `ly_to_src.py` → score_src grammar →
-exporter, verified against Mutopia's MIDI by `check_midi.py`). Next:
-step 4 (analysis over every comp event: max aggregate, melody by
-time overlap, motion last-to-first plus within-bar with optimal
-assignment on mismatched voice counts), then Session 5 (melody
+exporter, verified against Mutopia's MIDI by `check_midi.py`), and
+step 4a (engine: analysis over every comp event — max aggregate,
+melody by time overlap, motion last-to-first by performance
+predecessor plus within-bar, optimal assignment on mismatched voice
+counts). Next: step 4b (page, detail, keyboard, Tonnetz switch to a
+selected-event notion), then Session 5 (melody
 toggle and audio), Session 6 (Explore: generate and rank alternative voicings),
 Session 7 (merge to dev). Plan:
 `docs/active-plans/voicing-explorer-build-plan.md`. Schema:
@@ -212,7 +214,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 **Next priorities (active):**
 1. ~~**Voicing Explorer — tension option B**~~ — landed 2026-10-15 (uncommitted): spans reduced mod 12, `OCTAVE_DISCOUNTS = {m2: 2/3, M2: 0, TT: 2/3, M7: 0}`; comp-only numbers inside one octave unchanged; compound minor 2nds and tritones now score (bar 26 0 → 1.333, bar 28 3 → 4.333), major 9ths/14ths do not (see SESSION_LOG).
-2. **Voicing Explorer Session 4.5** — steps 1–3 ~~(`bassLine` in schema + exporter; `comp.bass` by lookback; staff bass from `bassLine`; Maple Leaf Rag fixture + converter + MIDI check)~~ landed 2026-10-15. Remaining: step 4, analysis over every comp event (max aggregate with the chart stack from the max event, melody by time overlap, motion last-to-first plus within-bar, optimal assignment when voice counts differ). Then Session 5 (melody toggle and audio), 6, 7. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+2. **Voicing Explorer Session 4.5** — steps 1–3 and 4a ~~(`bassLine`; `comp.bass` by lookback; staff bass from `bassLine`; Maple Leaf Rag fixture + converter + MIDI check; engine per comp event)~~ landed 2026-10-15. Remaining: step 4b — the page gains a selected-event notion: detail rubs / named-vs-played / keyboard / Tonnetz follow the selected event (default: the max-tension event, which the chart stack already shows), with a way to step through a bar's events; the chart's motion row may add the within-bar total. Then Session 5 (melody toggle and audio), 6, 7. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
 3. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
 4. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
 
@@ -497,16 +499,50 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   no tie warnings. Verified in headless Chrome on bars 1, 5, 9, 16,
   17.
 
+**Built on `voicing-explorer` (Session 4.5 step 4a, 2026-10-15, uncommitted):**
+- `voicing-analysis.js` scores every comp event. Each `BarResult`
+  gains `events[]` (per event: `index`, `beat`, `dur`, `symbol` —
+  the chord symbol in effect at the event's onset, which its
+  `namedVsPlayed` is scored against — `bass`, `voicing`, `comp`,
+  `melody`, `total`, `byInterval`, `namedVsPlayed`, `motion` = step
+  from the previous event in the bar), `maxEvent`,
+  `predecessor`, and `motionWithin` (`{ total, steps }`). The
+  existing per-bar fields stay for current consumers: `comp`,
+  `melody`, `total`, `byInterval` are the max-tension event's (ties →
+  the earlier), `namedVsPlayed` is the first event's (what the page
+  shows until 4b), `motion` is the last event of the **performance
+  predecessor** → this bar's first event.
+- Melody is scored per event by time overlap (`melodyTension` takes
+  an optional window); melody sounding while no comp event sounds
+  is not scored.
+- `voiceMotion` uses the optimal assignment when voice counts differ
+  (all pairings tried, ≤ 5 voices): unmatched voices of the larger
+  voicing are free (cost 0) and listed in `unmatched` with their
+  side; `matched` counts the paired voices. Equal counts = the
+  low-to-high pairing as before.
+- `selfTest()` 64/64: bar 26 per event (1.333, 2 → max 2; with
+  melody 2.0 / 2.0; event 2 named-vs-played against B♭7/F), motion 8 in / 1 within / 1 into bar 27 with the
+  free voices named, bar 37's predecessor 28, fixture bar 5's two
+  events, rag bar 9 (four dim7 events, 4 each, within 0) and bar 12,
+  and a regression that every single-event bar across the three
+  pieces keeps its comp total. Re-baselined: with-melody bars 17
+  (5.0 → 4.333), 18 (4.0 → 3.667), 26 (3.333 → 2.0) — melody before
+  the comp's first onset is no longer charged against it — and the
+  fixture's count-mismatch motion (null → 3). 
+
 **In progress:**
-- Session 4.5 step 4 — see Next priorities.
+- Session 4.5 step 4b — see Next priorities.
 
 **Open / deferred:**
 - Session 5 (melody toggle + audio) follows 4.5; Explore mode
   (Session 6); merge to dev with clean-clone check (Session 7).
-- Analysis scores only the first comp event per bar: bar 26's
-  second chord (A♭3–D4 tritone) is never scored. Until 4.5 step 4.
-- Keyboard, detail panel and Tonnetz show the first comp event's
-  bass and voicing; a selected-event notion arrives with step 4.
+- Keyboard, detail panel and Tonnetz still show the first comp
+  event's bass and voicing while the chart shows the max event's
+  stack (bar 26: chart says 2 from the B♭7/F chord, detail lists the
+  first chord's rub). Step 4b resolves this with a selected event.
+- Melody over a comp rest is unscored even when a `bassLine` note is
+  still sounding (bar 25's beat-0 melody over the held G2); scoring
+  melody against the bass line's own timing is a later refinement.
 - `bassLine` reductions (grace notes dropped, dyads reduced to the
   lower note) are documented, not fixed; revisit if a piece needs
   them.

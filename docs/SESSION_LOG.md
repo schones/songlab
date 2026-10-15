@@ -3,12 +3,59 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
-## 2026-10-15 (evening) — Voicing Explorer Session 4.5, steps 1–3: bassLine, bass lookback, staff bass from bassLine, Maple Leaf Rag fixture
+## 2026-10-15 (evening) — Voicing Explorer Session 4.5, steps 1–4a: bassLine, bass lookback, staff bass from bassLine, Maple Leaf Rag fixture, engine per comp event
 
 Read-and-report for the whole 4.5 session (five goals), then steps 1
 and 2 built as one unit and committed, then step 3 (the public rag
-fixture with its converter and MIDI check). Step 4 (analysis over
-every comp event) follows as its own commit.
+fixture with its converter and MIDI check), then step 4a (engine
+only). Step 4b (the page's selected-event notion) follows.
+
+### Landed (step 4a — engine per comp event)
+- `voicing-analysis.js`: `analyzeProgression` scores every comp
+  event — `events[]` per bar with tension, rubs, melody by time
+  overlap, named-vs-played and within-bar motion per event;
+  `maxEvent`, `predecessor`, `motionWithin`; each event carries the
+  chord `symbol` in effect at its onset and is named-vs-played
+  against it (bar 26's second chord against B♭7/F, not the bar's
+  first symbol). Per-bar fields kept for
+  the page: `total`/`byInterval`/`comp`/`melody` from the max event
+  (chart stack = max event), `namedVsPlayed` from the first event,
+  `motion` = last event of the performance predecessor → first event
+  of this bar. `melodyTension` takes an optional `{beat, dur}`
+  window; `_predecessors()` reads `form.playOrder`.
+- `voiceMotion`: optimal assignment on mismatched counts (brute
+  force over injective pairings, ≤ 5 voices); unmatched voices of
+  the larger voicing are free and reported (`unmatched: [{side,
+  midi}]`, `matched`).
+- `selfTest()` 64/64 with the agreed checks (bar 26 per event and
+  with melody, 8 / 1 / 1 motion, fixture bar 5, rag bars 9 and 12,
+  single-event regression across all three pieces).
+
+### Diagnosed / decided (step 4a)
+- **Max event owns the bar's tension fields; first event owns
+  named-vs-played.** The chart stack and the rubs list follow the
+  max event; the keyboard and Tonnetz (unchanged until 4b) show the
+  first event, so bar 26 is briefly inconsistent on the page (chart
+  2 from the B♭7/F chord, detail from the B♭maj9♯5/F chord). 4b's
+  selected event resolves it.
+- **Melody over a comp rest is unscored.** Overlap scoring stops
+  charging melody that sounds before the first comp onset against
+  that chord: with-melody bars 17 (5.0 → 4.333), 18 (4.0 → 3.667),
+  26 (3.333 → 2.0) and six more B-section bars moved; comp-only
+  totals changed only in bar 26 (1.333 → 2, the max rule). A melody
+  note over a held `bassLine` note still gets nothing — flagged.
+- **Motion by performance predecessor + assignment:** 11 private
+  bars gain a motion number that was n/a (counts differed), bar 27
+  drops from 10 to 1 (B♭7/F → E♭maj7 is a half-step resolution; the
+  old first-to-first pairing compared the wrong chord), bar 37 takes
+  bar 28 as predecessor. Unmatched voices are free — the number
+  measures how far the voices that continue have to move.
+- **Rag bars 9–12 on the engine:** bar 9 four identical dim7 events
+  (4 each, within-bar motion 0), bar 10 nothing to rub, bar 11 one
+  step of 1 at beat 1 (F♭/C♭ → A♭/C), bar 12 max 2 on the E♭7/D♭
+  eighth with within-bar motion 3. Chords every eighth read as
+  expected: repeated events, zero motion, one spike where the
+  harmony changes.
 
 ### Landed (step 3 — Maple Leaf Rag fixture)
 - `tests/fixtures/maple-leaf-rag.ly` — Mutopia's source, Public
@@ -154,8 +201,10 @@ every comp event) follows as its own commit.
 - Next: step 3 (rag fixture + `ly_to_src.py` + MIDI check), stop;
   step 4 (analysis per event + page event selection), stop; then
   Session 5.
-- Self-tests: `voicing-analysis.js` 51/51, `voicing-staff-model.js`
+- Self-tests: `voicing-analysis.js` 64/64, `voicing-staff-model.js`
   70/70, `check_export.py` 25/25, `check_midi.py` 0 mismatches.
+- Next: step 4b (page: selected event through detail, keyboard,
+  Tonnetz; chart motion row), stop; then Session 5.
 
 ### Flagged for later
 - Keyboard, detail and Tonnetz still show the first comp event; the

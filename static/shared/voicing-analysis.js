@@ -3,7 +3,7 @@
  * ===================
  * Analysis engine for voiced chord progressions: interval tension,
  * melody-vs-voicing tension, named-vs-played chord tones, and
- * upper-voice motion between bars.
+ * upper-voice motion between bars — every comp event scored.
  *
  * Pure functions — no DOM, no HarmonyState writes. Standard MIDI
  * internally (C4 = 60). Spelled note names ("B♭4", ASCII "Bb4") are
@@ -289,29 +289,43 @@ function intervalTension(bass, voicing) {
   return { score, byInterval, rubs };
 }
 
+/** Quarters during which a melody event sounds inside a comp event's span. */
+function _overlap(m, ev) {
+  const a = Number(m.beat) || 0, b = Number(ev.beat) || 0;
+  return Math.min(a + (Number(m.dur) || 0), b + (Number(ev.dur) || 0)) - Math.max(a, b);
+}
+
 /**
- * Melody-vs-voicing tension. Melody durations are summed per pitch
- * within the bar; each pitch is checked against every comp note
- * (bass included); contribution = weight × dur / beatsPerBar.
- * Melody-vs-melody intervals are not scored.
+ * Melody-vs-voicing tension. Melody durations are summed per pitch —
+ * within the whole bar, or, given a window {beat, dur} (a comp event's
+ * span), only the time each melody note overlaps that window; each
+ * pitch is checked against every comp note (bass included);
+ * contribution = weight × dur / beatsPerBar. Melody-vs-melody intervals
+ * are not scored.
  *
- * @param {Array<{note:string|number, dur:number}>} melody
+ * @param {Array<{beat:number, note:string|number, dur:number}>} melody
  * @param {string|number} bass
  * @param {Array<string|number>} voicing
  * @param {number} beatsPerBar
+ * @param {{beat:number, dur:number}|null} [window]
  */
-function melodyTension(melody, bass, voicing, beatsPerBar) {
+function melodyTension(melody, bass, voicing, beatsPerBar, window = null) {
   const byInterval = _emptyByInterval();
   const rubs = [];
   if (!melody || !melody.length || !beatsPerBar) return { score: 0, byInterval, rubs };
 
-  // aggregate per pitch, keep first spelling
+  // aggregate per pitch, keep first spelling; with a window, only the overlap counts
   const perPitch = new Map();
   for (const ev of melody) {
     const midi = toMidi(ev.note ?? ev.midi);
     if (isNaN(midi)) continue;
+    let dur = Number(ev.dur) || 0;
+    if (window) {
+      dur = _overlap(ev, window);
+      if (dur <= 1e-9) continue;
+    }
     const cur = perPitch.get(midi) || { raw: ev.note ?? ev.midi, midi, dur: 0 };
-    cur.dur += Number(ev.dur) || 0;
+    cur.dur += dur;
     perPitch.set(midi, cur);
   }
   const comp = [bass, ...(voicing || [])]
@@ -405,16 +419,51 @@ function namedVsPlayed(symbolOrParsed, pitches) {
 
 /**
  * Upper-voice motion between two voicings (bass excluded by the caller).
- * Voices are paired low-to-high. Returns null when the voice counts
- * differ or either voicing is empty.
+ * The voices of the smaller voicing are assigned to distinct voices of
+ * the larger one so that the summed |semitones| is minimal (all
+ * pairings tried; voicings are ≤ 5 notes). Unmatched voices of the
+ * larger voicing cost nothing and are reported in `unmatched`. With
+ * equal counts this is the low-to-high pairing. Null when either
+ * voicing is empty.
+ *
+ * @returns {{ total:number, perVoice:Array<{from,to,delta}>, matched:number,
+ *             unmatched:Array<{side:'from'|'to', midi:number}> }|null}
  */
 function voiceMotion(prevVoicing, voicing) {
   const a = (prevVoicing || []).map(toMidi).filter(m => !isNaN(m)).sort((x, y) => x - y);
   const b = (voicing || []).map(toMidi).filter(m => !isNaN(m)).sort((x, y) => x - y);
-  if (!a.length || !b.length || a.length !== b.length) return null;
-  const perVoice = a.map((from, i) => ({ from, to: b[i], delta: b[i] - from }));
-  const total = perVoice.reduce((s, v) => s + Math.abs(v.delta), 0);
-  return { total, perVoice };
+  if (!a.length || !b.length) return null;
+  const prevIsSmall = a.length <= b.length;
+  const small = prevIsSmall ? a : b, large = prevIsSmall ? b : a;
+  let best = null;
+  const used = new Array(large.length).fill(false), pick = [];
+  const search = (i, cost) => {
+    if (best && cost >= best.cost) return;
+    if (i === small.length) { best = { cost, pick: pick.slice() }; return; }
+    for (let j = 0; j < large.length; j++) {
+      if (used[j]) continue;
+      used[j] = true; pick.push(j);
+      search(i + 1, cost + Math.abs(small[i] - large[j]));
+      pick.pop(); used[j] = false;
+    }
+  };
+  search(0, 0);
+  const perVoice = small.map((m, i) => {
+    const other = large[best.pick[i]];
+    return prevIsSmall ? { from: m, to: other, delta: other - m } : { from: other, to: m, delta: m - other };
+  }).sort((x, y) => x.from - y.from);
+  const unmatched = large.map((m, j) => (best.pick.includes(j) ? null : { side: prevIsSmall ? 'to' : 'from', midi: m })).filter(Boolean);
+  return { total: best.cost, perVoice, matched: small.length, unmatched };
+}
+
+/** Performance predecessor of each bar: the bar before its first occurrence in form.playOrder (written order without one). */
+function _predecessors(progression) {
+  const bars = progression.bars || [];
+  const order = progression.form && Array.isArray(progression.form.playOrder) && progression.form.playOrder.length
+    ? progression.form.playOrder : bars.map(b => b.bar);
+  const pred = {};
+  order.forEach((b, i) => { if (!(b in pred)) pred[b] = i > 0 ? order[i - 1] : null; });
+  return pred;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -423,23 +472,41 @@ function voiceMotion(prevVoicing, voicing) {
 
 /**
  * Analyze a whole voiced progression (schema: tools/voicings/schema.md).
- * Uses the first comp event of each bar. Empty `symbols` carry the
- * previous bar's symbol forward.
+ * Every comp event is scored; empty `symbols` carry the previous bar's
+ * symbol forward.
  *
  * @param {Object} progression
  * @param {{ includeMelody?:boolean }} [opts]
  * @returns {{ beatsPerBar:number, bars:Array<BarResult> }}
  *
- * BarResult: { bar, section, source, effectiveSymbol, parsed, comp, melody,
- *              total, byInterval, namedVsPlayed, motion, hold }
+ * EventResult (one per comp event, in order):
+ *   { index, beat, dur, symbol, bass, voicing, comp, melody, total,
+ *     byInterval, namedVsPlayed, motion }
+ *   symbol is the chord symbol in effect at the event's onset (the last
+ *   of the bar's symbols at or before it, else the carried one) and
+ *   namedVsPlayed is scored against it; melody is scored by time overlap
+ *   with the event (null without the melody option); motion is the step
+ *   from the previous event in the bar (null for the first).
+ *
+ * BarResult:
+ *   { bar, section, source, effectiveSymbol, hold, parsed,
+ *     events: EventResult[], maxEvent: index|null, predecessor: bar|null,
+ *     comp, melody, total, byInterval,   // of the max-tension event (ties → the earlier)
+ *     namedVsPlayed,                      // of the first event (what the page shows until 4b)
+ *     motion,                             // last event of the performance predecessor → first event here
+ *     motionWithin }                      // { total, steps } across this bar's events, or null
+ * Bars with no comp event: events [], maxEvent null, zeros/nulls.
+ * Melody that sounds while no comp event sounds is not scored.
  */
 function analyzeProgression(progression, opts = {}) {
   const includeMelody = !!opts.includeMelody;
   const beatsPerBar = progression.beatsPerBar
     || (progression.timeSignature ? _beatsFromSig(progression.timeSignature) : 4);
+  const empty = () => ({ score: 0, byInterval: _emptyByInterval(), rubs: [] });
+  const pred = _predecessors(progression);
   const results = [];
+  const byBar = new Map();
   let carried = null;
-  let prevVoicing = null;
 
   for (const bar of progression.bars || []) {
     const symbols = bar.symbols || [];
@@ -447,32 +514,59 @@ function analyzeProgression(progression, opts = {}) {
     const effectiveSymbol = hold ? carried : symbols[0].symbol;
     if (!hold) carried = symbols[symbols.length - 1].symbol;
     const parsed = effectiveSymbol ? parseSymbol(effectiveSymbol) : null;
+    const compEvents = bar.comp || [];
+    const melodyEvents = bar.melody || [];
+    // Symbol in effect at a beat: the last of this bar's symbols at or before it, else the carried one.
+    const symbolAt = beat => {
+      let sym = effectiveSymbol;
+      for (const s of symbols) if (Number(s.beat) <= Number(beat) + 1e-9) sym = s.symbol;
+      return sym;
+    };
 
-    const ev = (bar.comp || [])[0] || null;
-    const bass = ev ? ev.bass : null;
-    const voicing = ev ? (ev.voicing || []) : [];
+    const events = compEvents.map((ev, i) => {
+      const bass = ev.bass, voicing = ev.voicing || [];
+      const symbol = symbolAt(ev.beat);
+      const parsedAt = symbol === effectiveSymbol ? parsed : (symbol ? parseSymbol(symbol) : null);
+      const comp = intervalTension(bass, voicing);
+      const melody = includeMelody ? melodyTension(melodyEvents, bass, voicing, beatsPerBar, { beat: ev.beat, dur: ev.dur }) : null;
+      const byInterval = _emptyByInterval();
+      for (const k of INTERVAL_KEYS) byInterval[k] = _round(comp.byInterval[k] + (melody ? melody.byInterval[k] : 0));
+      const total = _round(comp.score + (melody ? melody.score : 0));
+      const pitches = [bass, ...voicing];
+      if (includeMelody) for (const m of melodyEvents) if (_overlap(m, ev) > 1e-9) pitches.push(m.note ?? m.midi);
+      const nvp = parsedAt ? namedVsPlayed(parsedAt, pitches) : null;
+      const motion = i > 0 ? voiceMotion(compEvents[i - 1].voicing || [], voicing) : null;
+      return { index: i, beat: ev.beat, dur: ev.dur, symbol, bass, voicing, comp, melody, total, byInterval, namedVsPlayed: nvp, motion };
+    });
 
-    const comp = ev ? intervalTension(bass, voicing) : { score: 0, byInterval: _emptyByInterval(), rubs: [] };
-    const melody = (ev && includeMelody)
-      ? melodyTension(bar.melody || [], bass, voicing, beatsPerBar)
-      : null;
+    let maxEvent = null;
+    events.forEach((e, i) => { if (maxEvent === null || e.total > events[maxEvent].total) maxEvent = i; });
+    const top = maxEvent === null ? null : events[maxEvent];
+    const first = events[0] || null;
+    const steps = events.slice(1).map(e => e.motion);
+    const motionWithin = steps.length ? { total: steps.reduce((t, m) => t + (m ? m.total : 0), 0), steps } : null;
 
-    const byInterval = _emptyByInterval();
-    for (const k of INTERVAL_KEYS) byInterval[k] = _round(comp.byInterval[k] + (melody ? melody.byInterval[k] : 0));
-    const total = _round(comp.score + (melody ? melody.score : 0));
-
-    const pitches = ev ? [bass, ...voicing] : [];
-    if (ev && includeMelody) for (const m of bar.melody || []) pitches.push(m.note ?? m.midi);
-    const nvp = parsed && ev ? namedVsPlayed(parsed, pitches) : null;
-
-    const motion = (ev && prevVoicing) ? voiceMotion(prevVoicing, voicing) : null;
-    if (ev) prevVoicing = voicing;
-
-    results.push({
+    const result = {
       bar: bar.bar, section: bar.section, source: bar.source,
       effectiveSymbol, hold, parsed: parsed ? { ...parsed, _root: undefined } : null,
-      comp, melody, total, byInterval, namedVsPlayed: nvp, motion,
-    });
+      events, maxEvent, predecessor: pred[bar.bar] ?? null,
+      comp: top ? top.comp : empty(),
+      melody: top ? top.melody : null,
+      total: top ? top.total : 0,
+      byInterval: top ? top.byInterval : _emptyByInterval(),
+      namedVsPlayed: first ? first.namedVsPlayed : null,
+      motion: null,
+      motionWithin,
+    };
+    results.push(result);
+    byBar.set(bar.bar, result);
+  }
+
+  // Motion in: last event of the performance predecessor → first event of this bar.
+  for (const r of results) {
+    const prev = r.predecessor != null ? byBar.get(r.predecessor) : null;
+    const prevLast = prev && prev.events.length ? prev.events[prev.events.length - 1] : null;
+    r.motion = r.events.length && prevLast ? voiceMotion(prevLast.voicing, r.events[0].voicing) : null;
   }
   return { beatsPerBar, bars: results };
 }
@@ -581,7 +675,7 @@ async function selfTest() {
   assert('bar 4  tritone alone → 2',                     C(4).total, 2);
   assert('bar 4  C7/E: present 3, ♭7; omitted R, 5',     [fmt(C(4).namedVsPlayed.present), fmt(C(4).namedVsPlayed.omitted)],
     [['E·3', 'B♭·♭7'], ['C·R', 'G·5']]);
-  assert('bar 5  Gm7/F → 3 (first comp event only)',     C(5).total, 3);
+  assert('bar 5  Gm7/F → 3 (two events scoring 3 and 2; the max event is reported)', [C(5).total, C(5).events.map(e => e.total), C(5).maxEvent], [3, [3, 2], 0]);
   assert('bar 5  present ♭3 5 ♭7; omitted R; added 9',   [fmt(C(5).namedVsPlayed.present), fmt(C(5).namedVsPlayed.omitted), fmt(C(5).namedVsPlayed.added)],
     [['B♭·♭3', 'D·5', 'F·♭7'], ['G·R'], ['A·9']]);
   assert('bar 6  A7♯11/C♯ → TT 2 (C♯3–D♯4 M9 is an extension, 0)', C(6).total, 2);
@@ -592,10 +686,25 @@ async function selfTest() {
   assert('bar 8  written B♭ over Gmaj7 labels ♭3',       fmt(M(8).namedVsPlayed.added), ['B♭·♭3']);
   assert('bar 8  comp-only has no added tones',          fmt(C(8).namedVsPlayed.added), []);
   assert('bar 9→10 three voices up 2 each → 6',          C(10).motion.total, 6);
-  assert('bar 10→11 voice count differs → null',         C(11).motion, null);
+  assert('bar 10→11 three voices into four: optimal assignment 3, one unmatched', [C(11).motion.total, C(11).motion.unmatched], [3, [{ side: 'to', midi: 59 }]]);
   assert('bar 12 hold carries G7',                       [C(12).hold, C(12).effectiveSymbol], [true, 'G7']);
   assert('bar 11→12 identical voicing → motion 0',       C(12).motion.total, 0);
   assert('midi-only voicing spells chord-relatively',    fmt(namedVsPlayed('A7#11', [49, 55, 63]).present), ['C♯·3', 'G·♭7', 'D♯·♯11']);
+
+  // ── Regression + rag (public) ─────────────────────────────────────
+  const singleOK = res => res.bars.filter(b => b.events.length === 1).every(b => b.total === intervalTension(b.events[0].bass, b.events[0].voicing).score);
+  assert('regression: fixture single-event bars keep their comp totals', singleOK(comp), true);
+  const ragURL = new URL('../../tests/fixtures/voicing-maple-leaf-rag.json', import.meta.url);
+  if (fs.existsSync(ragURL)) {
+    const rag = JSON.parse(fs.readFileSync(ragURL, 'utf8'));
+    const rc = analyzeProgression(rag);
+    const R = n => rc.bars.find(b => b.bar === n);
+    console.log('\n  rag: tests/fixtures/voicing-maple-leaf-rag.json');
+    assert('regression: rag single-event bars keep their comp totals', singleOK(rc), true);
+    assert('bar 9: four dim7 events, each two tritones → 4; within-bar motion 0', [R(9).events.map(e => e.total), R(9).motionWithin.total], [[4, 4, 4, 4], 0]);
+    assert('bar 12: three events, max is the E♭7/D♭ chord',          [R(12).events.map(e => e.total), R(12).maxEvent], [[0, 2, 0], 1]);
+    assert('bar 17 (2nd ending) follows bar 15; bar 1 has no predecessor', [R(17).predecessor, R(1).predecessor], [15, null]);
+  }
 
   // ── Acceptance: Don't Be Sad (private, optional) ─────────────────
   const privURL = new URL('../private/dont-be-sad.json', import.meta.url);
@@ -608,15 +717,29 @@ async function selfTest() {
     assert('bar 2 tension 3',                      B(pc, 2).total, 3);
     assert('bar 3 tension 1',                      B(pc, 3).total, 1);
     assert('bar 17 tension 4 (comp)',              B(pc, 17).total, 4);
-    near  ('bar 17 tension 5.0 (with melody)',     B(pm, 17).total, 5.0);
+    near  ('bar 17 tension 4.333 (with melody; was 5.0: the beat-0 G4 sounds before the comp enters and is no longer scored)', B(pm, 17).total, 4.333);
     assert('bar 1 omitted F♯·7, added A·9',        [fmt(B(pc, 1).namedVsPlayed.omitted), fmt(B(pc, 1).namedVsPlayed.added)], [['F♯·7'], ['A·9']]);
     assert('bar 17 with melody adds A·9, B♭·♭3',   fmt(B(pm, 17).namedVsPlayed.added), ['A·9', 'B♭·♭3']);
     assert('bars 1→2→3 upper-voice motion 1, 2',   [B(pc, 2).motion.total, B(pc, 3).motion.total], [1, 2]);
     assert('bar 4 hold carries E♭maj7, motion 0',  [B(pc, 4).effectiveSymbol, B(pc, 4).motion.total], ['E♭maj7', 0]);
     assert('bars 18→19 motion 11 (sorted upper voices)', B(pc, 19).motion.total, 11);
     near  ('bar 16 with melody 3.556 (was 2.67 before option B: G4/C♯3 tritone + octave now 2 × 2/3 × 2/3 beats)', B(pm, 16).total, 3.556);
-    near  ('bar 18 with melody 4.0',               B(pm, 18).total, 4.0);
-    near  ('bar 26 with melody 3.333 (was 2.0 before option B: F2–F♯4 m16 1.333)', B(pm, 26).total, 3.333);
+    near  ('bar 18 with melody 3.667 (was 4.0: melody before the comp onset unscored)', B(pm, 18).total, 3.667);
+    near  ('bar 26 with melody 2.0 (was 3.333: C5 vs F♯4 counts only its 1-beat overlap)', B(pm, 26).total, 2.0);
+    // ── per-event analysis (4a) ──
+    assert('bar 26 events: comp tension 1.333 then 2; bar total = max = 2 from event 1',
+           [B(pc, 26).events.map(e => e.total), B(pc, 26).total, B(pc, 26).maxEvent], [[1.333, 2], 2, 1]);
+    assert('bar 26 with melody: events 2.0 and 2.0 (C5/F♯4 TT × 1 beat; event 2 has no rub)',
+           [B(pm, 26).events.map(e => e.total), B(pm, 26).events[0].melody.rubs.map(r => r.melody + '/' + r.against + ':' + r.contribution)], [[2, 2], ['C5/F♯4:0.667']]);
+    assert('bar 26 event 2 is scored against B♭7/F (the symbol at beat 2): D·3 A♭·♭7 F·5, omitted B♭·R',
+           [B(pc, 26).events[1].symbol, fmt(B(pc, 26).events[1].namedVsPlayed.present), fmt(B(pc, 26).events[1].namedVsPlayed.omitted)], ['B♭7/F', ['D·3', 'F·5', 'A♭·♭7'], ['B♭·R']]);
+    assert('bar 26 motion in = 8 (F3→A3, B♭3→D4; F♯4 free)',   [B(pc, 26).motion.total, B(pc, 26).motion.unmatched], [8, [{ side: 'to', midi: 66 }]]);
+    assert('bar 26 motion within = 1 (A3→A♭3, D4 stays; F♯4 free)', [B(pc, 26).motionWithin.total, B(pc, 26).motionWithin.steps[0].unmatched], [1, [{ side: 'from', midi: 66 }]]);
+    assert('bar 27 motion in = 1 from bar 26\'s last event (A♭3→G3; B♭3 free)', [B(pc, 27).motion.total, B(pc, 27).motion.unmatched], [1, [{ side: 'to', midi: 58 }]]);
+    assert('bar 37 (2nd ending) takes its motion from bar 28, its performance predecessor', B(pc, 37).predecessor, 28);
+    const single = pc.bars.filter(b => b.events.length === 1);
+    assert('regression: every single-event bar (' + single.length + ') keeps its comp total = intervalTension(first event)',
+           single.every(b => b.total === intervalTension(b.events[0].bass, b.events[0].voicing).score), true);
     assert('bar 26 slash bass F (not in maj9♯5) is present as 5', fmt(B(pc, 26).namedVsPlayed.present), ['D·3', 'F♯·♯5', 'A·7', 'F·5']);
   } else {
     console.log('\n  acceptance: static/private/dont-be-sad.json not present — skipped');
