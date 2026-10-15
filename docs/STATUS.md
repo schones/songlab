@@ -1,9 +1,9 @@
 # SongLab Project Status
 
-**Last updated:** 2026-10-14
+**Last updated:** 2026-10-15
 **Branch:** `voicing-explorer` (active — Voicing Explorer analysis
-arc, Sessions 1–3 landed 2026-10-14; Session 3 in the working tree,
-uncommitted at time of writing) · `dev` (Cantor v1 through 6B; MIDI
+arc, Sessions 1–3 landed 2026-10-14, Session 4 built 2026-10-15 and
+in the working tree, uncommitted at time of writing) · `dev` (Cantor v1 through 6B; MIDI
 multi-port fix `57afaa9`) · `cantor` (presentational arc, Session 2
 polish not resumed since 2026-05-19) · `cantor-presentational-spike`
 (validated spike, retained as known-good reference) ·
@@ -172,10 +172,20 @@ plan landed in one day: read-and-report (placement decided as a
 standalone `/voicings` page, not an Explorer stage view), the pure
 analysis engine + JSON schema + exporter + fixture (41/41
 self-tests, acceptance numbers match the Python prototype), and the
-page itself (verified in headless Chrome). Next: Session 4 (staff
-rendering, Verovio vs VexFlow decision), Session 5 (melody toggle
-and audio), Session 6 (Explore: generate and rank alternative
-voicings), Session 7 (merge to dev). Plan:
+page itself (verified in headless Chrome). Session 4 (2026-10-15)
+chose Verovio over VexFlow in a side-by-side spike and landed the
+staff panel: engraved grand staff for the selected bar, colored by
+role, melody always drawn, notes clickable through to the keyboard.
+Tracing bars 25–27 through source → JSON → staff exposed an exporter
+gap (events only at chord-voice onsets, so held basses are displaced
+and bass walks dropped) and a tension gap (weights match exact spans
+up to 13 semitones only). Next: a small tension step (option B,
+compound intervals reduced mod 12 with `OCTAVE_DISCOUNT = 2/3`), then
+Session 4.5 (Joplin rag fixture as public ground truth, optional
+per-bar `bassLine`, `comp.bass` redefined, analysis over every comp
+event, staff bass from `bassLine`), then Session 5 (melody toggle and
+audio), Session 6 (Explore: generate and rank alternative voicings),
+Session 7 (merge to dev). Plan:
 `docs/active-plans/voicing-explorer-build-plan.md`. Schema:
 `tools/voicings/schema.md`.
 
@@ -194,9 +204,10 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 
 **Next priorities (active):**
-1. **Voicing Explorer Session 4** — staff rendering for the selected bar (Verovio vs VexFlow decision at session start), then Sessions 5–7. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
-2. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
-3. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
+1. **Voicing Explorer — tension option B** (small, separate step before 4.5): compound intervals reduced mod 12 with one named constant `OCTAVE_DISCOUNT = 2/3` per extra octave. Reproduces every current acceptance number (m9 stays 2); bar 26 comp 0 → 1.35 (F2–F♯4), bar 27 0 → 0.67 (E♭2–D4), bar 25 stays 0.
+2. **Voicing Explorer Session 4.5** — (a) public-domain Joplin rag fixture (IMSLP edition) as ground truth; (b) optional per-bar `bassLine[]` (same event shape as `melody`) in the schema and exporter; (c) `comp.bass` redefined as the most recent bass onset at or before the chord onset, sounding or not; (d) analysis over every comp event instead of only the first; (e) staff draws the bass voice from `bassLine` when present. Then Session 5 (melody toggle and audio), 6, 7. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+3. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
+4. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
 
 - Item "Polyrhythm Trainer not yet in nav dropdown or landing
   page" (currently ~line 317): **remove — completed.** Route at
@@ -350,7 +361,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - ChordResolver with interval-content fallback
 - Full three-panel bidirectional sync via HarmonyState
 
-### Voicing Explorer — Analyze view — current state (updated 2026-10-14)
+### Voicing Explorer — Analyze view — current state (updated 2026-10-15)
 
 **Landed on `voicing-explorer` (Sessions 1–3, 2026-10-14):**
 - `static/shared/voicing-analysis.js` — pure engine: `parseSymbol`,
@@ -383,15 +394,53 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   screen, keyboard roles, glow worm updates, `?piece=fixture`,
   `?piece=nope` not-found state, phone-width scroll.
 
+**Built on `voicing-explorer` (Session 4, 2026-10-15, uncommitted):**
+- Staff panel on `/voicings`, under "Selected bar":
+  `static/shared/voicing-staff-model.js` (pure bar model + MEI
+  converter — `buildBarModel`, `toMEI`, `SPLIT_MIDI` = 64 (E4):
+  voicing notes at or above it go to the treble; triplets as MEI
+  tuplets; all comp events in a bar; key-aware accidentals per
+  letter+octave per staff; outgoing ties drawn only when the next
+  bar's beat 0 has the same pitch, unmatched flags warn, last bar
+  draws unmatched; incoming ties matched the same way; `selfTest()`
+  46/46 incl. the private acceptance block, 0 tie warnings across
+  44 bars) and `static/shared/voicing-staff.js` (`VoicingStaff`:
+  Verovio 6.3.0 as lazy ESM from jsDelivr on first render, loading /
+  unavailable states, latest selection wins, note click → highlight
+  + `VoicingKeyboard.setHighlight(midi)` ring). Melody always drawn;
+  the Session 5 toggle will not touch the staff.
+- Renderer chosen by a throwaway spike (`/voicings/spike-staff`,
+  dev-only): Verovio over VexFlow — see SESSION_LOG 2026-10-15.
+- Verified in headless Chrome at 1400 / 390 px: bars 1, 2, 10, 17,
+  19, 26, 44; click → keyboard ring; ← → stepping; rapid stepping.
+
 **In progress:**
-- Session 4: staff rendering for the selected bar.
+- Tension option B (small step), then Session 4.5 — see Next
+  priorities.
 
 **Open / deferred:**
-- Melody toggle + audio (Session 5); Explore mode (Session 6);
-  merge to dev with clean-clone check (Session 7).
-- Exporter emits comp events only at chord-voice onsets; bass
-  pickup walks under a silent chord voice (bars 4, 20) are not
-  events in v1.
+- Session 5 (melody toggle + audio) follows 4.5; Explore mode
+  (Session 6); merge to dev with clean-clone check (Session 7).
+- Exporter creates comp events only at chord-voice onsets (traced
+  2026-10-15 on bars 25–27): a bass that starts before the first
+  chord is folded into the chord's event and takes its beat and
+  duration (bars 25–27 show the bass a beat late; bar 26 as two
+  re-struck quarters), and bass onsets after the chord onset are
+  dropped (walks in bars 4, 20). Schema v1 cannot express a held
+  bass under later chord attacks. Fix is Session 4.5's `bassLine`.
+- Analysis scores only the first comp event per bar: bar 26's
+  second chord (A♭3–D4 tritone) is never scored. Until 4.5 lands.
+- Tension weights match exact spans up to 13 semitones only;
+  compound intervals (F2–F♯4 = 25, E♭2–D4 = 23) score 0. Option B
+  is the next step.
+- Spike files to delete when ready: `templates/spikes/`,
+  `static/spikes/staff/`, the `/voicings/spike-staff` route in the
+  `if app.debug:` block of `app.py`.
+- Verovio self-hosting under `static/vendor/` deferred: Flask /
+  gunicorn serve static files uncompressed (7.3 MB vs 2.1 MB gzip
+  from the CDN). The URL is one constant in `voicing-staff.js`.
+- Staff polish: keep each comp chord on one staff instead of
+  splitting by pitch at `SPLIT_MIDI`; beam melody eighths.
 - `/voicings` is not in the nav; not-found state shows the default
   C-major Tonnetz (no key to anchor on).
 - Chord-symbol suffix table lives in the engine
@@ -400,8 +449,10 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 **Public surfaces (debugging):**
 - `window.__voicings` on `/voicings`: `{ state, select, chart,
-  keyboard, detail, bubble }`.
-- Self-test: `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
+  keyboard, detail, bubble, staff }`.
+- Self-tests:
+  `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/voicing-staff-model.js').then(m => m.selfTest())"`
 
 ### Chord Progression Engine
 - Multi-path glow worm visualization (animated playthrough with fading trails)

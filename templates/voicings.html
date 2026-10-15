@@ -77,6 +77,10 @@
         <p class="vp-panel__label">Selected bar</p>
         <div id="vp-info"></div>
       </div>
+      <div class="vp-panel">
+        <p class="vp-panel__label">Staff — click a note to find it on the keyboard</p>
+        <div id="vp-staff"></div>
+      </div>
     </div>
     <div class="vp-panel vp-panel--tonnetz">
       <p class="vp-panel__label">Tonnetz</p>
@@ -110,6 +114,7 @@
   import { VoicingChart }          from "{{ url_for('static', filename='shared/voicing-chart.js') }}";
   import { VoicingKeyboard }       from "{{ url_for('static', filename='shared/voicing-keyboard.js') }}";
   import { VoicingDetail }         from "{{ url_for('static', filename='shared/voicing-detail.js') }}";
+  import { VoicingStaff }          from "{{ url_for('static', filename='shared/voicing-staff.js') }}";
 
   const DEFAULT_PIECE = 'dont-be-sad';
   const FIXTURE_PIECE = 'fixture';
@@ -130,6 +135,8 @@
   const chart    = new VoicingChart('vp-chart', { onSelect: select });
   const detail   = new VoicingDetail({ info: 'vp-info', rubs: 'vp-rubs', nvp: 'vp-nvp' });
   const keyboard = new VoicingKeyboard('vp-keyboard', { low: 'C2', high: 'B5' });
+  // Verovio loads lazily on the first staff render; a clicked notehead rings its key.
+  const staff    = new VoicingStaff('vp-staff', { onNoteClick: note => keyboard.setHighlight(note ? note.midi : null) });
 
   // Tonnetz: shared modules, non-interactive. The glow-worm renderer must
   // be created AFTER TonnetzNeighborhood.init so its subscriber runs after
@@ -149,6 +156,7 @@
     chart.setSelected(barNumber);
     detail.render(bar, comp);
     keyboard.render(comp ? { bass: comp.bass, voicing: comp.voicing } : {});
+    staff.render(state.progression, barNumber);   // async; latest selection wins
 
     // Publish exactly these pitches. source:'user' is the only path the
     // shared Tonnetz treats as octave-faithful Note Mode. No progressionState.
@@ -175,6 +183,7 @@
     document.getElementById('vp-chart').querySelectorAll('.vc-wrap').forEach(w => (w.textContent = ''));
     detail.clear();
     keyboard.clear();
+    staff.clear();
     HarmonyState.update({ activeNotes: [], activeTriads: [], activeChord: null, activeTransform: null, activeInterval: null });
   }
 
@@ -243,6 +252,6 @@
   load(requested || DEFAULT_PIECE, { explicit: !!requested });
 
   // Debug handle for the browser console (no behaviour depends on it).
-  window.__voicings = { state, select, chart, keyboard, detail, bubble };
+  window.__voicings = { state, select, chart, keyboard, detail, bubble, staff };
 </script>
 {% endblock %}

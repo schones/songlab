@@ -3,6 +3,138 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-10-15 — Voicing Explorer Session 4: staff renderer spike, staff panel, two read-only traces
+
+One day, four Claude Code prompts in the read-report-stop-build
+shape: a throwaway Verovio-vs-VexFlow spike, the staff panel built
+on its findings, then two read-only traces (bars 25–27 through the
+pipeline; the zero tension in the same bars) that reshaped the
+next sessions. Session 4 is uncommitted in the tree.
+
+### Landed
+- Spike at `/voicings/spike-staff` (dev-only route in the
+  `if app.debug:` block, `templates/spikes/staff-spike.html`,
+  `static/spikes/staff/{spike-staff,to-mei,to-vexflow}.js`):
+  Verovio 6.3.0 vs VexFlow 5.0.0 side by side on bars 2, 17, 19,
+  one shared bar model, role colors from `ROLE_COLORS`, two voices
+  per staff, ties, chord symbols, arpeggio, measured bytes,
+  clickable notes, `?split=` and `?tie=` params. Kept for Dustin to
+  delete.
+- `static/shared/voicing-staff-model.js` — pure bar model + MEI
+  converter (`buildBarModel`, `toMEI`, `splitDur`, `SPLIT_MIDI` = 64,
+  `selfTest` 46/46). Beyond the spike: triplets as MEI tuplets (bar
+  10), all comp events in a bar (bar 26), tie matching against the
+  neighbouring bars, accidentals per letter+octave per staff.
+- `static/shared/voicing-staff.js` — `VoicingStaff` view: lazy
+  `import()` of Verovio's ESM build from jsDelivr (pinned), loading
+  / unavailable states, render token so the latest selection wins,
+  click → note highlight + `onNoteClick`, tie warnings to console.
+- `templates/voicings.html` — Staff panel under "Selected bar";
+  `select()` renders the staff; `window.__voicings.staff`.
+- `static/shared/voicing-keyboard.js` — `setHighlight(midi)` ring,
+  cleared by `render()`. Nine lines.
+- `docs/STATUS.md` updated (this entry's companion).
+
+### Diagnosed / decided
+- **Verovio over VexFlow.** MEI converter 60 lines vs 103 for
+  VexFlow's manual staves/formatter/modifiers; per-note color,
+  cross-staff arpeggio (`<arpeg plist>`), chord symbols as plain
+  `<harm>` text and short tie stubs all come for free. VexFlow's
+  partial ties span the whole stave; its cross-staff Stroke needs
+  one shared modifier context, which makes VexFlow hide "duplicate"
+  rests across staves (bar 2 lost its bass-staff rest, bar 17 its
+  treble rest). Cost: 2.15 MB gzipped vs 0.39 MB, loaded lazily on
+  the first staff render only. Render time 4–6 ms per bar either way.
+- **CDN, not self-hosting.** Flask / gunicorn serve static files
+  uncompressed, so self-hosting would ship 7.3 MB instead of 2.1 MB;
+  a 7 MB generated file in a public repo runs against the
+  binary-artifact rule; Tone.js already loads from a CDN. One
+  constant switches it later.
+- **Verovio gotchas.** A dangling `@tie` is dropped with a warning;
+  `<tie startid tstamp2="0m+4">` and `<tie tstamp="0" endid>` draw
+  stubs at the bar lines. The ESM build's factory promise removes
+  the classic script's `onRuntimeInitialized` race. SVG fills
+  default to black and strokes use `currentColor`, so a dark panel
+  needs explicit `color` + `fill: currentColor` on the svg.
+- **Tie rule (Dustin).** Outgoing ties draw only when the next bar
+  has the same pitch at beat 0; an unmatched flag warns instead of
+  drawing; only the last bar draws unmatched. Incoming ties use the
+  same matching. Zero warnings across all 44 private bars.
+- **Split pitch 64 (E4), not 60.** At 60 bars 2 and 17 left a single
+  orphan voicing note on the treble with the arpeggio spanning
+  staves; at 64 whole comp chords stay together far more often.
+- **Bars 25–27 trace (exporter gap).** Source: bass a dotted half on
+  beat 0, chords from beat 1 (bar 26: beats 1 and 2, second symbol
+  at 2). JSON: comp events exist only at chord-voice onsets, each
+  carrying whatever the bass is sounding, so the bass onset moves
+  to beat 1 and takes the chord's duration; bar 26 shows the bass
+  as two re-struck quarters. Staff draws the JSON faithfully (rest
+  under the downbeat). Same root cause as the dropped walks in bars
+  4 and 20: the bass voice has no onsets of its own. Schema v1
+  cannot represent a held bass under later chord attacks. Decided:
+  Session 4.5 adds an optional per-bar `bassLine[]` (melody-shaped
+  events) emitted verbatim from the bass voice; `comp.bass` becomes
+  the most recent bass onset at or before the chord onset, sounding
+  or not; the staff draws its bass voice from `bassLine`.
+- **Tension trace (weight table gap).** `TENSION_WEIGHTS` matches
+  exact spans {1, 2, 6, 11, 13} only, so bars 25–27 score 0: bar 25
+  (G2 F3 B♭3: m7, m10, P4) genuinely has no weighted class; bar 26's
+  F2–F♯4 (25) and bar 27's E♭2–D4 (23) are compound rubs the table
+  cannot see; bar 26's second chord (A♭3–D4 tritone) is ignored
+  because the analysis reads the first comp event only. Decided:
+  option B — reduce the span mod 12 to a class, weights unchanged,
+  times `OCTAVE_DISCOUNT = 2/3` per extra octave. Reproduces every
+  current acceptance number (m9 = 3 × 2/3 = 2); bar 26 comp → 1.35,
+  bar 27 → 0.67, bar 25 stays 0; bars 6 and 17 comp unchanged.
+
+### Setup for next session
+- Tree: Session 4 files uncommitted (two new shared modules, the
+  template, the keyboard hook, STATUS, this log). Spike files
+  present and untouched, awaiting deletion.
+- Order: tension option B (small, separate step) → Session 4.5
+  (Joplin rag fixture from an IMSLP edition as public ground truth;
+  `bassLine` in schema + exporter; `comp.bass` redefinition;
+  analysis over every comp event; staff bass from `bassLine`) →
+  Session 5 (melody toggle + audio) → 6 → 7.
+- Self-tests: `voicing-analysis.js` 41/41, `voicing-staff-model.js`
+  46/46 (both include the private acceptance block when present).
+
+### Calibration notes
+- The spike's "cross-staff arpeggio works in VexFlow" was a
+  side-effect trap: the screenshot looked right while two rests had
+  silently vanished. Probing each event's SVG element caught it.
+  Check the DOM, not just the picture.
+- Clipped per-bar screenshots over CDP (7 bars × 2 widths in one
+  run each) made the visual check cheap enough to repeat after
+  every fix.
+- Read-only traces after a build are worth their own prompts: two
+  short ones today found an exporter gap and a scoring gap that no
+  amount of staff polish would have surfaced.
+
+### Flagged for later
+- Analysis scores only the first comp event per bar (bar 26's
+  second chord never reaches the scorer). Until 4.5 lands.
+- Block-chord limit: neither the schema nor `score_src.py` can
+  express a held note over a moving inner voice; every comp event
+  attacks all its notes together.
+- Voice motion is n/a when the voice counts differ between bars
+  (`voiceMotion` returns null); a cost-based assignment would fill
+  those gaps on the chart's motion row.
+- Staff polish: keep each comp chord on one staff instead of
+  splitting it by pitch at `SPLIT_MIDI`; beam melody eighths (MEI
+  `<beam>`); the "(hold)" marker on carried symbols is plain text.
+- `tools/voicings/staff.py` uses print-on-white role colors; the
+  page uses the dark-theme tokens. Two palettes for one concept.
+- A low-register factor for tension (both notes below ~C3) is a
+  separate question from compound intervals; none of bars 6, 17,
+  25–27 would be affected.
+
+### Out of scope / deferred
+- Self-hosting Verovio: deferred until static files are served
+  compressed.
+- Audio on note click: Session 5.
+- Reverse highlight (keyboard click → staff note): not built.
+
 ## 2026-10-14 — Mac mini setup, MIDI multi-port fix, Voicing Explorer Sessions 1–3
 
 Long day, three arcs. Morning: new machine online and two MIDI

@@ -42,6 +42,7 @@ const CSS = /* css */ `
 .vk-key--black.vk-key--bass    { background: ${ROLE_COLORS.bass}; }
 .vk-key--black.vk-key--voicing { background: ${ROLE_COLORS.voicing}; }
 .vk-key--black.vk-key--melody  { background: ${ROLE_COLORS.melody}; }
+.vk-key--hit { outline: 3px solid #fff; outline-offset: -3px; }
 `;
 
 class VoicingKeyboard {
@@ -71,7 +72,7 @@ class VoicingKeyboard {
    */
   render(roles = {}) {
     for (const el of this._keys.values()) {
-      el.classList.remove('vk-key--lit', 'vk-key--bass', 'vk-key--voicing', 'vk-key--melody');
+      el.classList.remove('vk-key--lit', 'vk-key--bass', 'vk-key--voicing', 'vk-key--melody', 'vk-key--hit');
       const label = el.querySelector('.vk-key__label');
       label.textContent = el.dataset.defaultLabel;
     }
@@ -94,6 +95,14 @@ class VoicingKeyboard {
   }
 
   clear() { this.render({}); }
+
+  /** Ring one key (by midi number) on top of its role color; null clears. Cleared by render(). */
+  setHighlight(midi) {
+    for (const el of this._keys.values()) el.classList.remove('vk-key--hit');
+    if (midi == null) return;
+    const el = this._keys.get(Number(midi));
+    if (el) el.classList.add('vk-key--hit');
+  }
 
   destroy() { this._wrap.remove(); }
 
