@@ -22,11 +22,15 @@ Token grammar (per voice string, space separated):
 
 Comp events are keyed to chord-voice onsets: each one carries the chord
 voice's notes plus whatever else the bass voice is sounding at that
-moment. comp.bass is found by lookback (bass_for_onset): the most recent
-bass onset at or before the chord onset in this bar, sounding or not;
-else a bass tied or still sounding from the previous bar; else the
-lowest chord note. If the chord voice is silent for the whole bar,
-bass-voice onsets are used instead.
+moment, except an exact octave doubling of the bass (same pitch class,
+above the bass, from the bass voice), which never joins the voicing.
+comp.bass is found by lookback (bass_for_onset): the most recent bass
+onset at or before the chord onset in this bar, sounding or not; else a
+bass tied or still sounding from the previous bar; else the lowest chord
+note. "Previous bar" is the performance predecessor (first occurrence in
+the play order, so a second ending follows the bar before the first
+ending), not the written one. If the chord voice is silent for the whole
+bar, bass-voice onsets are used instead.
 
 The bass voice itself is exported verbatim as the bar's bassLine (one
 note per event, the lowest of a dyad), so held basses under later chord
@@ -176,28 +180,34 @@ def comp_events(bass_text, chord_text, prev_bass_ev=None, beats_per_bar=None):
 
     out = []
     for ev in onsets:
-        notes = list(ev['pitches'])
+        # (spelled, midi, from_bass_voice)
         if keyed_to_chord:
-            notes += sounding_at(bass_ev, ev['beat'])
+            notes = [(sp, mid, False) for sp, mid in ev['pitches']]
+            notes += [(sp, mid, True) for sp, mid in sounding_at(bass_ev, ev['beat'])]
+        else:
+            notes = [(sp, mid, True) for sp, mid in ev['pitches']]
         # dedupe by midi, keep first spelling; sort low -> high
         seen, uniq = set(), []
-        for sp, mid in sorted(notes, key=lambda x: x[1]):
+        for sp, mid, from_bass in sorted(notes, key=lambda x: x[1]):
             if mid in seen:
                 continue
             seen.add(mid)
-            uniq.append((sp, mid))
+            uniq.append((sp, mid, from_bass))
         if not uniq:
             continue
         bass, how = (None, 'chord')
         if keyed_to_chord:
             bass, how = bass_for_onset(bass_ev, ev['beat'], prev_bass_ev, beats_per_bar)
         if bass is None:
-            bass = uniq[0]
+            bass = uniq[0][:2]
+        # An exact octave doubling of the bass from the bass voice never joins the voicing.
+        voicing = [sp for sp, mid, from_bass in uniq
+                   if mid != bass[1] and not (from_bass and mid > bass[1] and (mid - bass[1]) % 12 == 0)]
         rec = {
             'beat': num(ev['beat']),
             'dur': num(ev['dur']),
             'bass': bass[0],
-            'voicing': [sp for sp, mid in uniq if mid != bass[1]],
+            'voicing': voicing,
         }
         arp = ev['arp'] or any(b['arp'] for b in bass_ev
                                if not b['rest'] and b['beat'] <= ev['beat'] < b['beat'] + b['dur'])
@@ -299,6 +309,59 @@ def play_order(bar_numbers, repeats, endings):
     return order
 
 
+def predecessors(order):
+    """Performance predecessor of each written bar: the bar played before its
+    first occurrence in the play order (None for the first bar played)."""
+    pred = {}
+    for i, b in enumerate(order):
+        if b not in pred:
+            pred[b] = order[i - 1] if i > 0 else None
+    return pred
+
+
+def build_doc(src, title, key, time_sig, tempo, arranged_from):
+    """Source module (BARS, REPEATS, ENDINGS, TEXT) → schema v1 document."""
+    num_, den = (int(x) for x in time_sig.split('/'))
+    beats_per_bar = num(Fraction(num_ * 4, den))
+    repeats = getattr(src, 'REPEATS', {'start': [], 'end': []})
+    endings = getattr(src, 'ENDINGS', {})
+    order = play_order(src.BARS.keys(), repeats, endings)
+    pred = predecessors(order)
+
+    bars = []
+    for n in sorted(src.BARS):
+        section = section_for(n, getattr(src, 'TEXT', {}))
+        source = 'arranged' if n >= arranged_from else 'transcribed'
+        p = pred.get(n)
+        prev_bass_ev = parse_voice(src.BARS[p][2]) if p is not None else None
+        bars.append(convert_bar(n, src.BARS[n], section, source, prev_bass_ev, beats_per_bar))
+
+    meta = getattr(src, 'META', {}) or {}
+    doc = {
+        'schemaVersion': SCHEMA_VERSION,
+        'title': title,
+        'key': key,
+        'timeSignature': time_sig,
+        'beatsPerBar': beats_per_bar,
+        'tempo': tempo,
+        **({'chordSymbols': meta['chordSymbols']} if 'chordSymbols' in meta else {}),
+        **({'attribution': meta['attribution']} if 'attribution' in meta else {}),
+        'form': {
+            'repeats': [[s, e] for s, e in zip(sorted(repeats.get('start', [])),
+                                               sorted(repeats.get('end', [])))],
+            'endings': {str(k): list(v) for k, v in endings.items()},
+            'playOrder': order,
+        },
+        'bars': bars,
+    }
+    # sanity: every bar's events fit the bar
+    for b in bars:
+        for ev in b['comp'] + b['bassLine'] + b['melody']:
+            if ev['beat'] + ev['dur'] > beats_per_bar + 1e-9:
+                print(f"warn: bar {b['bar']} event exceeds bar length: {ev}", file=sys.stderr)
+    return doc
+
+
 # ── Main ─────────────────────────────────────────────────────────────
 
 def load_src(path):
@@ -329,39 +392,18 @@ def main():
     args = ap.parse_args()
 
     src = load_src(args.src)
-    num_, den = (int(x) for x in args.time.split('/'))
-    beats_per_bar = num(Fraction(num_ * 4, den))
-
-    bars, prev_bass_ev = [], None
-    for n in sorted(src.BARS):
-        section = section_for(n, getattr(src, 'TEXT', {}))
-        source = 'arranged' if n >= args.arranged_from else 'transcribed'
-        bars.append(convert_bar(n, src.BARS[n], section, source, prev_bass_ev, beats_per_bar))
-        prev_bass_ev = parse_voice(src.BARS[n][2])
-
-    repeats = getattr(src, 'REPEATS', {'start': [], 'end': []})
-    endings = getattr(src, 'ENDINGS', {})
-    doc = {
-        'schemaVersion': SCHEMA_VERSION,
-        'title': args.title,
-        'key': args.key,
-        'timeSignature': args.time,
-        'beatsPerBar': beats_per_bar,
-        'tempo': args.tempo,
-        'form': {
-            'repeats': [[s, e] for s, e in zip(sorted(repeats.get('start', [])),
-                                               sorted(repeats.get('end', [])))],
-            'endings': {str(k): list(v) for k, v in endings.items()},
-            'playOrder': play_order(src.BARS.keys(), repeats, endings),
-        },
-        'bars': bars,
-    }
-
-    # sanity: every bar's comp + melody fit the bar
-    for b in bars:
-        for ev in b['comp'] + b['bassLine'] + b['melody']:
-            if ev['beat'] + ev['dur'] > beats_per_bar + 1e-9:
-                print(f"warn: bar {b['bar']} event exceeds bar length: {ev}", file=sys.stderr)
+    # A source module may carry META (title, key, timeSignature, tempo,
+    # arrangedFrom, chordSymbols, attribution); it overrides the CLI defaults.
+    meta = getattr(src, 'META', {}) or {}
+    doc = build_doc(
+        src,
+        title=meta.get('title', args.title),
+        key=convert_symbol(meta['key']) if 'key' in meta else args.key,
+        time_sig=meta.get('timeSignature', args.time),
+        tempo=meta.get('tempo', args.tempo),
+        arranged_from=meta.get('arrangedFrom', args.arranged_from),
+    )
+    bars = doc['bars']
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

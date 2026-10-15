@@ -127,4 +127,34 @@ and spells them chord-relatively when a name is needed.
 }
 ```
 
-Fixture with one bar per scoring case: `tests/fixtures/voicing-fixture.json`.
+Fixtures: `tests/fixtures/voicing-fixture.json` (synthetic, one bar per
+scoring case; no `bassLine`) and `tests/fixtures/voicing-maple-leaf-rag.json`
+(public ground truth, see below).
+
+## Public fixture: Maple Leaf Rag, A strain
+
+Scott Joplin, c. 1899. Source: Mutopia Project, Mutopia-2011/11/13-23,
+Public Domain, LilyPond 2.14.2 typeset by Chris Sawer from a reproduction
+of the original edition. `tests/fixtures/maple-leaf-rag.ly` is that source;
+`tools/voicings/ly_to_src.py` reduces it to
+`tests/fixtures/maple-leaf-rag.src.py` (the score_src token grammar), and
+`export_json.py` produces the JSON. `tools/voicings/check_midi.py` verifies
+the JSON against Mutopia's MIDI of the same source.
+
+The fixture is a **reduction**, stated in its `attribution.notes`:
+
+- 17 written bars: 1–15 plus the first and second endings as bars 16
+  and 17; the eighth-note pickup before bar 1 is dropped.
+- `melody` is the top note of each right-hand event; right-hand inner
+  tones and octave doublings are dropped.
+- The bass voice is every left-hand event that is a single note or an
+  octave dyad; `bassLine` keeps the lower note. The chord voice is every
+  other left-hand event. Bars with chords on every eighth and no bass
+  notes (9–15) have an empty `bassLine`, and `comp.bass` falls back to
+  the lowest chord note.
+- Chord symbols are ours (`chordSymbols: "derived"`); the edition has
+  none.
+
+Differences between the staff and the PDF that follow from these rules
+(missing inner right-hand notes, single bass notes where the edition has
+octaves, no pickup) are expected, not bugs.

@@ -184,9 +184,10 @@ up to 13 semitones only). The tension step landed the same evening
 discounts — m2 and tritone 2/3, M2 and M7 0). Session 4.5 began
 the same day: steps 1–2 landed (optional per-bar `bassLine` in the
 schema and exporter, `comp.bass` by three-way lookback, the staff's
-bass voice drawn from `bassLine`, `check_export.py`). Next: step 3
-(Maple Leaf Rag fixture from Mutopia's public-domain LilyPond via a
-converter into the score_src grammar, with a mandatory MIDI check),
+bass voice drawn from `bassLine`, `check_export.py`), then step 3
+(Maple Leaf Rag A strain as a public, committed fixture: Mutopia's
+public-domain LilyPond → `ly_to_src.py` → score_src grammar →
+exporter, verified against Mutopia's MIDI by `check_midi.py`). Next:
 step 4 (analysis over every comp event: max aggregate, melody by
 time overlap, motion last-to-first plus within-bar with optimal
 assignment on mismatched voice counts), then Session 5 (melody
@@ -211,7 +212,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 **Next priorities (active):**
 1. ~~**Voicing Explorer — tension option B**~~ — landed 2026-10-15 (uncommitted): spans reduced mod 12, `OCTAVE_DISCOUNTS = {m2: 2/3, M2: 0, TT: 2/3, M7: 0}`; comp-only numbers inside one octave unchanged; compound minor 2nds and tritones now score (bar 26 0 → 1.333, bar 28 3 → 4.333), major 9ths/14ths do not (see SESSION_LOG).
-2. **Voicing Explorer Session 4.5** — steps 1–2 ~~(`bassLine` in schema + exporter; `comp.bass` by lookback; staff bass from `bassLine`)~~ landed 2026-10-15. Remaining: step 3, Maple Leaf Rag A strain as a public fixture (Mutopia-2011/11/13-23, Public Domain, LilyPond → `ly_to_src.py` → score_src grammar → exporter; reduction: melody = top RH note, bass = lower note of octaves, RH inner tones dropped; mandatory MIDI check against Mutopia's MIDI; chord symbols ours, marked `chordSymbols: "derived"`); step 4, analysis over every comp event (max aggregate with the chart stack from the max event, melody by time overlap, motion last-to-first plus within-bar, optimal assignment when voice counts differ). Then Session 5 (melody toggle and audio), 6, 7. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+2. **Voicing Explorer Session 4.5** — steps 1–3 ~~(`bassLine` in schema + exporter; `comp.bass` by lookback; staff bass from `bassLine`; Maple Leaf Rag fixture + converter + MIDI check)~~ landed 2026-10-15. Remaining: step 4, analysis over every comp event (max aggregate with the chart stack from the max event, melody by time overlap, motion last-to-first plus within-bar, optimal assignment when voice counts differ). Then Session 5 (melody toggle and audio), 6, 7. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
 3. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
 4. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
 
@@ -448,8 +449,56 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   bar has no `bassLine` (the public fixture). `selfTest()` 58/58.
   Verified in headless Chrome on bars 4, 20, 25, 26, 27.
 
+**Built on `voicing-explorer` (Session 4.5 step 3, 2026-10-15, uncommitted):**
+- Public ground-truth fixture: Maple Leaf Rag, A strain (Scott
+  Joplin, c. 1899; Mutopia-2011/11/13-23, Public Domain, LilyPond
+  2.14.2 typeset by Chris Sawer from a reproduction of the 1899
+  edition). Files: `tests/fixtures/maple-leaf-rag.ly` (the source),
+  `tools/voicings/ly_to_src.py` (limited-subset LilyPond reader →
+  score_src grammar; the reduction rules live in its docstring and
+  in the fixture's `attribution.notes`), the generated
+  `tests/fixtures/maple-leaf-rag.src.py` (17 bars: 1–15 + the two
+  endings as 16 and 17; pickup dropped; chord symbols ours, marked
+  `chordSymbols: "derived"`), and `tests/fixtures/voicing-maple-leaf-rag.json`
+  via the exporter (`META` in a source module now carries title, key,
+  time, tempo, `chordSymbols`, `attribution`). Served as
+  `/voicings?piece=maple-leaf-rag`.
+- `tools/voicings/check_midi.py` — verifies the fixture against
+  Mutopia's MIDI of the same source (downloaded on demand, not
+  committed): every melody / bassLine note starts at its onset and
+  pitch (ties across bar lines excepted), comp voicing notes sound
+  at the chord onset, comp.bass started at or before the chord in
+  the bar, and the MIDI's top / bottom note at each onset is the
+  melody / bass. 260 notes, 107 onsets, 0 mismatches.
+- Two rules fixed after the first MIDI run (2026-10-15): "previous
+  bar" is the **performance predecessor** (the bar before the bar's
+  first occurrence in `form.playOrder`), so a second ending follows
+  the bar before the first ending — applied in the exporter's bass
+  lookback (`predecessors()`, `build_doc()`) and in the staff's tie
+  matching (`performanceNeighbours()`); and an **exact octave
+  doubling of the bass** from the bass voice never joins the comp
+  voicing (non-octave dyads still do). Effects: rag bar 17's bass is
+  the lowest chord note, rag bars 5–6 lose the octave's upper note
+  from the voicing, and private bar 17 loses its D4 doubling (tension
+  unchanged at 4; the arpeggio now spans four notes; motion 17→18 is
+  now computable at three voices). `check_export.py` 25/25 with an
+  endings case and four octave cases.
+- Staff fix found by the rag crops: with a `bassLine` present, a
+  `comp.bass` that did not come from the bass voice (the exporter's
+  lowest-chord-note fallback, as in the rag's chord-only bars 9–15
+  and 17) is now drawn with its chord instead of vanishing
+  (`bassFromLine()` in the model). Bar 9's dim7 chords show four
+  notes again; D4 lands on the bass staff because it sits below the
+  E4 split — the "keep each chord on one staff" polish item.
+- Staff-model `selfTest()` gains a rag block (70/70): every voice of
+  every bar sums to 2 beats; oom-pah bass from `bassLine`; octave
+  reduced to its lower note; chords-only bars have an empty
+  `bassLine`; endings linked by performance order (16 → 1, 15 → 17);
+  no tie warnings. Verified in headless Chrome on bars 1, 5, 9, 16,
+  17.
+
 **In progress:**
-- Session 4.5 steps 3–4 — see Next priorities.
+- Session 4.5 step 4 — see Next priorities.
 
 **Open / deferred:**
 - Session 5 (melody toggle + audio) follows 4.5; Explore mode
@@ -461,6 +510,8 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - `bassLine` reductions (grace notes dropped, dyads reduced to the
   lower note) are documented, not fixed; revisit if a piece needs
   them.
+- Rag staff: sixteenths are unbeamed (beaming is a known polish
+  item), so the rag's melody reads busier than the PDF.
 - Spike files to delete when ready: `templates/spikes/`,
   `static/spikes/staff/`, the `/voicings/spike-staff` route in the
   `if app.debug:` block of `app.py`.
@@ -482,6 +533,8 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
   `node --input-type=module -e "import('./static/shared/voicing-staff-model.js').then(m => m.selfTest())"`
   `python3 tools/voicings/check_export.py`
+  `python3 tools/voicings/check_midi.py --fixture tests/fixtures/voicing-maple-leaf-rag.json`
+- Regenerate the rag: `python3 tools/voicings/ly_to_src.py --ly tests/fixtures/maple-leaf-rag.ly --out tests/fixtures/maple-leaf-rag.src.py && python3 tools/voicings/export_json.py --src tests/fixtures/maple-leaf-rag.src.py --out tests/fixtures/voicing-maple-leaf-rag.json`
 
 ### Chord Progression Engine
 - Multi-path glow worm visualization (animated playthrough with fading trails)

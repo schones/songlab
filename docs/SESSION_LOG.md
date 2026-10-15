@@ -3,14 +3,84 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
-## 2026-10-15 (evening) — Voicing Explorer Session 4.5, steps 1–2: bassLine, bass lookback, staff bass from bassLine
+## 2026-10-15 (evening) — Voicing Explorer Session 4.5, steps 1–3: bassLine, bass lookback, staff bass from bassLine, Maple Leaf Rag fixture
 
 Read-and-report for the whole 4.5 session (five goals), then steps 1
-and 2 built as one unit and stopped for commit. Steps 3 (Maple Leaf
-Rag fixture) and 4 (analysis over every comp event) follow as their
-own commits.
+and 2 built as one unit and committed, then step 3 (the public rag
+fixture with its converter and MIDI check). Step 4 (analysis over
+every comp event) follows as its own commit.
 
-### Landed
+### Landed (step 3 — Maple Leaf Rag fixture)
+- `tests/fixtures/maple-leaf-rag.ly` — Mutopia's source, Public
+  Domain, kept so the fixture regenerates.
+- `tools/voicings/ly_to_src.py` — limited-subset LilyPond reader
+  (relative pitch incl. the chord-first-note rule, Dutch names,
+  durations/dots, ties incl. the space-separated `~`, rests, chords,
+  `\partial`, volta repeat + alternatives, bar checks; strips
+  dynamics, markup, articulations, slurs, clef/stem/change/bar
+  commands). Reduces to the score_src grammar: melody = top RH note;
+  bass voice = LH single notes and octave dyads; chord voice = the
+  rest. Chord symbols are a hand table in the script (ours).
+- `tests/fixtures/maple-leaf-rag.src.py` (generated) and
+  `tests/fixtures/voicing-maple-leaf-rag.json` (exporter), 17 bars.
+- `tools/voicings/export_json.py` — `META` hook: a source module may
+  carry title, key, timeSignature, tempo, arrangedFrom, chordSymbols,
+  attribution; they override the CLI defaults.
+- `tools/voicings/check_midi.py` — stdlib SMF reader + the fixture
+  checks (melody/bass onsets and pitches, top/bottom at each onset,
+  comp voicing sounding, comp.bass started at or before the chord).
+  Downloads Mutopia's MIDI on demand or takes `--midi`. 0 mismatches.
+- `tools/voicings/export_json.py` — `build_doc()` entry point,
+  `predecessors()` from the play order, octave-doubling exclusion;
+  `check_export.py` 25/25 (endings case, four octave cases).
+- `tools/voicings/schema.md` — "Public fixture" section with the
+  reduction rules; staff-model `selfTest()` rag block (65/65).
+- `docs/STATUS.md` updated.
+
+### Diagnosed / decided (step 3)
+- **The converter is right where my hand trace was wrong:** the
+  pickup chord moves LilyPond's relative reference, so bar 1's LH
+  octave is A♭2–A♭3, not A♭1–A♭2. The MIDI settled it in one
+  look — exactly what the ground-truth check is for.
+- **Two check-design fixes, not fixture fixes:** (1) a looked-back
+  `comp.bass` has often stopped sounding by the chord onset (oom-pah),
+  so the check now asks whether that bass STARTED at or before the
+  chord within the bar, or is sounding; (2) melody ties across bar
+  lines (bars 9→10, 10→11, 12→13, 13→14, 14→15) have no MIDI note-on
+  at the next downbeat, so the continuation test now carries the
+  previous bar's last event.
+- **One real artifact, then fixed (Dustin):** bar 17 (second ending)
+  took its `comp.bass` E♭2 from written bar 16's last bass, but is
+  played after bar 15, where there is no bass voice; the MIDI had no
+  E♭2 there (3 mismatches). Rule now: "previous bar" is the
+  performance predecessor from `playOrder` everywhere — exporter bass
+  lookback (`predecessors()`), staff tie matching
+  (`performanceNeighbours()`), and step 4's motion when it lands.
+  Rag bar 17's bass is the lowest chord note; MIDI check clean.
+- **Octave doublings (Dustin):** an exact octave doubling of the bass
+  from the bass voice never joins the comp voicing; non-octave dyads
+  still do. Rag bars 5–6 drop F♭3/E♭3 from the voicing; private bar
+  17 drops its D4 doubling (tension stays 4, the staff arpeggio spans
+  four notes, motion 17→18 becomes computable at three voices). The
+  staff self-test re-baselined that one count.
+- **Fallback bass vanished from the staff:** with a `bassLine`, the
+  model drew the bass voice from it and ignored `comp.bass` — right
+  when the bass came from the bass voice, wrong when it was the
+  exporter's lowest-chord-note fallback (rag bars 9–15, 17). Fixed:
+  a `comp.bass` not matched by the bassLine lookback is drawn as a
+  chord note (`bassFromLine()`). The rag crops caught it; the private
+  piece never hits the fallback. 70/70.
+- **Derived chord symbols (ours, for the PDF check):** 1 A♭ · 2 E♭7/B♭
+  · 3 A♭ · 4 E♭7/B♭ · 5 F♭ · 6 F♭, E♭7 at beat 1 · 7–8 A♭ · 9 Bdim7
+  · 10 A♭/C · 11 F♭/C♭, A♭/C at 1 · 12 A♭/C, E♭7/D♭ at 0.5, A♭/C at 1
+  · 13 Bdim7 · 14 A♭/C · 15 F♭/C♭, A♭/C at 1 · 16 A♭/C, E♭7/D♭ at
+  0.5, A♭/C at 1, E♭ at 1.5 · 17 A♭/C, E♭7/D♭ at 0.5, A♭/C at 1.
+- **Mutopia's MIDI unfolds the repeat** (`unfold-repeats` in its
+  MIDI score block; 144 bars of 2/4), so the check maps each written
+  bar to its first occurrence in the fixture's `playOrder` plus the
+  half-beat pickup.
+
+### Landed (steps 1–2)
 - `tools/voicings/schema.md` — optional per-bar `bassLine[]` (bass
   voice as written: `beat`, `dur`, `note`, optional `tie`/`arp`, one
   note per event); `comp[].bass` redefined by three-way lookback;
@@ -85,7 +155,7 @@ own commits.
   step 4 (analysis per event + page event selection), stop; then
   Session 5.
 - Self-tests: `voicing-analysis.js` 51/51, `voicing-staff-model.js`
-  58/58, `check_export.py` 19/19.
+  70/70, `check_export.py` 25/25, `check_midi.py` 0 mismatches.
 
 ### Flagged for later
 - Keyboard, detail and Tonnetz still show the first comp event; the

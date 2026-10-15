@@ -21,6 +21,9 @@
  * the next bar (or of the next event in this bar); a flagged note with no
  * match goes to model.warnings instead. The last bar draws unmatched ties.
  * Incoming ties use the same matching against the previous bar's last event.
+ * "Previous" and "next" are the performance neighbours — the bars around
+ * the bar's first occurrence in form.playOrder — so a second ending follows
+ * the bar before the first ending; without a playOrder, written order.
  *
  * Bass voice. When the bar carries a bassLine (schema v1, optional), the bass
  * staff's second voice is drawn from it as written — held basses under later
@@ -178,6 +181,15 @@ function markAccidentals(voices, keyAcc) {
   }
 }
 
+/** [prevBar, nextBar] around the bar's first occurrence in form.playOrder; written order without one. */
+function performanceNeighbours(progression, barNumber) {
+  const order = progression.form && Array.isArray(progression.form.playOrder) && progression.form.playOrder.length
+    ? progression.form.playOrder : (progression.bars || []).map(b => b.bar);
+  const i = order.indexOf(barNumber);
+  if (i < 0) return [null, null];
+  return [i > 0 ? order[i - 1] : null, i < order.length - 1 ? order[i + 1] : null];
+}
+
 /** Chord symbols for the bar; an empty symbols[] holds the previous symbol. */
 function barSymbols(bars, idx) {
   const own = bars[idx].symbols;
@@ -203,7 +215,10 @@ function buildBarModel(progression, barNumber, { split = SPLIT_MIDI } = {}) {
   const bars = progression.bars || [];
   const idx = bars.findIndex(b => b.bar === barNumber);
   if (idx < 0) return null;
-  const bar = bars[idx], prev = bars[idx - 1] || null, next = bars[idx + 1] || null;
+  const bar = bars[idx];
+  const [prevNum, nextNum] = performanceNeighbours(progression, barNumber);
+  const byNum = n => (n == null ? null : bars.find(b => b.bar === n) || null);
+  const prev = byNum(prevNum), next = byNum(nextNum);
   const [count, unit] = String(progression.timeSignature || '4/4').split('/').map(Number);
   const beatsPerBar = progression.beatsPerBar || count;
   const keyName = String(progression.key || 'C').replace('#', '♯').replace(/b$/, '♭');
@@ -229,6 +244,19 @@ function buildBarModel(progression, barNumber, { split = SPLIT_MIDI } = {}) {
   const bassItems = [], lowerItems = [], upperItems = [], melItems = [];
   const comp = bar.comp || [], melody = bar.melody || [];
   const bassLine = Array.isArray(bar.bassLine) ? bar.bassLine : null;
+  // With a bassLine, comp.bass is normally a bass-voice note already drawn there.
+  // When it is not (the exporter's "lowest chord note" fallback), it is a chord
+  // note and must be drawn with the voicing.
+  const prevBassCarry = (() => {
+    if (!bassLine || !prev) return null;
+    const last = Array.isArray(prev.bassLine) ? lastOf(prev.bassLine) : null;
+    return last && (last.tie || Math.abs(last.beat + last.dur - beatsPerBar) < EPS) ? midiOf(last.note) : null;
+  })();
+  const bassFromLine = (ev) => {
+    const prior = bassLine.filter(b => b.beat <= ev.beat + EPS);
+    const m = prior.length ? midiOf(prior[prior.length - 1].note) : prevBassCarry;
+    return m != null && m === midiOf(ev.bass);
+  };
   comp.forEach((ev, i) => {
     const isFirst = i === 0 && Math.abs(ev.beat) < EPS, isLast = i === comp.length - 1;
     const note = (name, role) => {
@@ -237,7 +265,8 @@ function buildBarModel(progression, barNumber, { split = SPLIT_MIDI } = {}) {
     };
     if (!bassLine) bassItems.push({ beat: ev.beat, dur: ev.dur, src: i, notes: [note(ev.bass, 'bass')] });
     const lower = [], upper = [];
-    for (const name of ev.voicing || []) (midiOf(name) >= split ? upper : lower).push(note(name, 'voicing'));
+    const chordNotes = bassLine && ev.bass != null && !bassFromLine(ev) ? [ev.bass, ...(ev.voicing || [])] : (ev.voicing || []);
+    for (const name of chordNotes) (midiOf(name) >= split ? upper : lower).push(note(name, 'voicing'));
     if (lower.length) lowerItems.push({ beat: ev.beat, dur: ev.dur, src: i, notes: lower });
     if (upper.length) upperItems.push({ beat: ev.beat, dur: ev.dur, src: i, notes: upper });
   });
@@ -460,6 +489,10 @@ async function selfTest() {
   assert('tied-in F4 shows no accidental',                  accid(b3.voices.upper), ['E4:-', 'F4:-']);
   assert('empty symbols[] holds Cmaj7',                     b3.symbols, [{ beat: 0, text: 'Cmaj7', hold: true }]);
   assert('absent bar → null',                               buildBarModel(SYN, 9), null);
+  const FORM = { ...SYN, form: { repeats: [[1, 2]], endings: { '1': [2, 2], '2': [3, 3] }, playOrder: [1, 2, 1, 3] } };
+  assert('performance neighbours: 2nd ending (bar 3) follows bar 1, bar 2 leads back to bar 1',
+         [buildBarModel(FORM, 3).prev, buildBarModel(FORM, 2).next, buildBarModel(FORM, 1).prev], [1, 1, null]);
+  assert('ties in bar 3 then match bar 1\'s tie, not bar 2\'s',   flagged(Object.values(buildBarModel(FORM, 3).voices).flat(), 'tieIn'), []);
 
   console.log('  durations');
   assert('splitDur(2.5) = h + 8',                           splitDur(2.5).map(d => d.dur), ['h', '8']);
@@ -497,6 +530,29 @@ async function selfTest() {
   assert('bar 5 (two comp events) lays out both',           buildBarModel(fixture, 5).voices.bass.filter(e => !e.rest).length, 2);
   assert('every bar converts to MEI with a brace',          fixture.bars.every(b => /symbol="brace"/.test(toMEI(buildBarModel(fixture, b.bar)))), true);
 
+  // ── Rag fixture (public): Maple Leaf Rag A strain ───────────────
+  const ragURL = new URL('../../tests/fixtures/voicing-maple-leaf-rag.json', import.meta.url);
+  if (fs.existsSync(ragURL)) {
+    console.log('\n  rag: tests/fixtures/voicing-maple-leaf-rag.json');
+    const rag = JSON.parse(fs.readFileSync(ragURL, 'utf8'));
+    const R = n => buildBarModel(rag, n);
+    assert('17 bars in 2/4, every voice of every bar sums to 2 beats',
+      [rag.bars.length, rag.bars.every(b => Object.values(R(b.bar).voices).every(v => Math.abs(v.reduce((s, e) => s + e.q, 0) - 2) < EPS))], [17, true]);
+    assert('bar 1: oom-pah bass from bassLine (two eighths), chords on the off-beats',
+      [vals(R(1).voices.bass), names(R(1).voices.lower)], [['8', 'q', '8'], ['rest', 'E♭3+A♭3+C4', 'E♭3+A♭3+C4', 'rest']]);
+    assert('bar 1: bassLine keeps the lower note of the octave',    names(R(1).voices.bass).filter(x => x !== 'rest'), ['A♭2', 'A2']);
+    assert('bar 9: chords on every eighth, no bass voice (empty bassLine → whole-bar rest)', [R(9).bassFrom, names(R(9).voices.bass)], ['bassLine', ['REST']]);
+    assert('bar 9: the fallback bass D4 is drawn with the chord (below the E4 split, so on the bass staff)', [names(R(9).voices.lower), names(R(9).voices.upper)[0]], [['D4', 'D4', 'D4', 'D4'], 'F4+A♭4+B4']);
+    assert('bar 17: fallback basses E♭3, E♭3, A♭3 drawn with their chords',   names(R(17).voices.lower).filter(x => x !== 'rest'), ['E♭3+A♭3+C4', 'E♭3+G3+D♭4', 'A♭3+C4']);
+    assert('bar 1: the looked-back bass A♭2 is not duplicated into the chords', names(R(1).voices.lower).filter(x => x !== 'rest'), ['E♭3+A♭3+C4', 'E♭3+A♭3+C4']);
+    assert('bar 2: melody tie within the bar is one event, no warnings', [names(R(2).voices.melody).length, R(2).warnings], [5, []]);
+    assert('endings: 16 leads back to 1, 17 follows 15 and ends',      [R(16).next, R(17).prev, R(17).next], [1, 15, null]);
+    const ragWarnings = rag.bars.flatMap(b => R(b.bar).warnings);
+    assert('no tie warnings across the strain',                        ragWarnings, []);
+  } else {
+    console.log('\n  rag: tests/fixtures/voicing-maple-leaf-rag.json not present — skipped');
+  }
+
   // ── Acceptance: Don't Be Sad (private, optional) ─────────────────
   const privURL = new URL('../private/dont-be-sad.json', import.meta.url);
   if (fs.existsSync(privURL)) {
@@ -505,7 +561,7 @@ async function selfTest() {
     const B = n => buildBarModel(prog, n);
     const sound = evs => evs.filter(e => !e.rest).reduce((s, e) => s + e.notes.length, 0);
     assert('bar 2: comp only, leading rest, melody whole-bar rest', [vals(B(2).voices.lower), names(B(2).voices.melody)], [['q', 'h'], ['REST']]);
-    assert('bar 17: 5-note arpeggio spans all comp voices',    B(17).arps.map(ids => ids.length), [5]);
+    assert('bar 17: 4-note arpeggio (was 5: the D4 octave doubling of the bass no longer joins the voicing)', B(17).arps.map(ids => ids.length), [4]);
     assert('bar 17: melody tie out matched in bar 18',          [flagged(B(17).voices.melody, 'tieOut').length, B(17).warnings], [1, []]);
     assert('bar 19: 1 tie in (melody), 5 ties out',             [flagged(Object.values(B(19).voices).flat(), 'tieIn').length, flagged(Object.values(B(19).voices).flat(), 'tieOut').length], [1, 5]);
     assert('bar 10: triplet on beat 3',                         vals(B(10).voices.melody), ['h', '8³', '8³', '8³']);
