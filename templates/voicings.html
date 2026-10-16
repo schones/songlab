@@ -48,6 +48,10 @@
   .vp-play--error { border-color: var(--accent-coral); }
   .vp-play__hint { color: var(--text-muted); font-size: var(--font-size-2xs); }
   .vp-play__hint--warn { color: var(--accent-coral); }
+  .vp-melody { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-raised); color: var(--text-muted); font-size: var(--font-size-xs); cursor: pointer; white-space: nowrap; user-select: none; }
+  .vp-melody input { margin: 0; accent-color: var(--accent-green, #4CAF50); }
+  .vp-melody__state { font-variant-numeric: tabular-nums; }
+  .vp-melody--on { color: var(--accent-green, #4CAF50); border-color: var(--accent-green, #4CAF50); }
 
   @media (max-width: 1000px) {
     .vp-detail { grid-template-columns: 1fr 1fr; }
@@ -80,6 +84,9 @@
   <section class="vp-panel" aria-label="Tension per bar">
     <div class="vp-panel__head">
       <p class="vp-panel__label">Tension per bar — click or use ← → to select a bar, Shift+← → to step comp events</p>
+      <label class="vp-melody" id="vp-melody" title="Include the melody in the analysis and in playback. The staff always shows it; the Tonnetz never does.">
+        <input type="checkbox" id="vp-melody-input"> melody <span class="vp-melody__state" id="vp-melody-state">off</span>
+      </label>
       <button type="button" class="vp-play" id="vp-play" title="Play the selected bar (P). Shift+click or Shift+P plays the selected event. Esc stops." disabled>▶ Play bar</button>
       <span class="vp-play__hint" id="vp-play-hint">Shift+click: event</span>
     </div>
@@ -137,7 +144,7 @@
   const FIXTURE_PIECE = 'fixture';
 
   // ── Page state: one object, one setter ──────────────────────────
-  const state = { piece: null, progression: null, analysis: null, selectedBar: null, selectedEvent: null };
+  const state = { piece: null, progression: null, analysis: null, selectedBar: null, selectedEvent: null, includeMelody: false };
 
   const els = {
     page:   document.getElementById('vp-page'),
@@ -148,6 +155,9 @@
     input:  document.getElementById('vp-piece-input'),
     play:   document.getElementById('vp-play'),
     playHint: document.getElementById('vp-play-hint'),
+    melody: document.getElementById('vp-melody'),
+    melodyInput: document.getElementById('vp-melody-input'),
+    melodyState: document.getElementById('vp-melody-state'),
   };
 
   // ── Views ───────────────────────────────────────────────────────
@@ -185,7 +195,7 @@
 
     chart.setSelected(barNumber);
     detail.render(bar, state.selectedEvent);
-    keyboard.render(event ? { bass: event.bass, voicing: event.voicing } : {});
+    keyboard.render(event ? { bass: event.bass, voicing: event.voicing, melody: state.includeMelody ? melodyOver(barNumber, event) : [] } : {});
     if (sameBar && staff.model && staff.model.bar === barNumber) staff.setEvent(state.selectedEvent);
     else staff.render(state.progression, barNumber, { event: state.selectedEvent });   // async; latest selection wins
 
@@ -220,10 +230,51 @@
     select(bars[idx].bar, ev);
   }
 
+  // ── Melody toggle ────────────────────────────────────────────────
+  // OFF (default): melody is out of the analysis and muted in playback.
+  // ON: scored by time overlap with each comp event (the engine's rule),
+  // lit green on the keyboard, audible. The staff always draws it; the
+  // Tonnetz is comp-only either way. State lives in the URL (&melody=1).
+  function melodyOver(barNumber, event) {
+    const bar = state.progression && state.progression.bars.find(b => b.bar === barNumber);
+    if (!bar || !event) return [];
+    const a = event.beat, z = event.beat + event.dur;
+    return (bar.melody || []).filter(m => Math.min(m.beat + m.dur, z) - Math.max(m.beat, a) > 1e-9).map(m => m.note);
+  }
+
+  function renderMelodyToggle() {
+    els.melodyInput.checked = state.includeMelody;
+    els.melodyState.textContent = state.includeMelody ? 'on' : 'off';
+    els.melody.classList.toggle('vp-melody--on', state.includeMelody);
+  }
+
+  function setIncludeMelody(on) {
+    on = !!on;
+    if (on === state.includeMelody) return;
+    player.stop();
+    state.includeMelody = on;
+    renderMelodyToggle();
+    const url = new URL(window.location.href);
+    if (on) url.searchParams.set('melody', '1'); else url.searchParams.delete('melody');
+    history.replaceState(null, '', url);
+    renderPlayButton();
+    if (!state.progression) return;
+    // Re-analyze and re-select: same bar; the current event when it still
+    // exists (the event list is the comp events, unchanged by the toggle),
+    // else the bar's max-tension event.
+    state.analysis = analyzeProgression(state.progression, { includeMelody: on });
+    chart.render(state.progression, state.analysis, state.selectedBar);
+    const bar = state.analysis.bars.find(b => b.bar === state.selectedBar);
+    if (!bar) return;
+    const keep = state.selectedEvent != null && state.selectedEvent < bar.events.length ? state.selectedEvent : null;
+    select(state.selectedBar, keep);
+  }
+
+  els.melodyInput.addEventListener('change', () => setIncludeMelody(els.melodyInput.checked));
+
   // ── Playback ────────────────────────────────────────────────────
   // Play = the whole selected bar (with its lead-in); Shift+Play = the
   // selected comp event. Nothing plays without a click or a key press.
-  // Melody is muted in playback until the melody toggle lands (part 3).
   const PLAY_LABEL = { bar: '▶ Play bar', event: '▶ Play event' };
   let playScope = 'bar';
   const player = new VoicingPlayer({ onState: renderPlayButton });
@@ -236,10 +287,10 @@
     btn.disabled = !canPlay || playerState === 'loading';
     switch (playerState) {
       case 'loading': btn.textContent = '… Loading piano'; hint.textContent = 'first play downloads the samples (~2 MB)'; break;
-      case 'playing': btn.textContent = '■ Stop'; btn.classList.add('vp-play--playing'); hint.textContent = playScope === 'event' ? 'playing the selected event' : 'playing the selected bar'; break;
+      case 'playing': btn.textContent = '■ Stop'; btn.classList.add('vp-play--playing'); hint.textContent = (playScope === 'event' ? 'playing the selected event' : 'playing the selected bar') + (state.includeMelody ? ' with melody' : ', melody off'); break;
       case 'blocked': btn.textContent = PLAY_LABEL[playScope]; hint.textContent = 'click again to enable audio'; hint.classList.add('vp-play__hint--warn'); break;
       case 'error':   btn.textContent = PLAY_LABEL[playScope]; btn.classList.add('vp-play--error'); hint.textContent = 'audio unavailable (piano failed to load) — click to retry'; hint.classList.add('vp-play__hint--warn'); break;
-      default:        btn.textContent = PLAY_LABEL.bar; hint.textContent = 'Shift+click: event · P / Shift+P · Esc stops';
+      default:        btn.textContent = PLAY_LABEL.bar; hint.textContent = (state.includeMelody ? 'with melody · ' : 'melody off · ') + 'Shift+click: event · P / Shift+P · Esc stops';
     }
   }
 
@@ -248,7 +299,7 @@
     if (!state.progression || state.selectedBar == null) return;
     if (scope === 'event' && state.selectedEvent == null) scope = 'bar';
     playScope = scope;
-    const list = buildPlaybackList(state.progression, state.selectedBar, { scope, eventIndex: state.selectedEvent, includeMelody: false });
+    const list = buildPlaybackList(state.progression, state.selectedBar, { scope, eventIndex: state.selectedEvent, includeMelody: state.includeMelody });
     for (const w of list.warnings) console.warn(`[voicings playback] ${w}`);
     const schedule = toSchedule(list);
     const result = await player.play(schedule, {
@@ -324,7 +375,7 @@
 
     state.piece = loadedName;
     state.progression = progression;
-    state.analysis = analyzeProgression(progression);
+    state.analysis = analyzeProgression(progression, { includeMelody: state.includeMelody });
     els.page.classList.remove('vp-empty');
     els.title.textContent = progression.title || loadedName;
     els.meta.innerHTML = [
@@ -359,10 +410,12 @@
   });
 
   const params = new URLSearchParams(window.location.search);
+  state.includeMelody = params.get('melody') === '1';
+  renderMelodyToggle();
   const requested = params.get('piece');
   load(requested || DEFAULT_PIECE, { explicit: !!requested });
 
   // Debug handle for the browser console (no behaviour depends on it).
-  window.__voicings = { state, select, selectEvent, stepEvent, chart, keyboard, detail, bubble, staff, player, playSelected };
+  window.__voicings = { state, select, selectEvent, stepEvent, chart, keyboard, detail, bubble, staff, player, playSelected, setIncludeMelody };
 </script>
 {% endblock %}
