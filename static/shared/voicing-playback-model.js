@@ -28,9 +28,10 @@
  * beat-0 tails are not re-attacked: the originating note in the performance
  * predecessor (form.playOrder, first occurrence — the bar model's `prev`)
  * sounds through, and playback starts at the earliest onset among those
- * originating notes (LEAD-IN). Everything in the predecessor from that point
- * plays; a note already sounding at that point is clipped to start there. The
- * lead-in is capped at the predecessor bar (its own tied-in tails are
+ * originating notes, but never more than LEAD_IN_MAX_BEATS before the bar
+ * (LEAD-IN). Everything in the predecessor from that point plays; a note
+ * already sounding at that point is struck there and held through. The
+ * lead-in stays inside the predecessor bar (its own tied-in tails are
  * re-attacked); bar 1 has none. Only voices that will sound take part: with
  * includeMelody false, melody ties neither trigger nor extend the lead-in. A
  * bass carried from the predecessor by the
@@ -59,6 +60,7 @@ const EPS = 0.01;                  // beats in the data are rounded to 4 decimal
 const DEFAULT_TEMPO = 100;
 const ARP_STEP_MS = 35;
 const ROLL_SPREAD_FRACTION = 1 / 3;
+const LEAD_IN_MAX_BEATS = 1;       // quarters: the lead-in never starts earlier than this before the bar
 const ROLE_ORDER = { bass: 0, voicing: 1, melody: 2 };
 
 const midiOf = name => parseNote(name).midi;
@@ -197,6 +199,7 @@ function barScope(progression, bar, model, barNotes, includeMelody, warnings) {
     else warnings.push(`bar ${bar.bar}: bass carried from bar ${model.prev} not found there — not held`);
   }
   if (T == null) return { notes: keep, leadInStart: null };
+  T = Math.max(T, bpb - LEAD_IN_MAX_BEATS);
 
   const leadIn = [];
   for (const n of prevNotes) {
@@ -324,10 +327,10 @@ function toSchedule(playback, { arpStepMs = ARP_STEP_MS } = {}) {
   return { secondsPerQuarter: spq, barStart: -origin * spq, duration, notes };
 }
 
-export { buildPlaybackList, toSchedule, ARP_STEP_MS, ROLL_SPREAD_FRACTION, selfTest };
+export { buildPlaybackList, toSchedule, ARP_STEP_MS, ROLL_SPREAD_FRACTION, LEAD_IN_MAX_BEATS, selfTest };
 
 if (typeof window !== 'undefined') {
-  window.VoicingPlaybackModel = { buildPlaybackList, toSchedule, ARP_STEP_MS, ROLL_SPREAD_FRACTION };
+  window.VoicingPlaybackModel = { buildPlaybackList, toSchedule, ARP_STEP_MS, ROLL_SPREAD_FRACTION, LEAD_IN_MAX_BEATS };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -413,12 +416,12 @@ async function selfTest() {
   assert('bar 1: no predecessor, no lead-in',               [S(1).predecessor, S(1).leadInStart], [null, null]);
   assert('bar 1: staffIds come from the bar model',          S(1).notes.map(n => n.staffId), ['vs-b1-bass-0', 'vs-b1-lower-0', 'vs-b1-lower-1', 'vs-b1-melody-0', 'vs-b1-melody-1']);
   const s2 = S(2);
-  assert('bar 2: lead-in from the earliest tied onset in bar 1 (beat 0)', s2.leadInStart, -4);
-  assert('bar 2: tails not re-attacked, originating notes held through (C2 4+2, E3/G3 4+2, G4 2+1)',
-    names(s2.notes.filter(n => n.leadIn)), ['b:C2@-4+6←', 'v:E3@-4+6←', 'v:G3@-4+6←', 'm:E4@-4+2←', 'm:G4@-2+3←']);
+  assert('bar 2: earliest tied onset is bar 1 beat 0, capped at one beat before the bar', s2.leadInStart, -1);
+  assert('bar 2: tails not re-attacked; originating notes struck at the lead-in start and held through (C2 1+2, E3/G3 1+2, G4 1+1); E4 ended before it',
+    names(s2.notes.filter(n => n.leadIn)), ['b:C2@-1+3←', 'v:E3@-1+3←', 'v:G3@-1+3←', 'm:G4@-1+2←']);
   assert('bar 2: nothing of its own at beat 0; own notes from beat 1',
     names(s2.notes.filter(n => !n.leadIn)), ['m:A4@1+3', 'b:D2@2+2[0/3]', 'v:F3@2+2[1/3]', 'v:A3@2+2[2/3]']);
-  assert('bar 2: lead-in notes carry no staffId or event',    s2.notes.filter(n => n.leadIn).map(n => [n.staffId, n.event]), [[null, null], [null, null], [null, null], [null, null], [null, null]]);
+  assert('bar 2: lead-in notes carry no staffId or event',    s2.notes.filter(n => n.leadIn).map(n => [n.staffId, n.event]), [[null, null], [null, null], [null, null], [null, null]]);
   assert('bar 2: bass leads the roll (bassLine arp, attacks with the chord)', s2.notes.find(n => n.name === 'D2').roll, { index: 0, count: 3 });
   const s3 = S(3);
   assert('bar 3: rolled bass on the downbeat is not in the chord roll on beat 2',
@@ -427,11 +430,11 @@ async function selfTest() {
   assert('bar 4: no bassLine → comp.bass with the event duration', names(S(4).notes), ['b:A1@0+4', 'v:C3@0+4', 'v:E3@0+4']);
   assert('bar 5: comp.bass that is a chord note plays once, with the chord', names(S(5).notes), ['v:F3@0+4', 'v:A3@0+4', 'v:D4@0+4']);
   const s7 = S(7);
-  assert('bar 7: bass carried from bar 6 is held through both claiming events (4 + 4)', names(s7.notes.filter(n => n.leadIn)), ['b:G2@-4+8←', 'm:D5@-4+4←', 'v:B3@-2+2←', 'v:D4@-2+2←']);
-  assert('bar 7: lead-in start is the held bass onset',        s7.leadInStart, -4);
+  assert('bar 7: bass carried from bar 6 is struck at the cap and held through both claiming events (1 + 4)', names(s7.notes.filter(n => n.leadIn)), ['b:G2@-1+5←', 'v:B3@-1+1←', 'v:D4@-1+1←', 'm:D5@-1+1←']);
+  assert('bar 7: lead-in start capped at -1 (the held bass began at -4)', s7.leadInStart, -1);
   assert('bar 7: own notes are the chords only (no bass on the staff, none re-struck)', names(s7.notes.filter(n => !n.leadIn)), ['v:B3@0+2', 'v:D4@0+2', 'v:B3@2+2', 'v:F4@2+2']);
   const s9 = S(9);
-  assert('bar 9: lead-in from beat 3 of bar 8; notes already sounding there are clipped to start at it',
+  assert('bar 9: lead-in from beat 3 of bar 8 (within the cap); notes already sounding there are struck at it',
     names(s9.notes.filter(n => n.leadIn)), ['b:G2@-1+1←', 'v:E3@-1+1←', 'v:G3@-1+1←', 'm:D5@-1+3←']);
   assert('bar 9: lead-in start -1',                           s9.leadInStart, -1);
   assert('bar 9: own melody starts at beat 2 (the beat-0 tail is the lead-in note)', names(s9.notes.filter(n => !n.leadIn)), ['b:C2@0+4', 'v:E3@0+4', 'v:G3@0+4', 'm:C5@2+2']);
@@ -450,11 +453,11 @@ async function selfTest() {
 
   // toSchedule
   const t2 = toSchedule(s2);
-  near1('schedule: bar 2 time 0 is the lead-in start, barStart 2 s (4 quarters at 120)', t2.barStart, 2);
-  near1('schedule: bar 2 total duration 4 s (bar 1 + bar 2)',  t2.duration, 4);
+  near1('schedule: bar 2 time 0 is the lead-in start, barStart 0.5 s (1 quarter at 120)', t2.barStart, 0.5);
+  near1('schedule: bar 2 total duration 2.5 s (one beat of bar 1 + bar 2)',  t2.duration, 2.5);
   const roll2 = t2.notes.filter(n => n.roll).map(n => [n.name, n.time, n.duration]);
   assert('schedule: bar 2 roll D2 F3 A3 at 35 ms steps, held to the event end',
-    roll2.map(([n, t, d]) => [n, Math.round((t - 3) * 1000), Math.round((t + d) * 1000)]), [['D2', 0, 4000], ['F3', 35, 4000], ['A3', 70, 4000]]);
+    roll2.map(([n, t, d]) => [n, Math.round((t - 1.5) * 1000), Math.round((t + d) * 1000)]), [['D2', 0, 2500], ['F3', 35, 2500], ['A3', 70, 2500]]);
   const t3 = toSchedule(s3);
   const roll3 = t3.notes.filter(n => n.roll);
   near1('schedule: bar 3 short event (0.125 s) caps the spread at 1/3 of it',  roll3[2].time - roll3[0].time, 0.125 / 3);
@@ -490,6 +493,8 @@ async function selfTest() {
   assert('rag bar 1: chords at 0.5 and 1, melody six notes, no lead-in',  [role(R(1).notes, 'voicing').length, role(R(1).notes, 'melody').length, R(1).leadInStart], [6, 6, null]);
   assert('rag bar 9 (empty bassLine): comp.bass is a chord note, plays once per event', names(R(9).notes).filter(s => s.includes('D4')).length, (rag.bars.find(b => b.bar === 9).comp.filter(e => e.bass === 'D4').length));
   assert('rag bar 10: melody tied in from bar 9 → lead-in from that note',  [R(10).predecessor, R(10).leadInStart < 0, R(10).notes.filter(n => n.leadIn && n.role === 'melody').length], [9, true, 1]);
+  assert('rag (2/4): every lead-in starts within one quarter of the bar', rag.bars.map(b => R(b.bar).leadInStart).filter(x => x != null).every(x => x >= -LEAD_IN_MAX_BEATS - EPS), true);
+  assert('rag lead-in starts (melody on): sixteenth-note ties, all -0.25', rag.bars.map(b => [b.bar, R(b.bar).leadInStart]).filter(([, x]) => x != null), [[10, -0.25], [11, -0.25], [13, -0.25], [14, -0.25], [15, -0.25]]);
   assert('rag bars 16 and 17: predecessor 15 via playOrder, no lead-in',    [R(16).predecessor, R(17).predecessor, R(16).leadInStart, R(17).leadInStart], [15, 15, null, null]);
   assert('rag bar 1 on the repeat is still bar 1: predecessor null (first occurrence)', R(1).predecessor, null);
   assert('rag bar 17 event 2: bass A♭3 is a chord note; event scope still names it bass', names(R(17, { scope: 'event', eventIndex: 2, includeMelody: false }).notes), ['b:A♭3@1+0.5', 'v:C4@1+0.5']);
@@ -504,8 +509,8 @@ async function selfTest() {
     invariants('private', prog);
     const P = (n, o) => bar(prog, n, o);
     const p4 = P(4);
-    assert('bar 4: lead-in from bar 3 beat 0 (tied bass and chord), all voices', [p4.leadInStart, names(p4.notes.filter(n => n.leadIn))],
-      [-3, ['b:E♭3@-3+4←', 'v:G3@-2+3←', 'v:B♭3@-2+3←', 'v:D4@-2+3←']]);
+    assert('bar 4: tied bass and chord from bar 3 → lead-in capped at -1; both struck there and held across the bar line', [p4.leadInStart, names(p4.notes.filter(n => n.leadIn))],
+      [-1, ['b:E♭3@-1+2←', 'v:G3@-1+2←', 'v:B♭3@-1+2←', 'v:D4@-1+2←']]);
     assert('bar 4: nothing re-attacked at beat 0; the walk follows',   names(p4.notes.filter(n => !n.leadIn)), ['b:D3@1+1', 'b:E3@2+0.5', 'b:D3@2.5+0.5']);
     assert('bar 1: no lead-in',                                        [P(1).predecessor, P(1).leadInStart], [null, null]);
     assert('bar 25: dotted-half bass on the downbeat under the chord from beat 1, no lead-in (bar 24 ties nothing)',
@@ -526,15 +531,16 @@ async function selfTest() {
     const p26off = P(26, { includeMelody: false });
     assert('bar 26, melody off: no lead-in from the tied C5; nothing of bar 25 clipped in',
       [p26off.leadInStart, names(p26off.notes)], [null, ['b:F2@0+3', 'v:A3@1+1', 'v:D4@1+1', 'v:F♯4@1+1', 'v:A♭3@2+1', 'v:D4@2+1']]);
-    assert('bar 26, melody on: unchanged (lead-in -0.5, bar 25 bass clipped in)',
+    assert('bar 26, melody on: half-beat melody tie unchanged at -0.5 (under the cap), bar 25 bass struck there',
       [P(26).leadInStart, names(role(P(26).notes, 'bass'))], [-0.5, ['b:G2@-0.5+0.5←', 'b:F2@0+3']]);
     const p4off = P(4, { includeMelody: false });
-    assert('bar 4, melody off: comp and bass ties still give the lead-in from bar 3 beat 0',
-      [p4off.leadInStart, names(p4off.notes.filter(n => n.leadIn))], [-3, ['b:E♭3@-3+4←', 'v:G3@-2+3←', 'v:B♭3@-2+3←', 'v:D4@-2+3←']]);
+    assert('bar 4, melody off: comp and bass ties still give the (capped) lead-in',
+      [p4off.leadInStart, names(p4off.notes.filter(n => n.leadIn))], [-1, ['b:E♭3@-1+2←', 'v:G3@-1+2←', 'v:B♭3@-1+2←', 'v:D4@-1+2←']]);
     const synOff = bar(SYN, 9, { includeMelody: false });
     assert('synthetic bar 9, melody off: its only tie-in is melody → no lead-in, bar 8 untouched',
       [synOff.leadInStart, names(synOff.notes)], [null, ['b:C2@0+4', 'v:E3@0+4', 'v:G3@0+4']]);
-    near1('bar 4 schedule: barStart = 3 quarters at 93 bpm',          toSchedule(p4).barStart, 3 * 60 / 93);
+    near1('bar 4 schedule: barStart = 1 quarter at 93 bpm',           toSchedule(p4).barStart, 60 / 93);
+    assert('private: every lead-in starts within one quarter of the bar', prog.bars.map(b => P(b.bar).leadInStart).filter(x => x != null).every(x => x >= -LEAD_IN_MAX_BEATS - EPS), true);
     const leadIns = prog.bars.filter(b => P(b.bar).leadInStart != null).map(b => b.bar);
     const leadInsOff = prog.bars.filter(b => P(b.bar, { includeMelody: false }).leadInStart != null).map(b => b.bar);
     console.log(`  (lead-ins with melody on: ${leadIns.length} bars — ${leadIns.join(' ')})`);

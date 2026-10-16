@@ -38,6 +38,17 @@
 
   .vp-empty .vp-panel { opacity: 0.55; }
 
+  /* ── Playback ─────────────────────────────────────────────── */
+  .vp-panel__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm, 8px) var(--space-md, 12px); margin-bottom: var(--space-sm, 8px); }
+  .vp-panel__head .vp-panel__label { margin: 0; flex: 1 1 auto; }
+  .vp-play { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text-primary); font: inherit; font-size: var(--font-size-xs); cursor: pointer; white-space: nowrap; }
+  .vp-play:hover:not(:disabled) { border-color: var(--accent-gold, #D4A03C); }
+  .vp-play:disabled { opacity: 0.55; cursor: default; }
+  .vp-play--playing { border-color: var(--accent-gold, #D4A03C); color: var(--accent-gold, #D4A03C); }
+  .vp-play--error { border-color: var(--accent-coral); }
+  .vp-play__hint { color: var(--text-muted); font-size: var(--font-size-2xs); }
+  .vp-play__hint--warn { color: var(--accent-coral); }
+
   @media (max-width: 1000px) {
     .vp-detail { grid-template-columns: 1fr 1fr; }
     .vp-detail > .vp-panel--tonnetz { grid-column: 1 / -1; }
@@ -67,7 +78,11 @@
   <div class="vp-banner" id="vp-banner" hidden role="status"></div>
 
   <section class="vp-panel" aria-label="Tension per bar">
-    <p class="vp-panel__label">Tension per bar — click or use ← → to select a bar, Shift+← → to step comp events</p>
+    <div class="vp-panel__head">
+      <p class="vp-panel__label">Tension per bar — click or use ← → to select a bar, Shift+← → to step comp events</p>
+      <button type="button" class="vp-play" id="vp-play" title="Play the selected bar (P). Shift+click or Shift+P plays the selected event. Esc stops." disabled>▶ Play bar</button>
+      <span class="vp-play__hint" id="vp-play-hint">Shift+click: event</span>
+    </div>
     <div id="vp-chart"></div>
   </section>
 
@@ -115,6 +130,8 @@
   import { VoicingKeyboard }       from "{{ url_for('static', filename='shared/voicing-keyboard.js') }}";
   import { VoicingDetail }         from "{{ url_for('static', filename='shared/voicing-detail.js') }}";
   import { VoicingStaff }          from "{{ url_for('static', filename='shared/voicing-staff.js') }}";
+  import { buildPlaybackList, toSchedule } from "{{ url_for('static', filename='shared/voicing-playback-model.js') }}";
+  import { VoicingPlayer }         from "{{ url_for('static', filename='shared/voicing-player.js') }}";
 
   const DEFAULT_PIECE = 'dont-be-sad';
   const FIXTURE_PIECE = 'fixture';
@@ -129,6 +146,8 @@
     banner: document.getElementById('vp-banner'),
     form:   document.getElementById('vp-piece-form'),
     input:  document.getElementById('vp-piece-input'),
+    play:   document.getElementById('vp-play'),
+    playHint: document.getElementById('vp-play-hint'),
   };
 
   // ── Views ───────────────────────────────────────────────────────
@@ -156,6 +175,7 @@
     if (!state.analysis) return;
     const bar = state.analysis.bars.find(b => b.bar === barNumber);
     if (!bar) return;
+    player.stop();   // a new selection never plays on its own
     const sameBar = state.selectedBar === barNumber;
     state.selectedBar = barNumber;
     state.selectedEvent = bar.events.length
@@ -200,6 +220,62 @@
     select(bars[idx].bar, ev);
   }
 
+  // ── Playback ────────────────────────────────────────────────────
+  // Play = the whole selected bar (with its lead-in); Shift+Play = the
+  // selected comp event. Nothing plays without a click or a key press.
+  // Melody is muted in playback until the melody toggle lands (part 3).
+  const PLAY_LABEL = { bar: '▶ Play bar', event: '▶ Play event' };
+  let playScope = 'bar';
+  const player = new VoicingPlayer({ onState: renderPlayButton });
+
+  function renderPlayButton(playerState = player.state) {
+    const btn = els.play, hint = els.playHint;
+    const canPlay = !!(state.analysis && state.selectedBar != null);
+    btn.classList.remove('vp-play--playing', 'vp-play--error');
+    hint.classList.remove('vp-play__hint--warn');
+    btn.disabled = !canPlay || playerState === 'loading';
+    switch (playerState) {
+      case 'loading': btn.textContent = '… Loading piano'; hint.textContent = 'first play downloads the samples (~2 MB)'; break;
+      case 'playing': btn.textContent = '■ Stop'; btn.classList.add('vp-play--playing'); hint.textContent = playScope === 'event' ? 'playing the selected event' : 'playing the selected bar'; break;
+      case 'blocked': btn.textContent = PLAY_LABEL[playScope]; hint.textContent = 'click again to enable audio'; hint.classList.add('vp-play__hint--warn'); break;
+      case 'error':   btn.textContent = PLAY_LABEL[playScope]; btn.classList.add('vp-play--error'); hint.textContent = 'audio unavailable (piano failed to load) — click to retry'; hint.classList.add('vp-play__hint--warn'); break;
+      default:        btn.textContent = PLAY_LABEL.bar; hint.textContent = 'Shift+click: event · P / Shift+P · Esc stops';
+    }
+  }
+
+  async function playSelected(scope) {
+    if (player.playing) { player.stop(); return; }
+    if (!state.progression || state.selectedBar == null) return;
+    if (scope === 'event' && state.selectedEvent == null) scope = 'bar';
+    playScope = scope;
+    const list = buildPlaybackList(state.progression, state.selectedBar, { scope, eventIndex: state.selectedEvent, includeMelody: false });
+    for (const w of list.warnings) console.warn(`[voicings playback] ${w}`);
+    const schedule = toSchedule(list);
+    const result = await player.play(schedule, {
+      onNote: () => {},                      // highlighting follows in part 3
+      onEnd: () => renderPlayButton(),
+    });
+    if (!result.played && result.reason === 'muted') {
+      els.playHint.textContent = 'sound is muted — unmute in the nav to hear playback';
+      els.playHint.classList.add('vp-play__hint--warn');
+    }
+    if (!result.played && result.reason === 'empty') {
+      els.playHint.textContent = 'nothing to play in this selection';
+    }
+  }
+
+  els.play.addEventListener('click', e => { playSelected(e.shiftKey ? 'event' : 'bar'); });
+
+  // P plays the bar, Shift+P the event, Esc stops. Space and Enter are the
+  // chart's own keys (select a focused bar); arrows step bars and events.
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key === 'p' || e.key === 'P') { e.preventDefault(); playSelected(e.shiftKey ? 'event' : 'bar'); }
+    else if (e.key === 'Escape' && player.playing) { e.preventDefault(); player.stop(); }
+  });
+
   // ── Loading ─────────────────────────────────────────────────────
   function showBanner(text, isError) {
     els.banner.innerHTML = text;
@@ -218,6 +294,7 @@
     keyboard.clear();
     staff.clear();
     HarmonyState.update({ activeNotes: [], activeTriads: [], activeChord: null, activeTransform: null, activeInterval: null });
+    renderPlayButton();
   }
 
   async function fetchPiece(name) {
@@ -268,6 +345,7 @@
     chart.render(progression, state.analysis, null);
     const firstWithComp = progression.bars.find(b => b.comp && b.comp.length) || progression.bars[0];
     if (firstWithComp) select(firstWithComp.bar);
+    renderPlayButton();
   }
 
   els.form.addEventListener('submit', e => {
@@ -285,6 +363,6 @@
   load(requested || DEFAULT_PIECE, { explicit: !!requested });
 
   // Debug handle for the browser console (no behaviour depends on it).
-  window.__voicings = { state, select, selectEvent, stepEvent, chart, keyboard, detail, bubble, staff };
+  window.__voicings = { state, select, selectEvent, stepEvent, chart, keyboard, detail, bubble, staff, player, playSelected };
 </script>
 {% endblock %}
