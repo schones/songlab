@@ -3,6 +3,149 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-10-16 — Voicing Explorer Session 5: playback (Tone.js + vendored Salamander), melody toggle, follow highlighting
+
+One read-and-report, then four build parts and three fixes, each in
+the build-then-STOP shape. Five commits (`9b548f2`, `cafc6d3`,
+`3e9e415`, `8ce3620`, `26be03c`). The page now plays the selected bar
+or event on a piano, with the staff and keyboard following.
+
+### Landed
+- `static/shared/voicing-playback-model.js` (new, pure, Node-testable):
+  `buildPlaybackList(progression, bar, { scope, eventIndex,
+  includeMelody })` → `{ tempo, beatsPerBar, scope, bar, predecessor,
+  leadInStart, notes, warnings }`, notes `{ midi, name, start,
+  duration, role, event, staffId, pieces, leadIn, roll }` in quarters
+  from the bar's beat 0. Bar scope is the staff model's voices with
+  tied pieces merged (`buildBarModel` supplies the bass merge rule and
+  the performance predecessor as `model.prev`; nothing re-implemented),
+  tie tails not re-attacked, lead-in from the predecessor. Event scope
+  is comp.bass + voicing for the window plus the overlapping melody,
+  clipped — what the analysis scores. `toSchedule(playback, {
+  arpStepMs })` → seconds with `barStart`, roll offsets, pieces.
+  `selfTest()` 89/89: a nine-bar synthetic progression, the fixture,
+  the rag, the private piece.
+- `static/shared/voicing-player.js` (new): Tone 14.8.49 lazy from the
+  app's cdnjs URL (UMD global; shared promise reset on failure, the
+  Verovio loader pattern); Salamander sampler lazy from
+  `static/vendor/salamander/`; `play(schedule, { onNote, onPiece,
+  onEnd })` on `Tone.Transport` + `Tone.Part`, callbacks through
+  `Tone.Draw`; `stop()` releases everything. States idle / loading /
+  ready / playing / blocked / error; `AudioToggle.isMuted()` respected;
+  `Tone.start()` raced against 1.5 s → `blocked` when the activation
+  expired during a slow first load.
+- `static/vendor/salamander/`: 29 mp3s (2.0 MB) + `README.md` (source,
+  commit, author, license quoted verbatim) — `cafc6d3`.
+- `templates/voicings.html`: Play button in the chart panel header
+  (click = bar, Shift+click = event; "■ Stop" while playing; loading /
+  blocked / error / muted hints), `P` / `Shift+P` / `Esc`, any
+  selection change stops playback, no auto-play. Melody toggle beside
+  it (default off, `&melody=1` in the URL, re-analysis + re-select
+  keeping the current event, keyboard melody role, playback). Follow:
+  `onNote` → keyboard, `onPiece` → staff, `onEnd` → restore. Keyboard
+  sized once per piece (`pieceRange`). `window.__voicings` gains
+  `player`, `playSelected`, `setIncludeMelody`.
+- `static/shared/voicing-staff.js`: `setPlaying(ids)` lights a set of
+  noteheads over the event dim state; `null` restores.
+- `static/shared/voicing-keyboard.js`: `setRange(low, high)`,
+  `setHighlight` takes one midi or a set, `setPlaying(sounding)` lights
+  exactly the sounding keys by role and restores the last `render()`.
+- Verified in headless Chrome over CDP after each part: player state
+  machine and button text, note counts with melody on / off (bar 16:
+  8 / 3), stop on selection change and on toggle, `P` / `Esc`, bar 4
+  lights nothing before beat 0 and the carried chord + bass at beat 0,
+  bar 17 roll order at ~35 ms, rag bar 2's tied E♭5 lighting each
+  notehead in its span, Stop mid-bar restoring the event's colors and
+  dim state, keyboard C2–B5 (48 keys) private vs C1–B6 (72) rag and
+  back. Console clean throughout. Scripts lived in the session
+  scratchpad, not committed.
+
+### Diagnosed / decided
+- **Scope (c):** Play = whole bar, Shift+Play / Shift+P = selected
+  event; `P` plays, `Esc` stops (Space and Enter belong to the chart's
+  focused bars).
+- **Lead-in from sounding voices only, capped at one beat
+  (`LEAD_IN_MAX_BEATS = 1`).** First cut played from the earliest tied
+  onset in the predecessor: bar 4 played all of bar 3. The cap starts
+  at `max(earliest tied/held onset, −1 beat)`; predecessor notes still
+  sounding there are struck at the lead-in level and held through.
+  With melody off, melody ties neither trigger nor extend a lead-in.
+  Lead-ins: private 32 of 44 bars with melody on vs 5 off (4, 8, 12,
+  20, 44 — the comp/bass tie-ins); rag 5 vs 0 (sixteenth-note melody
+  ties, all −0.25).
+- **Carried notes light from beat 0, nothing lights before it.** A
+  lead-in note sounding into the bar takes the in-bar noteheads of the
+  tail it replaces; a carried bass with no notehead in the bar lights
+  on the keyboard only; a lead-in note ending before beat 0 never
+  lights.
+- **Rolls:** bottom to top at `ARP_STEP_MS = 35`, total spread capped
+  at 1/3 of the event, every note held to the event end. The bass
+  joins the roll only when the bassLine note is flagged arp AND
+  attacks with the chord — private bars 17–18 are rolled bass octaves
+  on beat 1 under a chord on beat 2, so the bass sounds alone and the
+  chord rolls three notes; in event scope the bass is re-struck with
+  the chord and leads.
+- **Follow:** staff and keyboard show all sounding notes (a voicing
+  lights as a chord); selection, detail and Tonnetz untouched;
+  selected-event highlight restored on end / Stop.
+- **Keyboard range per piece:** extreme written notes rounded out to
+  C..B octaves, computed once at load (private C2–B5, rag C1–B6).
+- **Melody toggle:** default OFF; OFF removes melody from analysis and
+  mutes it in playback, one control; visible "melody on/off" label and
+  the Play hint say which; state in the URL, not localStorage. The
+  staff always draws melody. The Tonnetz stays comp-only.
+- **Salamander, vendored.** Decision 4 was jsDelivr pinned at
+  `869b6f8d9cdd`; full GETs of all 29 files returned a 403 "Package
+  size exceeded the configured limit of 50 MB" (Tonejs/audio is
+  229 MB) plus 404s and truncated bodies on cold paths — my earlier
+  HEAD probes had hit cached files. `raw.githubusercontent.com` at the
+  full sha served all 29 with CORS and `audio/mpeg` as an interim;
+  then vendored (mp3 is already compressed, so the "static files
+  served uncompressed" argument against self-hosting Verovio does not
+  apply). License from the repo's own `salamander/README` (the
+  repository has no license file): "CC-by
+  http://creativecommons.org/licenses/by/3.0/ … Author: Alexander
+  Holm". The three existing Salamander URL maps are untouched.
+- **The page had never passed `includeMelody`** — every number shown
+  before today was comp-only. With melody on, totals change in 21 of
+  44 private bars (largest: 37 1 → 2.815, 16 2 → 3.556, 28 4.333 →
+  5.555) and 4 of 17 rag bars (9 and 13 4 → 4.222, 11 and 15 0 →
+  0.292); `maxEvent` changes only in private bar 26 (1 → 0, a tie
+  broken toward the earlier event).
+- **Correction to the part-1 brief:** the held-bass bars 25–27 are in
+  the private piece and write the bass inside each bar; nothing
+  carries from a predecessor. No bar in either piece resolves its
+  first comp bass through the predecessor; that path is covered by a
+  synthetic test only.
+- **Node:** 25.8.1 would not launch at session start (Homebrew
+  `llhttp` dylib mismatch); Dustin installed v26.12.0.
+
+### Setup for next session
+- Tree clean at `26be03c` on `voicing-explorer` apart from this
+  close-out's doc edits. Suites: playback 89/89, analysis 64/64, staff
+  70/70, `check_export.py` 25/25, `check_midi.py` 0 mismatches.
+- Next: Session 6 (Explore, first slice), then Session 7 (merge to dev
+  with the clean-clone check).
+
+### Calibration notes
+- HEAD requests against a CDN are not evidence of availability; one
+  loop of full GETs found what three HEAD probes missed.
+- Three test re-runs today came from expectations typed from memory
+  (rag tie lengths, same-onset note order, a `const` referenced before
+  its line). Print the data first, then write the assertion.
+- Monkeypatching `setPlaying` in a CDP session and logging timestamps
+  made follow timing checkable without listening.
+
+### Flagged for later
+- See RADAR additions dated 2026-10-16.
+
+### Out of scope / deferred
+- Scoring melody over a held bass with no chord sounding: computed for
+  both pieces, no number would move today (every uncovered pair is a
+  non-weighted class). Engine change with re-baselining; deferred.
+- CC BY attribution for Salamander app-wide; consolidating the three
+  other Salamander copies onto the vendored set.
+
 ## 2026-10-15 (evening) — Voicing Explorer Session 4.5 complete: bassLine, bass lookback, staff bass from bassLine, Maple Leaf Rag fixture, engine and page per comp event
 
 Read-and-report for the whole 4.5 session (five goals), then four
@@ -426,9 +569,9 @@ whose name doesn't contain "DAW".
 
 **Cantor ≤ C4 MIDI regression resolved.** The 2026-05-18 evening
 finding (keys at/below MIDI 60 silent on `/cantor`) is cleared;
-chromatic check below C4 passes. [Dustin: one line on the
-mechanism — persisted `localStorage['songlab.cantor.splitPoint']`
-was the standing hypothesis.]
+chromatic check below C4 passes. Not reproducible on a fresh Chrome
+profile; probable cause a stale persisted
+`localStorage['songlab.cantor.splitPoint']`. Unconfirmed.
 
 **Voicing Explorer Session 1 — read-and-report** (no code).
 Grounded the plan in the actual modules:
@@ -593,7 +736,7 @@ the plan draft; the Session 1 edits are in the tree).
 - `keyboard-view.js` lift for role-aware octave placement and
   `an.color` — not needed now that the page owns its keyboard.
 
-## ## 2026-05-18 — Documentation cleanup + Session 1 of cantor presentational arc
+## 2026-05-18 — Documentation cleanup + Session 1 of cantor presentational arc
 
 Two halves: documentation backlog from last week's pivot (five
 tasks, four commits across two branches), then Session 1 of the

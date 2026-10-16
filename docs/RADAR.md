@@ -17,6 +17,55 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-16] Three unpinned Salamander URL maps.**
+  `audio-bridge.js`, `keyboard-view.js`, `intro-audio.js` each carry
+  the same sample map against the unversioned GitHub Pages URL;
+  `/voicings` uses the vendored, commit-pinned copy in
+  `static/vendor/salamander/`. Consolidate the three onto it when
+  `keyboard-view.js` opens up (do-not-touch).
+  See: `static/vendor/salamander/README.md`; `static/shared/voicing-player.js`.
+
+- **[2026-10-16] Salamander CC BY attribution owed app-wide.** The
+  samples are CC BY 3.0 (Alexander Holm); the vendor README carries
+  the notice, the app does not. Footer or About page.
+  See: `static/vendor/salamander/README.md`.
+
+- **[2026-10-16] Tonnetz: melody as separate dots, not lit triangles.**
+  The Tonnetz on `/voicings` is comp-only by decision; when Explore
+  (Session 6) lands, consider melody pitches as distinct markers on
+  the lattice rather than feeding `activeNotes`.
+  See: `docs/active-plans/voicing-explorer-build-plan.md` Session 6.
+
+- **[2026-10-16] Lead-in notes possibly softer.** The player plays
+  lead-in notes at 0.85 of the role velocity; if the one-beat lead-in
+  still reads as part of the bar, drop it further so it reads as
+  "from before".
+  See: `static/shared/voicing-player.js` `LEAD_IN_GAIN`.
+
+- **[2026-10-16] Explore: motion from the most recent bar WITH a
+  voicing.** The engine's "into" motion uses the performance
+  predecessor's last event; where that event has an empty voicing
+  (rag bar 8, bare octave basses) motion is n/a. Session 6 ranking
+  should look back to the latest bar that has a voicing.
+  See: `voicing-analysis.js` `_predecessors()`; SESSION_LOG 2026-10-15 (evening).
+
+- **[2026-10-15] Block-chord limit.** Neither the schema nor
+  `score_src.py` can express a held note over a moving inner voice;
+  every comp event attacks all its notes together. Revisit when a
+  piece needs it.
+  See: `tools/voicings/schema.md`; SESSION_LOG 2026-10-15 "Flagged for later".
+
+- **[2026-10-15] Staff polish.** Keep each comp chord on one staff
+  instead of splitting at `SPLIT_MIDI`; beam melody eighths and
+  sixteenths (MEI `<beam>`); grace notes are dropped by the exporter
+  (bars 4, 20) and cannot be drawn or played.
+  See: `docs/STATUS.md` Voicing Explorer "Open / deferred".
+
+- **[2026-10-15] Tension register factor.** A low-register factor
+  (both notes below ~C3) is separate from the compound-interval
+  discounts; no current bar would move.
+  See: `docs/active-plans/voicing-explorer-build-plan.md` "Tension weights".
+
 - **[2026-05-14] Chord/melody classification — research-active.**
   *Priority: low (research, not production).* The classification
   problem is intrinsically interesting — musically, mathematically,
