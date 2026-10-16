@@ -46,10 +46,15 @@
  *
  * Event scope. comp.bass + voicing for the event window, plus the melody notes
  * overlapping the window, clipped to it (what the analysis scores). No lead-in.
+ * A bass struck EARLIER IN THE SAME BAR than the event (the exporter's lookback
+ * bass) sounds from its real onset and the chord enters at the event's beat
+ * (decision 2026-10-16); its pre-event span lights from its onset like any
+ * in-scope note. A bass attacking with the chord, or carried from the previous
+ * bar, is struck with the chord.
  *
  * Rolls. An arp-flagged comp event rolls its chord bottom to top. The bass
  * leads the roll only when the bassLine note under the chord is also flagged
- * arp and attacks together with the chord (in bar scope a rolled bass that
+ * arp and attacks together with the chord (in either scope a rolled bass that
  * sounded earlier, e.g. a rolled octave on the downbeat under a chord on beat
  * 2, is not part of the chord's roll). toSchedule spaces the roll ARP_STEP_MS
  * apart, caps the total spread at ROLL_SPREAD_FRACTION of the event's duration,
@@ -252,7 +257,12 @@ function eventScope(bar, model, barNotes, eventIndex, warnings) {
   const bassSrc = findNote(bassMidi, n => n.event === i)
     ?? findNote(bassMidi, n => n.role === 'bass' && n.start <= ev.beat + EPS && n.start + n.duration > ev.beat + EPS)
     ?? findNote(bassMidi, n => n.role === 'bass' && n.start <= ev.beat + EPS);
-  const bass = note(bassMidi, ev.bass, ev.beat, ev.dur, 'bass', i, bassSrc);
+  // A bass struck earlier in this bar (a bass-voice note before the event, sounding
+  // or not — the exporter's lookback) sounds from its real onset; the chord enters
+  // at the event's beat. A bass attacking with the chord, or carried from the
+  // previous bar (no source note in this bar), is struck with the chord.
+  const bassStart = bassSrc && bassSrc.role === 'bass' && bassSrc.start < ev.beat - EPS ? bassSrc.start : ev.beat;
+  const bass = note(bassMidi, ev.bass, bassStart, end - bassStart, 'bass', i, bassSrc);
   const chord = (ev.voicing || []).map(name => { const m = midiOf(name); return note(m, name, ev.beat, ev.dur, 'voicing', i, findNote(m, n => n.event === i)); });
   const melody = [];
   for (const m of bar.melody || []) {
@@ -265,7 +275,7 @@ function eventScope(bar, model, barNotes, eventIndex, warnings) {
   if (ev.arp) {
     const members = chord.slice();
     const bl = model.bassFrom === 'bassLine' ? bassLineAt(bar.bassLine, ev.beat) : null;
-    if (bl && bl.arp && midiOf(bl.note) === bassMidi) members.push(bass);
+    if (bl && bl.arp && midiOf(bl.note) === bassMidi && near(bl.beat, ev.beat)) members.push(bass);   // leads only when it attacks with the chord
     if (members.length) assignRoll(members);
   }
   return [bass, ...chord, ...melody];
@@ -482,15 +492,22 @@ async function selfTest() {
 
   // event scope
   const e3 = bar(SYN, 3, { scope: 'event', eventIndex: 0 });
-  assert('event: bar 3 event 0 = comp.bass + voicing for the window, melody clipped to it, bass leads the roll',
-    names(e3.notes), ['b:E2@1+0.25[0/4]', 'v:G3@1+0.25[1/4]', 'v:B3@1+0.25[2/4]', 'v:E4@1+0.25[3/4]', 'm:B4@1+0.25']);
+  assert('event: bar 3 event 0 — bass E2 struck at beat 0 sounds from there, the chord enters at beat 1 and rolls three (bass not in the roll), melody clipped',
+    names(e3.notes), ['b:E2@0+1.25', 'v:G3@1+0.25[0/3]', 'v:B3@1+0.25[1/3]', 'v:E4@1+0.25[2/3]', 'm:B4@1+0.25']);
   assert('event: no lead-in; staffIds resolved (bass from the bassLine note sounding, chord from the event, melody from its onset)',
     [e3.leadInStart, e3.notes.map(n => n.staffId)], [null, ['vs-b3-bass-0', 'vs-b3-lower-0', 'vs-b3-lower-1', 'vs-b3-upper-0', 'vs-b3-melody-0']]);
   const e2 = bar(SYN, 2, { scope: 'event', eventIndex: 0 });
   assert('event: bar 2 event 0 re-attacks the tied-in chord (event scope has no lead-in)', names(e2.notes), ['b:C2@0+2', 'v:E3@0+2', 'v:G3@0+2', 'm:G4@0+1', 'm:A4@1+1']);
   assert('event: bar 2 event 1 without melody',               names(bar(SYN, 2, { scope: 'event', eventIndex: 1, includeMelody: false }).notes), ['b:D2@2+2[0/3]', 'v:F3@2+2[1/3]', 'v:A3@2+2[2/3]']);
-  assert('event: pieces clipped to the window (bar 3 bass E2 whole note → its notehead for 0.25 from beat 1; melody B4 likewise)',
-    pcs(e3.notes.filter(n => n.role !== 'voicing')), ['vs-b3-bass-0@1+0.25', 'vs-b3-melody-0@1+0.25']);
+  assert('event: pieces — bar 3 bass E2 lights from its onset through the event end (0+1.25); melody B4 clipped to the window',
+    pcs(e3.notes.filter(n => n.role !== 'voicing')), ['vs-b3-bass-0@0+1.25', 'vs-b3-melody-0@1+0.25']);
+  assert('event: bar 6 — bass G2 from beat 0, chord at beat 2, melody D5 clipped to 2+2',
+    names(bar(SYN, 6, { scope: 'event', eventIndex: 0 }).notes), ['b:G2@0+4', 'v:B3@2+2', 'v:D4@2+2', 'm:D5@2+2']);
+  assert('event: bar 7 — bass carried from bar 6 (no bassLine) is still struck with each chord',
+    [names(bar(SYN, 7, { scope: 'event', eventIndex: 0 }).notes), names(bar(SYN, 7, { scope: 'event', eventIndex: 1 }).notes)],
+    [['b:G2@0+2', 'v:B3@0+2', 'v:D4@0+2'], ['b:G2@2+2', 'v:B3@2+2', 'v:F4@2+2']]);
+  assert('event: bar 8 — bass C2 attacks with the chord at 0: unchanged',
+    names(bar(SYN, 8, { scope: 'event', eventIndex: 0, includeMelody: false }).notes), ['b:C2@0+4', 'v:E3@0+4', 'v:G3@0+4']);
   assert('event: missing event index → empty with a warning', (p => [p.notes, p.warnings])(bar(SYN, 4, { scope: 'event', eventIndex: 3 })), [[], ['bar 4: no comp event 3']]);
 
   // toSchedule
@@ -508,7 +525,9 @@ async function selfTest() {
   near1('schedule: bar 3 roll members still end together',                     Math.max(...roll3.map(n => n.time + n.duration)) - Math.min(...roll3.map(n => n.time + n.duration)), 0);
   assert('schedule: arpStepMs option changes the step',                        (s => Math.round((s.notes.filter(n => n.roll)[1].time - s.notes.filter(n => n.roll)[0].time) * 1000))(toSchedule(s2, { arpStepMs: 50 })), 50);
   const te = toSchedule(e3);
-  assert('schedule: event scope starts at the event onset (time 0), barStart negative',  [te.notes[0].time, te.barStart], [0, -0.5]);
+  assert('schedule: event scope starts at the bass onset (time 0, bar 3 beat 0), chord at 0.5 s, barStart 0', [te.notes[0].name, te.notes[0].time, te.notes.find(n => n.role === 'voicing').time, te.barStart], ['E2', 0, 0.5, 0]);
+  const te2 = toSchedule(bar(SYN, 2, { scope: 'event', eventIndex: 1 }));
+  assert('schedule: event at beat 2 whose bass attacks with it starts at that onset, barStart −1 s', [te2.notes[0].time, te2.barStart], [0, -1]);
   near1('schedule: bar 1 without lead-in starts at beat 0',                    toSchedule(S(1)).barStart, 0);
 
   // ── Fixtures ─────────────────────────────────────────────────────
@@ -582,7 +601,10 @@ async function selfTest() {
     const p17 = P(17);
     assert('bar 17: rolled bass D3 on the downbeat is alone (roll null); chord on beat 2 rolls three',
       names(p17.notes.filter(n => n.role !== 'melody')), ['b:D3@0+3', 'v:F♯3@1+2[0/3]', 'v:G3@1+2[1/3]', 'v:A3@1+2[2/3]']);
-    assert('bar 17 event 0: bass leads the roll (bassLine arp)',       names(P(17, { scope: 'event', eventIndex: 0, includeMelody: false }).notes), ['b:D3@1+2[0/4]', 'v:F♯3@1+2[1/4]', 'v:G3@1+2[2/4]', 'v:A3@1+2[3/4]']);
+    assert('bar 17 event 0: rolled bass D3 sounds from beat 0 alone; the chord rolls three at beat 1 (as in bar scope)', names(P(17, { scope: 'event', eventIndex: 0, includeMelody: false }).notes), ['b:D3@0+3', 'v:F♯3@1+2[0/3]', 'v:G3@1+2[1/3]', 'v:A3@1+2[2/3]']);
+    assert('bar 21 event 0: F2 from its beat-0 onset, chord at beat 1 (2nd beat), melody clipped to the window',
+      names(P(21, { scope: 'event', eventIndex: 0 }).notes), ['b:F2@0+3', 'v:G3@1+2', 'v:A3@1+2', 'v:E♭4@1+2', 'm:G4@1+1', 'm:F4@2+0.5', 'm:E♭5@2.5+0.5']);
+    assert('bar 21 event 0: bass pieces light from the onset (no lead-in flag)', [pcs(P(21, { scope: 'event', eventIndex: 0 }).notes.filter(n => n.role === 'bass')), P(21, { scope: 'event', eventIndex: 0 }).notes.some(n => n.leadIn)], [['vs-b21-bass-0@0+3'], false]);
     assert('bar 26 event 0: melody C5 clipped to the 1-beat window, event 1 melody C5 at 2',
       [names(role(P(26, { scope: 'event', eventIndex: 0 }).notes, 'melody')), names(role(P(26, { scope: 'event', eventIndex: 1 }).notes, 'melody'))], [['m:C5@1+1'], ['m:C5@2+0.5', 'm:B♭4@2.5+0.5']]);
     assert('bar 21: predecessor 20 (first occurrence), lead-in none',   [P(21).predecessor, P(21).leadInStart], [20, null]);
