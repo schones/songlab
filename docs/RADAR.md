@@ -17,6 +17,36 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-16] Explore tuning hypotheses (from bar 21, F7 in G).**
+  Test on other dominant bars before encoding: on dominants, ♯11 needs
+  both the 3rd and ♭7 (A-B-D and D-A-B drift to F Lydian / the home
+  key; E♭-B-D lacks the 3rd); 13 needs the ♭7; the 3rd is optional
+  otherwise. Register: a low tritone is not bad per se — the 3–♭7
+  shell (A2-E♭3-F3) is good, root–♯11 low (B2-G-A) is muddy — so the
+  deferred register factor should consider degrees, not just the
+  interval. Liked: G-D-E♭ (9 13 ♭7), the shell, the piece's own
+  C-A-B♭ (5-3-11).
+  See: SESSION_LOG 2026-10-16 Session 6 "Listening"; `static/shared/voicing-explore.js` `chordTones`.
+
+- **[2026-10-16] Explore ranking: 0.5 buckets create cliffs.** Bar 21's
+  original fell from #3 at its own target to #12 at target 3. Consider
+  finer buckets or a blended cost (distance + λ · motion). The
+  motion-first tiebreak may favour blander voicings.
+  See: `static/shared/voicing-explore.js` `rankCandidates`, `targetDistance`.
+
+- **[2026-10-16] Piece ceiling is self-limiting.** In melody-less
+  events Explore never goes above the piece's existing comp top
+  (`pieceCeiling`: private G4, rag D♭5). Fine for re-voicing within a
+  piece's register; wrong for a piece whose comp is uniformly low.
+  See: `static/shared/voicing-explore.js` `pieceCeiling`.
+
+- **[2026-10-16] Explainer layer planned as Session 6.5.** Info pills
+  per panel with the relevant reasoning and links out to fuller pages;
+  content written once, numbers pulled from code constants
+  (`TENSION_WEIGHTS`, `OCTAVE_DISCOUNTS`, `ARP_STEP_MS`,
+  `LEAD_IN_MAX_BEATS`, `DEFAULT_MAX_SPAN`, …).
+  See: `docs/STATUS.md` Next priorities.
+
 - **[2026-10-16] Explore melody rule is a heuristic.** "Voicing below
   the melody" is a piano-solo rule (chord-melody, comping under your own
   right hand). With a separate melody instrument — Summertime's vocal —
@@ -92,13 +122,6 @@ out of awareness.
   "from before".
   See: `static/shared/voicing-player.js` `LEAD_IN_GAIN`.
 
-- **[2026-10-16] Explore: motion from the most recent bar WITH a
-  voicing.** The engine's "into" motion uses the performance
-  predecessor's last event; where that event has an empty voicing
-  (rag bar 8, bare octave basses) motion is n/a. Session 6 ranking
-  should look back to the latest bar that has a voicing.
-  See: `voicing-analysis.js` `_predecessors()`; SESSION_LOG 2026-10-15 (evening).
-
 - **[2026-10-15] Block-chord limit.** Neither the schema nor
   `score_src.py` can express a held note over a moving inner voice;
   every comp event attacks all its notes together. Revisit when a
@@ -113,7 +136,9 @@ out of awareness.
 
 - **[2026-10-15] Tension register factor.** A low-register factor
   (both notes below ~C3) is separate from the compound-interval
-  discounts; no current bar would move.
+  discounts; no current bar would move. Bar 21 listening
+  (2026-10-16) suggests it should weigh degrees, not just the
+  interval: a low 3–♭7 shell reads fine, a low root–♯11 does not.
   See: `docs/active-plans/voicing-explorer-build-plan.md` "Tension weights".
 
 - **[2026-05-14] Chord/melody classification — research-active.**
@@ -228,5 +253,11 @@ out of awareness.
 ---
 
 ## Retired
-(empty — items move here when resolved, for short-term reference, then
-get cleared periodically.)
+(items move here when resolved, for short-term reference, then get
+cleared periodically.)
+
+- **[2026-10-16] Explore: motion from the most recent bar WITH a
+  voicing** — resolved 2026-10-16 by `voicedNeighbours` in
+  `voicing-explore.js` on the engine's exported `barNeighbours` (rag
+  bar 9 looks back past 5–8 to bar 4). The Analyze view's own `motion`
+  still uses the raw predecessor, by design.

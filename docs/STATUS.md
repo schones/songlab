@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-10-16
 **Branch:** `voicing-explorer` (active — Voicing Explorer analysis
-arc, Sessions 1–5 landed 2026-10-14 → 16, 14 commits ahead of dev)
+arc, Sessions 1–6 landed 2026-10-14 → 16, 19 commits ahead of dev)
 · `dev` (Cantor v1 through 6B; MIDI multi-port fix `57afaa9`) ·
 `cantor` (presentational arc, Session 2 polish not resumed since
 2026-05-19) · on origin only: `archive/cantor-presentational-spike`
@@ -201,9 +201,20 @@ rolls), a Tone.js player on a vendored Salamander piano, Play /
 Shift+Play / Stop with `P` / `Shift+P` / `Esc`, a melody toggle
 (default off, couples analysis and playback, `&melody=1`), and
 follow highlighting on the staff and a per-piece-sized keyboard.
-The analysis view is complete through playback. Next: Session 6
-(Explore: generate and rank alternative voicings), Session 7
-(merge to dev). Plan:
+Session 6 (2026-10-16) landed the first Explore slice: for the
+selected event, candidate voicings from the chord symbol (named
+tones + 9th, dominants also 13 / ♯11) and from shapes harvested
+from the piece as degree labels, constrained below the melody and
+within a span, scored with the engine's own functions and ranked by
+distance from a tension target then motion in + out; an Explore
+panel with preview in every panel, per-row audition through the
+player, Keep / Revert / Reset / Copy JSON over a non-destructive
+override layer with tie propagation; kept bars outlined green. First
+listening on bar 21 recorded in SESSION_LOG. Next: Session 6.5
+explainer layer (info pills per panel with the relevant reasoning and
+links out to fuller pages; content written once, numbers pulled from
+code constants), then Explore tuning (structured listening across
+bars and pieces), then Session 7 (merge to dev). Plan:
 `docs/active-plans/voicing-explorer-build-plan.md`. Schema:
 `tools/voicings/schema.md`.
 
@@ -226,7 +237,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 **Next priorities (active):**
 1. ~~**Voicing Explorer — tension option B**~~ — landed 2026-10-15 (`af3034b`): spans reduced mod 12, `OCTAVE_DISCOUNTS = {m2: 2/3, M2: 0, TT: 2/3, M7: 0}`; comp-only numbers inside one octave unchanged; compound minor 2nds and tritones now score (bar 26 0 → 1.333, bar 28 3 → 4.333), major 9ths/14ths do not (see SESSION_LOG).
-2. **Voicing Explorer Session 6 — Explore (first slice)**: for a selected bar, generate candidate voicings and rank them by upper-voice motion and distance from a tension target; audition through the Session 5 player; first real test the arranged B section. Then Session 7 (merge to dev with a clean-clone check). ~~Session 5 (playback + melody toggle)~~ landed 2026-10-16. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+2. **Voicing Explorer Session 6.5 — explainer layer**: info pills per panel with the relevant reasoning and links out to fuller pages; content written once, numbers pulled from code constants. Then Explore tuning (structured listening across bars and pieces; hypotheses in RADAR), then Session 7 (merge to dev with a clean-clone check). ~~Session 6 (Explore first slice)~~ landed 2026-10-16 (`ad44437`, `7ccd8fb`, `ea7d7ff`). ~~Session 5 (playback + melody toggle)~~ landed 2026-10-16. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
 3. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
 4. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
 
@@ -370,7 +381,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - ChordResolver with interval-content fallback
 - Full three-panel bidirectional sync via HarmonyState
 
-### Voicing Explorer — Analyze view — current state (updated 2026-10-16)
+### Voicing Explorer — Analyze + Explore — current state (updated 2026-10-16)
 
 **Landed on `voicing-explorer` (Sessions 1–3, 2026-10-14):**
 - `static/shared/voicing-analysis.js` — pure engine: `parseSymbol`,
@@ -580,13 +591,48 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   `869b6f8d9cdd`, CC BY 3.0 Alexander Holm (README quotes the
   license; jsDelivr refuses the 229 MB repo).
 
+**Landed on `voicing-explorer` (Session 6, 2026-10-16, `ad44437`, `7ccd8fb`, `ea7d7ff`):**
+- Explore core: `static/shared/voicing-explore.js` (pure — writes
+  `comp[i].voicing` only, never bass / bassLine / melody).
+  `generateCandidates` from the symbol (named tones + 9th; dominants
+  also 13 / ♯11; voice count original ±1 within 2–4; every note in
+  [bass + 2, lowest melody note in the event − 1], ceiling =
+  `pieceCeiling` when no melody sounds; span ≤ 12; no doubled pc; no
+  unison with the melody; onset fallback when the melody dips) and
+  from `harvestShapes` (degree labels via `namedVsPlayed`, R/3/5/7
+  take the target's version, 9/11/13 keep their accidental, unsupplied
+  degrees skip with a reason; exempt from the pool, not from the
+  melody rule / window / span; library per piece — private 19, rag 7;
+  the three named shapes). `scoreCandidate` reuses the engine;
+  `rankCandidates`: target distance (0.5 buckets), motion in + out to
+  the nearest voiced events (`voicedNeighbours`), fewer omissions.
+  `applyOverrides` non-mutating, source `user`, tie propagation.
+  `selfTest()` 76/76. Engine: `barNeighbours` exported (64/64
+  unchanged).
+- Page: Explore panel (target − / +, voices, source filter, ranked
+  table of 12 with ● original / ◆ kept, per-row ▶ event / Shift bar,
+  Keep / Revert bar / Reset all / Copy JSON); preview re-renders
+  detail, staff, keyboard and Tonnetz from a trial progression without
+  changing the selection (tag `preview`; `user` after Keep); every
+  consumer reads `state.effective`; keys `[` `]` `K` `-` `=`. Chart:
+  `vc-bar--user` green outline + legend. No persistence this session.
+- Playback amendment: event scope starts at the bass's real onset when
+  it was struck earlier in the same bar (bar 21); a rolled downbeat
+  bass no longer leads the roll in event scope. `selfTest()` 95/95.
+- Listening, bar 21: see SESSION_LOG 2026-10-16 Session 6; tuning
+  hypotheses in RADAR.
+
 **In progress:**
-- Nothing; Session 6 next.
+- Nothing; Session 6.5 (explainer layer) next.
 
 **Open / deferred:**
-- Session 6 (Explore: candidates, ranking by motion and tension
-  target, audition through the player); Session 7 (merge to dev,
-  clean-clone check).
+- Session 6.5 (explainer layer), Explore tuning (RADAR hypotheses
+  from bar 21: dominant ♯11 / 13 need the ♭7; register factor by
+  degree; 0.5 ranking buckets create cliffs), Session 7 (merge to
+  dev, clean-clone check).
+- Explore overrides are not persisted (Revert / Reset / Copy JSON
+  only); the melody rule is a piano-solo heuristic (RADAR); the piece
+  ceiling is self-limiting in melody-less events (RADAR).
 - Melody over a comp rest is unscored even when a `bassLine` note is
   still sounding (bar 25's beat-0 melody over the held G2). Checked
   2026-10-16: scoring it would move no number in either piece (all
@@ -616,12 +662,17 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 **Public surfaces (debugging):**
 - `window.__voicings` on `/voicings`: `{ state, select, selectEvent,
   stepEvent, chart, keyboard, detail, bubble, staff, player,
-  playSelected, setIncludeMelody }`; `select(bar, eventIndex?)`,
-  `playSelected('bar' | 'event')`, `state.includeMelody`.
+  playSelected, setIncludeMelody, explore }`; `select(bar, eventIndex?)`,
+  `playSelected('bar' | 'event')`, `state.includeMelody`,
+  `state.overrides` / `state.effective` / `state.preview`;
+  `explore: { compute, rows, preview, clear, keep, playRow,
+  stepPreview, nudgeTarget, revert, reset, copy, json, setTarget,
+  setCountRange, setSourceFilter, trialProgression }`.
 - Self-tests:
   `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
   `node --input-type=module -e "import('./static/shared/voicing-staff-model.js').then(m => m.selfTest())"`
   `node --input-type=module -e "import('./static/shared/voicing-playback-model.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/voicing-explore.js').then(m => m.selfTest())"`
   `python3 tools/voicings/check_export.py`
   `python3 tools/voicings/check_midi.py --fixture tests/fixtures/voicing-maple-leaf-rag.json`
 - Regenerate the rag: `python3 tools/voicings/ly_to_src.py --ly tests/fixtures/maple-leaf-rag.ly --out tests/fixtures/maple-leaf-rag.src.py && python3 tools/voicings/export_json.py --src tests/fixtures/maple-leaf-rag.src.py --out tests/fixtures/voicing-maple-leaf-rag.json`
@@ -641,7 +692,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - `harmony-state.js` — pub/sub state model, **setChord/highlightChord** for extended chord types
 - `tonnetz-neighborhood.js` — SVG renderer with chord-quality coloring, **extension node rendering**
 - `keyboard-view.js` — real piano proportions, highlight layer, click interaction, **extension ring highlights**, shared `Tone.Analyser` owner
-- `voicing-analysis.js` — voiced-progression analysis engine (pure; see Voicing Explorer — Analyze view). `voicing-chart.js`, `voicing-keyboard.js`, `voicing-detail.js` — page-owned views for `/voicings`; the keyboard is deliberately independent of `keyboard-view.js` (exact-octave role coloring without a do-not-touch lift)
+- `voicing-analysis.js` — voiced-progression analysis engine (pure; see Voicing Explorer — Analyze + Explore). `voicing-explore.js` — Explore core (candidates, harvested shapes, ranking, overrides; pure). `voicing-playback-model.js` / `voicing-player.js` — playback model and Tone.js player. `voicing-chart.js`, `voicing-keyboard.js`, `voicing-detail.js`, `voicing-staff.js` — page-owned views for `/voicings`; the keyboard is deliberately independent of `keyboard-view.js` (exact-octave role coloring without a do-not-touch lift)
 - `resonance-view.js` — radial FFT Tonnetz visualization, HarmonyState-gated, chord-function coloring, Spectrum-matched particle dynamics. **April 20:** refactored to instance-based `DEFAULT_PARAMS` for live tuning; sparkler defaults; perpendicular wiggle; new tunables (`blobFillAlpha`, `peakMagThreshold`, `particleDeceleration`)
 - `harmonograph-view.js` — verbatim fork of `resonance-view.js` for the `/harmonograph` sandbox (formerly `/art`, renamed 2026-04-24). Class `HarmonographView`. Adds grid motion (rotation + circular sway, lattice as rigid body), chord-triangle highlights (gold fill on Tonnetz triangles whose vertex PCs are all active), and a 3D mode (`mode3D` flag) with a 12×4 toroidal lattice on a torus-to-sphere morphable surface, manual world-axis rotation, and 96 always-visible triads tinted warm/cool with continuous back-face alpha. Will diverge freely from the canonical Explorer version.
 - `chord-wheel.js` — dual-ring circle of fifths

@@ -3,6 +3,174 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-10-16 — Voicing Explorer Session 6: Explore first slice (candidates, shapes, ranking, panel), event-scope bass onset
+
+One read-and-report, then three build parts (core, harvested shapes,
+page) with one follow-up round and one playback amendment, each
+build-then-STOP. Three commits (`ad44437` parts 1–2, `7ccd8fb` part 3
++ follow-ups, `ea7d7ff` event-scope bass). For a selected event the
+page now generates alternative comp voicings, ranks them against a
+tension target, previews and auditions them, and swaps one in.
+
+### Landed
+- `static/shared/voicing-explore.js` (new, pure, Node-testable):
+  `chordTones`, `voicedNeighbours` (nearest events WITH a voicing,
+  before and after, on the engine's `barNeighbours`), `eventContext`,
+  `generateCandidates` (symbol source + harvested shapes, constraints
+  below, `range.fallback`, `skipped` with reasons), `scoreCandidate`
+  (reuses `intervalTension`, `melodyTension`, `voiceMotion`,
+  `namedVsPlayed`; motion in and out), `rankCandidates`,
+  `harvestShapes` / `mergeShapes` / `applyShape`, `pieceCeiling`,
+  `expandOverrides` / `applyOverrides` (non-mutating, bar source
+  `user`, tie propagation). `selfTest()` 76/76 — every event of the
+  fixture, the rag and the private piece scored as itself reproduces
+  the engine's total and named-vs-played with melody on and off.
+- `static/shared/voicing-analysis.js`: `barNeighbours(progression)`
+  exported (predecessor and successor by first occurrence in
+  `playOrder`); `_predecessors` delegates to it. 64/64 unchanged.
+- `templates/voicings.html`: Explore panel between the detail row and
+  the keyboard — target (− / + by 0.5, default the original event's
+  total), voices original / ±1, source all / symbol / shapes, ranked
+  table of 12 (bass + voicing chips, tension with delta, motion
+  in · out, omitted / added, source tags, ● original / ◆ kept), ▶ per
+  row (preview + play the event; Shift = the bar; ▶ on the playing row
+  stops), Keep / Revert bar / Reset all / Copy JSON (textarea fallback
+  when the clipboard is unavailable). Preview renders detail, staff,
+  keyboard and Tonnetz from a trial progression without touching the
+  selection; Esc, a second click on the row, or any new selection
+  restores. Everything reads `state.effective`
+  (`applyOverrides(progression, overrides)`); the loaded piece is never
+  written. Keys `[` `]` step the preview, `K` keeps, `-` `=` nudge the
+  target (skipped in inputs). Detail tag reads `preview` while
+  previewing, `user` after Keep. `window.__voicings.explore`.
+- `static/shared/voicing-chart.js`: `vc-bar--user` (green 1.5 px
+  segment stroke + green bar number; gold when selected), legend entry
+  "re-voiced (green outline)". Heights unchanged.
+- `static/shared/voicing-playback-model.js`: event scope starts at the
+  bass's real onset when the bass was struck earlier in the same bar
+  (see below). 95/95.
+- Verified in headless Chrome over CDP after each part: preview changes
+  all four panels while the selection and chip stay; Play / Shift+Play
+  carry the previewed voicing; Keep drops the arranged fade and
+  updates the aria tension; Esc and re-click restore; selecting another
+  bar clears the preview; bar 43 kept carries into 44 with source
+  `user` and the tie drawn; Copy JSON lists 44:0 as propagated; Revert
+  43 removes 43 and 44; Reset re-fades 23; ▶ / Shift+▶ / stop; keys
+  incl. the in-input skip; rag bar 9's motion reference is bar 4.
+  Console clean throughout.
+
+### Diagnosed / decided
+- **Explore never re-classifies**: it writes `comp[i].voicing` only,
+  never `bass`, `bassLine` or `melody` (module header). Role inference
+  is a transcription task (RADAR).
+- **Tone pool**: the symbol's named tones (slash bass included) + the
+  9th; dominant types (major 3rd + minor 7th, so not 7sus4) also get
+  the 13th and ♯11; the natural 9th is skipped when the symbol names an
+  altered 9th. Bass pitch class excluded unless `allowBassDouble`.
+- **Voice count**: the original's by default, ±1 as an option, bounded
+  2–4; an empty original gets 3.
+- **Melody rule**: every voicing note below the lowest melody note
+  sounding in the event, no unison, seconds allowed and scored. Applies
+  with the melody toggle OFF too (generation is toggle-blind; scoring
+  follows the toggle). Fallback when no candidate of the wanted count
+  fits because the melody dips inside the event: the bound becomes the
+  melody note at the event onset, flagged `range.fallback`. Fired 0
+  times in bars 21–44 (25 events).
+- **Register**: bass + 2 at the bottom (bar 1 has A3 over G3); span
+  lowest→highest ≤ 12 (every shape in both pieces fits).
+- **Piece ceiling** replaces the fixed C5 for melody-less events: the
+  highest comp voicing note in the loaded piece (private G4, rag D♭5).
+  Self-limiting by design — Explore never goes above the piece's
+  existing comp top there; watch it (RADAR).
+- **Harvested shapes**: every comp voicing as degree labels from
+  `namedVsPlayed` (written spelling decides) plus its layout above the
+  bass, grouped by both. R/3/5/7 drop their accidental at harvest and
+  take the target type's version on apply (♭3, ♭5/♯5, ♭7/♭♭7); 9/11/13
+  keep theirs and refuse a target that names a different version (a
+  9th against ♭9). A degree the target cannot supply (3rd on sus4, 7th
+  on a triad) skips the shape with a reason, never substitutes. Shapes
+  are exempt from the tone pool and the bass-double rule (the player's
+  vocabulary) but not from the melody rule, window, span or voice
+  count. Library per piece (private 19 shapes, rag 7), `opts.shapes`
+  for a merged one. The three named shapes: "2-3-5 cluster" (9-3-5 over
+  2.4.7; bars 1, 5, 9, 13, 14, 33), "pair over slash bass" (7-♯11 over
+  6.14; bar 16), "bass–5th–10th shell" (5-3 over 7.16; bar 15). Bar 1's
+  cluster applied to Gm7/F reproduces bar 2, to Amaj7 bar 14. Bars
+  19–20 (added 11 on Cmaj7, outside the pool) return via their own
+  shape. Identical voicings from both sources dedupe into one candidate
+  with every tag — bar 1's cluster carries three.
+- **Ranking**: target in chart units, default = the pristine event's
+  total under the current toggle; distance from target rounded to 0.5,
+  then total motion (in + out, to the nearest voiced events — rag bar 9
+  looks back past the bare basses of 5–8 to bar 4), then fewer omitted
+  named tones. Both numbers shown per row.
+- **Persistence**: none this session. Revert (bar), Reset (all), Copy
+  JSON (expanded overrides incl. propagated ones, for `score_src.py`).
+- **Preview** updates all panels incl. the Tonnetz without changing
+  `selectedBar` / `selectedEvent`; Play auditions the preview (bar
+  scope by default, with the real lead-in).
+- **Tie propagation**: an override on a tied event also applies to the
+  next bar's beat-0 event carrying the same original voicing, on down
+  the chain (43 → 44); explicit overrides win.
+- **`barNeighbours` exported** from the engine rather than duplicated;
+  tested from the explore suite so the engine stays at 64. Numbers
+  unchanged.
+- **Amendment to Session 5 decision 2 (event scope)**: when the
+  event's bass was struck earlier in the same bar, playback starts at
+  the bass's onset and the chord enters at the event's beat (bar 21:
+  F2 on beat 1, chord on beat 2); the pre-event span lights from its
+  onset, not as a lead-in. Bass attacking with the chord, and bass
+  carried from the previous bar, unchanged. Consequence: in event
+  scope a rolled downbeat bass (bar 17) no longer leads the chord's
+  roll, matching bar scope.
+- Chart `user` bars had no style (they simply lost the arranged fade);
+  the green outline was added in the follow-up round.
+
+### Listening — bar 21 (F7 in G major)
+- The target dial tracks the ear. Liked: G-D-E♭ (9 13 ♭7), A2-E♭3-F3
+  (3 ♭7 R shell), C-A-B♭ (the piece's own 5-3-11). Disliked: A-B-D and
+  D-A-B (♯11 without ♭7 — drifts to F Lydian / the home key), E♭-B-D
+  (♯11 without the 3rd), B2-G-A (low ♯11 against the root).
+- The original ranked #3 at its own target and #12 at target 3.
+  Hypotheses recorded in RADAR, to test on other dominant bars before
+  encoding.
+
+### Setup for next session
+- Tree clean at `ea7d7ff` on `voicing-explorer`, 19 commits ahead of
+  dev. Suites: explore 76/76, analysis 64/64, staff 70/70, playback
+  95/95, `check_export.py` 25/25, `check_midi.py` 0 mismatches.
+- B section (bars 21–44, 25 events) after merging: 1008 candidates,
+  90 shape-only, 6 / 29 / 123 per event (min / median / max), 39 shape
+  applications skipped with a reason, 15 events with a minor-2nd
+  candidate available.
+- Next: Session 6.5 explainer layer, then Explore tuning (structured
+  listening across bars and pieces), then Session 7 (merge to dev with
+  the clean-clone check).
+
+### Calibration notes
+- Two expectation slips in part 2 were my guesses, not the data: the
+  rag's top comp note is D♭5 (bar 12's second event), not C5; the pair
+  shape's key is `7-♯11` because 7ths drop their accidental by design.
+  Print the data first.
+- A third tag on bar 1's cluster looked like a bug and was the rule
+  working: bar 2's minor variant re-voiced on Gmaj7 lands on the same
+  notes.
+- The ▶ icon never turned to ■ because the table re-rendered before
+  playback started and not after; a state-driven re-render needs to
+  run after the awaited transition.
+- A Python patch script that asserts every anchor before writing
+  anything is the right shape; one wrong indentation aborted the
+  whole patch and nothing was half-applied.
+
+### Flagged for later
+- See RADAR additions dated 2026-10-16 (Explore tuning hypotheses,
+  ranking cliffs, piece ceiling, explainer layer).
+
+### Out of scope / deferred
+- Persistence of overrides beyond the session.
+- Melody instrument on the schema (the melody rule is a piano-solo
+  heuristic; RADAR).
+
 ## 2026-10-16 — Voicing Explorer Session 5: playback (Tone.js + vendored Salamander), melody toggle, follow highlighting
 
 One read-and-report, then four build parts and three fixes, each in
