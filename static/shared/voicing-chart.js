@@ -49,6 +49,10 @@ const CSS = /* css */ `
 .vc-bar:focus { outline: none; }
 .vc-bar--arranged .vc-seg { fill-opacity: 0.55; }
 .vc-bar--arranged .vc-num { fill: var(--text-muted, #726C5F); }
+.vc-bar--user .vc-seg { stroke: var(--accent-green, #4CAF50); stroke-width: 1.5; }
+.vc-bar--user .vc-num { fill: var(--accent-green, #4CAF50); }
+.vc-bar--user.vc-bar--selected .vc-num { fill: var(--accent-gold, #D4A03C); }
+.vc-legend__swatch--user { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--accent-green, #4CAF50); }
 .vc-hit { fill: transparent; }
 .vc-bar:hover .vc-hit { fill: rgba(255, 255, 255, 0.04); }
 .vc-num { fill: var(--text-tertiary, #9A9486); font-size: 10px; text-anchor: middle; }
@@ -159,6 +163,12 @@ class VoicingChart {
     sw.style.background = 'var(--text-secondary, #C7C2B5)';
     arranged.append(sw, document.createTextNode('arranged (faded) vs transcribed'));
     this._legend.appendChild(arranged);
+    const user = document.createElement('span');
+    user.className = 'vc-legend__item';
+    const usw = document.createElement('span');
+    usw.className = 'vc-legend__swatch vc-legend__swatch--user';
+    user.append(usw, document.createTextNode('re-voiced (green outline)'));
+    this._legend.appendChild(user);
   }
 
   _draw() {
@@ -211,7 +221,7 @@ class VoicingChart {
     bars.forEach((b, i) => {
       const x0 = L.axisW + i * barW;
       const g = _el('g', {
-        class: `vc-bar${b.source === 'arranged' ? ' vc-bar--arranged' : ''}${b.bar === this._selected ? ' vc-bar--selected' : ''}`,
+        class: `vc-bar${b.source === 'arranged' ? ' vc-bar--arranged' : b.source === 'user' ? ' vc-bar--user' : ''}${b.bar === this._selected ? ' vc-bar--selected' : ''}`,
         role: 'button',
         tabindex: b.bar === this._selected ? '0' : '-1',
         'aria-label': `Bar ${b.bar}, ${b.effectiveSymbol || 'no chord'}, tension ${b.total}`,
