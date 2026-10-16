@@ -17,6 +17,45 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-16] Role inference is a transcription task, separate from
+  Explore.** Pieces like Summertime, Linus and Lucy and Habanera put
+  the interesting voicings in the melody / right hand. Decision: keep
+  the current role-labeled schema (`comp` / `bassLine` / `melody`) as
+  the interface. A future transcription aid proposes role labels from
+  raw notes using (1) the chord symbol (chord tones sounding together
+  = voicing, lowest chord tone = bass, non-chord / moving tones =
+  line) and (2) repetition (what repeats with the progression =
+  accompaniment; what varies over a repeating progression = melody; a
+  broken texture template signals a role change, e.g. chord-melody).
+  Human confirms; labels are stored. Explore never re-classifies: it
+  re-voices comp with melody and bass pinned. Chord-melody and
+  two-handed voicings already fit the schema (roles, not hands). Test
+  pieces: Habanera (public domain, public fixture), Summertime
+  (private, gitignored).
+  See: `tools/voicings/schema.md`; `docs/voicing-explorer-spec.md`.
+
+- **[2026-10-16] Melody-over-bass scoring promoted from deferred.**
+  Melody sounding against bass with no comp is unscored. It moved no
+  numbers in the rag or the private piece, but Habanera (melody over
+  ostinato, mostly no comp) depends on it. Schedule before or with the
+  Habanera fixture.
+  See: `docs/STATUS.md` Voicing Explorer "Open / deferred";
+  `static/shared/voicing-analysis.js`.
+
+- **[2026-10-16] Multi-bar playback (range).** Two modes: study (one
+  bar, display holds still, as now) and follow (a range plays; Tonnetz
+  and keyboard track the song). Staff needs a scrolling or page-turn
+  window. Playback model is close: a range is a sequence of bars with
+  the lead-in only at the start. Natural fit with or after Session 6
+  (auditioning a re-voiced passage in context).
+  See: `static/shared/voicing-playback-model.js`;
+  `docs/active-plans/voicing-explorer-build-plan.md` Session 6.
+
+- **[2026-10-16] `/voicings` link in the top nav.** Decide placement
+  (Explorer menu vs top level) now that it is a main tool.
+  See: `templates/base.html` nav; `docs/STATUS.md` Voicing Explorer
+  "Open / deferred".
+
 - **[2026-10-16] Three unpinned Salamander URL maps.**
   `audio-bridge.js`, `keyboard-view.js`, `intro-audio.js` each carry
   the same sample map against the unversioned GitHub Pages URL;

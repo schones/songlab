@@ -591,7 +591,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   still sounding (bar 25's beat-0 melody over the held G2). Checked
   2026-10-16: scoring it would move no number in either piece (all
   such pairs are non-weighted classes). Engine change with
-  re-baselining; deferred.
+  re-baselining. Promoted 2026-10-16 (Habanera needs it; see RADAR).
 - `bassLine` reductions (grace notes dropped, dyads reduced to the
   lower note) are documented, not fixed; revisit if a piece needs
   them.
@@ -603,8 +603,9 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   Verovio URL is one constant in `voicing-staff.js`.
 - Staff polish: keep each comp chord on one staff instead of
   splitting by pitch at `SPLIT_MIDI`; beam melody eighths.
-- `/voicings` is not in the nav; not-found state shows the default
-  C-major Tonnetz (no key to anchor on).
+- `/voicings` is not in the nav; placement (Explorer menu vs top
+  level) to decide, see RADAR 2026-10-16. Not-found state shows the
+  default C-major Tonnetz (no key to anchor on).
 - Chord-symbol suffix table lives in the engine
   (`SUFFIX_TO_TYPE`); fold into the canonical registry when
   `chord-types.json` lands.
