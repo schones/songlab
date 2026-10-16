@@ -14,10 +14,16 @@
  *   selfTest()                                          → console report, { passed, total }
  *
  * Playback note (quarters, start relative to the selected bar's beat 0):
- *   { midi, name, start, duration, role, event, staffId, leadIn, roll }
+ *   { midi, name, start, duration, role, event, staffId, pieces, leadIn, roll }
  *   role     'bass' | 'voicing' | 'melody' — the staff model's role for the note
  *   event    comp event index for comp-derived notes, else null
  *   staffId  the note's first notehead id on the staff (null for lead-in notes)
+ *   pieces   [{ staffId, start, duration }] — every notehead of the note (a
+ *            dotted or cross-beat value is engraved as tied pieces), each with
+ *            its own span, clipped to the note. A lead-in note that sounds
+ *            into the bar carries the in-bar noteheads of the tail it
+ *            replaces (from beat 0); a lead-in note that ends before beat 0,
+ *            or a carried bass with no notehead in the bar, has none
  *   leadIn   true for notes of the predecessor bar (negative start)
  *   roll     { index, count } on the members of an arpeggiated attack, else null
  *
@@ -88,15 +94,17 @@ function notesFromModel(model) {
       for (const n of ev.notes) {
         if (consumed.has(n.id)) continue;
         let end = ev.beat + ev.q, cur = n;
+        const pieces = [{ staffId: n.id, start: ev.beat, duration: ev.q }];
         while (cur.tieNext && byId.has(cur.tieNext)) {
           const next = byId.get(cur.tieNext);
           consumed.add(next.n.id);
           end = Math.max(end, next.ev.beat + next.ev.q);
+          pieces.push({ staffId: next.n.id, start: next.ev.beat, duration: next.ev.q });
           cur = next.n;
         }
         notes.push({
           midi: n.midi, name: n.name, start: ev.beat, duration: end - ev.beat, role: n.role,
-          event: ev.event ?? null, staffId: n.id, leadIn: false, roll: null, tieIn: !!n.tieIn,
+          event: ev.event ?? null, staffId: n.id, pieces, leadIn: false, roll: null, tieIn: !!n.tieIn,
         });
       }
     }
@@ -108,6 +116,16 @@ function notesFromModel(model) {
 function bassLineAt(bassLine, beat) {
   const prior = (bassLine || []).filter(b => b.beat <= beat + EPS);
   return prior.length ? prior[prior.length - 1] : null;
+}
+
+/** Pieces of a note restricted to [a, z): dropped when outside, trimmed at the edges. */
+function clipPieces(pieces, a, z) {
+  const out = [];
+  for (const pc of pieces || []) {
+    const start = Math.max(pc.start, a), end = Math.min(pc.start + pc.duration, z);
+    if (end - start > EPS) out.push({ staffId: pc.staffId, start, duration: end - start });
+  }
+  return out;
 }
 
 /** roll: { index, count } on the members, bottom to top. */
@@ -177,9 +195,10 @@ function barScope(progression, bar, model, barNotes, includeMelody, warnings) {
     .sort((a, b) => b.start - a.start)[0] || null;
 
   let T = null;
-  const hold = (held, extra) => {
+  const hold = (held, extra, pieces = []) => {
     held.duration += extra;
     held.leadIn = true;
+    held.carriedPieces = clipPieces(pieces, 0, Infinity);   // the tail's in-bar noteheads light from beat 0
     T = T == null ? held.start : Math.min(T, held.start);
   };
 
@@ -187,7 +206,7 @@ function barScope(progression, bar, model, barNotes, includeMelody, warnings) {
   for (const n of barNotes) {
     if (n.tieIn && n.start < EPS) {
       const held = findHeld(n.role, n.midi);
-      if (held) { hold(held, n.duration); continue; }        // tail sounds through, not re-attacked
+      if (held) { hold(held, n.duration, n.pieces); continue; }   // tail sounds through, not re-attacked
       warnings.push(`bar ${bar.bar}: ${n.role} ${n.name} is tied in but bar ${model.prev} has no ${n.name} reaching the bar line — re-attacked`);
     }
     keep.push(n);
@@ -208,7 +227,7 @@ function barScope(progression, bar, model, barNotes, includeMelody, warnings) {
     const start = clipped ? T : n.start;
     leadIn.push({
       ...n, start: start - bpb, duration: n.duration - (start - n.start),
-      leadIn: true, staffId: null, event: null, tieIn: false, roll: clipped ? null : n.roll,
+      leadIn: true, staffId: null, pieces: n.carriedPieces || [], event: null, tieIn: false, roll: clipped ? null : n.roll,
     });
   }
   return { notes: [...leadIn, ...keep], leadInStart: T - bpb };
@@ -224,22 +243,24 @@ function eventScope(bar, model, barNotes, eventIndex, warnings) {
   const ev = comp[i];
   if (!ev) { warnings.push(`bar ${bar.bar}: no comp event ${i}`); return []; }
   const end = ev.beat + ev.dur;
-  const staffOf = (midi, pred) => { const n = barNotes.find(x => x.midi === midi && pred(x)); return n ? n.staffId : null; };
-  const note = (midi, name, start, duration, role, event, staffId) => ({ midi, name, start, duration, role, event, staffId, leadIn: false, roll: null });
+  const findNote = (midi, pred) => barNotes.find(x => x.midi === midi && pred(x)) || null;
+  // Staff pieces of the matching bar note, clipped to the event window.
+  const note = (midi, name, start, duration, role, event, src) =>
+    ({ midi, name, start, duration, role, event, staffId: src ? src.staffId : null, pieces: src ? clipPieces(src.pieces, start, start + duration) : [], leadIn: false, roll: null });
 
   const bassMidi = midiOf(ev.bass);
-  const bassStaff = staffOf(bassMidi, n => n.event === i)
-    ?? staffOf(bassMidi, n => n.role === 'bass' && n.start <= ev.beat + EPS && n.start + n.duration > ev.beat + EPS)
-    ?? staffOf(bassMidi, n => n.role === 'bass' && n.start <= ev.beat + EPS);
-  const bass = note(bassMidi, ev.bass, ev.beat, ev.dur, 'bass', i, bassStaff);
-  const chord = (ev.voicing || []).map(name => { const m = midiOf(name); return note(m, name, ev.beat, ev.dur, 'voicing', i, staffOf(m, n => n.event === i)); });
+  const bassSrc = findNote(bassMidi, n => n.event === i)
+    ?? findNote(bassMidi, n => n.role === 'bass' && n.start <= ev.beat + EPS && n.start + n.duration > ev.beat + EPS)
+    ?? findNote(bassMidi, n => n.role === 'bass' && n.start <= ev.beat + EPS);
+  const bass = note(bassMidi, ev.bass, ev.beat, ev.dur, 'bass', i, bassSrc);
+  const chord = (ev.voicing || []).map(name => { const m = midiOf(name); return note(m, name, ev.beat, ev.dur, 'voicing', i, findNote(m, n => n.event === i)); });
   const melody = [];
   for (const m of bar.melody || []) {
     const a = Number(m.beat) || 0, d = Number(m.dur) || 0;
     const overlap = Math.min(a + d, end) - Math.max(a, ev.beat);
     if (overlap <= EPS) continue;
     const midi = midiOf(m.note);
-    melody.push(note(midi, m.note, Math.max(a, ev.beat), overlap, 'melody', null, staffOf(midi, n => n.role === 'melody' && near(n.start, a))));
+    melody.push(note(midi, m.note, Math.max(a, ev.beat), overlap, 'melody', null, findNote(midi, n => n.role === 'melody' && near(n.start, a))));
   }
   if (ev.arp) {
     const members = chord.slice();
@@ -284,7 +305,9 @@ function buildPlaybackList(progression, barNumber, { scope = 'bar', eventIndex =
   out.notes = notes
     .sort((a, b) => a.start - b.start || a.midi - b.midi || ROLE_ORDER[a.role] - ROLE_ORDER[b.role])
     .map(n => ({ midi: n.midi, name: n.name, start: r4(n.start), duration: r4(n.duration), role: n.role,
-                 event: n.event ?? null, staffId: n.staffId ?? null, leadIn: !!n.leadIn, roll: n.roll || null }));
+                 event: n.event ?? null, staffId: n.staffId ?? null,
+                 pieces: (n.pieces || []).map(pc => ({ staffId: pc.staffId, start: r4(pc.start), duration: r4(pc.duration) })),
+                 leadIn: !!n.leadIn, roll: n.roll || null }));
   return out;
 }
 
@@ -294,7 +317,8 @@ function buildPlaybackList(progression, barNumber, { scope = 'bar', eventIndex =
  * selected bar's beat 0 falls. Rolls are applied here: members of one attack
  * are offset arpStepMs apart bottom to top, the total spread capped at
  * ROLL_SPREAD_FRACTION of the event's duration, and each note shortened so it
- * still ends with the event.
+ * still ends with the event. Pieces come through in seconds too; a rolled
+ * note's first piece starts with its delayed attack.
  */
 function toSchedule(playback, { arpStepMs = ARP_STEP_MS } = {}) {
   const spq = 60 / (Number(playback.tempo) || DEFAULT_TEMPO);
@@ -304,6 +328,7 @@ function toSchedule(playback, { arpStepMs = ARP_STEP_MS } = {}) {
   const notes = src.map(n => ({
     midi: n.midi, name: n.name, role: n.role, event: n.event, staffId: n.staffId, leadIn: n.leadIn, roll: n.roll,
     time: (n.start - origin) * spq, duration: n.duration * spq,
+    pieces: (n.pieces || []).map(pc => ({ staffId: pc.staffId, time: (pc.start - origin) * spq, duration: pc.duration * spq })),
   }));
 
   const groups = new Map();
@@ -318,11 +343,16 @@ function toSchedule(playback, { arpStepMs = ARP_STEP_MS } = {}) {
     if (count < 2) continue;
     const eventDur = Math.min(...g.map(n => n.duration));
     const step = Math.min(arpStepMs / 1000, (eventDur * ROLL_SPREAD_FRACTION) / (count - 1));
-    for (const n of g) { const off = step * n.roll.index; n.time += off; n.duration -= off; }
+    for (const n of g) {
+      const off = step * n.roll.index;
+      n.time += off; n.duration -= off;
+      for (const pc of n.pieces) if (pc.time < n.time) { pc.duration -= n.time - pc.time; pc.time = n.time; }
+    }
   }
 
   notes.sort((a, b) => a.time - b.time || a.midi - b.midi);
-  for (const n of notes) { n.time = Math.round(n.time * 1e6) / 1e6; n.duration = Math.round(n.duration * 1e6) / 1e6; }
+  const r6 = x => Math.round(x * 1e6) / 1e6;
+  for (const n of notes) { n.time = r6(n.time); n.duration = r6(n.duration); for (const pc of n.pieces) { pc.time = r6(pc.time); pc.duration = r6(pc.duration); } }
   const duration = notes.reduce((m, n) => Math.max(m, n.time + n.duration), 0);
   return { secondsPerQuarter: spq, barStart: -origin * spq, duration, notes };
 }
@@ -439,6 +469,16 @@ async function selfTest() {
   assert('bar 9: lead-in start -1',                           s9.leadInStart, -1);
   assert('bar 9: own melody starts at beat 2 (the beat-0 tail is the lead-in note)', names(s9.notes.filter(n => !n.leadIn)), ['b:C2@0+4', 'v:E3@0+4', 'v:G3@0+4', 'm:C5@2+2']);
   assert('synthetic: no warnings',                            SYN.bars.flatMap(b => S(b.bar).warnings), []);
+  const pcs = ns => ns.map(n => n.pieces.map(pc => `${pc.staffId}@${pc.start}+${pc.duration}`).join(' '));
+  assert('pieces: bar 3 melody C5 (2.5 quarters from 1.5) is two tied noteheads, each with its own span',
+    pcs(S(3).notes.filter(n => n.name === 'C5')), ['vs-b3-melody-1@1.5+2 vs-b3-melody-2@3.5+0.5']);
+  assert('pieces: single-notehead notes carry one piece equal to themselves', pcs(S(1).notes), ['vs-b1-bass-0@0+4', 'vs-b1-lower-0@0+4', 'vs-b1-lower-1@0+4', 'vs-b1-melody-0@0+2', 'vs-b1-melody-1@2+2']);
+  assert('pieces: lead-in notes that sound into the bar carry the tail\'s in-bar noteheads from beat 0; none before it',
+    pcs(s2.notes.filter(n => n.leadIn)), ['vs-b2-bass-0@0+2', 'vs-b2-lower-0@0+2', 'vs-b2-lower-1@0+2', 'vs-b2-melody-0@0+1']);
+  assert('pieces: bar 7 carried bass has no notehead in the bar → no pieces; the clipped chord and melody end at beat 0 → none',
+    pcs(s7.notes.filter(n => n.leadIn)), ['', '', '', '']);
+  assert('pieces: a held-through note keeps only its own bar\'s pieces (the tail\'s noteheads belong to the next bar)',
+    pcs(s9.notes.filter(n => !n.leadIn && n.name === 'C5')), ['vs-b9-melody-1@2+2']);
 
   // event scope
   const e3 = bar(SYN, 3, { scope: 'event', eventIndex: 0 });
@@ -449,6 +489,8 @@ async function selfTest() {
   const e2 = bar(SYN, 2, { scope: 'event', eventIndex: 0 });
   assert('event: bar 2 event 0 re-attacks the tied-in chord (event scope has no lead-in)', names(e2.notes), ['b:C2@0+2', 'v:E3@0+2', 'v:G3@0+2', 'm:G4@0+1', 'm:A4@1+1']);
   assert('event: bar 2 event 1 without melody',               names(bar(SYN, 2, { scope: 'event', eventIndex: 1, includeMelody: false }).notes), ['b:D2@2+2[0/3]', 'v:F3@2+2[1/3]', 'v:A3@2+2[2/3]']);
+  assert('event: pieces clipped to the window (bar 3 bass E2 whole note → its notehead for 0.25 from beat 1; melody B4 likewise)',
+    pcs(e3.notes.filter(n => n.role !== 'voicing')), ['vs-b3-bass-0@1+0.25', 'vs-b3-melody-0@1+0.25']);
   assert('event: missing event index → empty with a warning', (p => [p.notes, p.warnings])(bar(SYN, 4, { scope: 'event', eventIndex: 3 })), [[], ['bar 4: no comp event 3']]);
 
   // toSchedule
@@ -461,6 +503,8 @@ async function selfTest() {
   const t3 = toSchedule(s3);
   const roll3 = t3.notes.filter(n => n.roll);
   near1('schedule: bar 3 short event (0.125 s) caps the spread at 1/3 of it',  roll3[2].time - roll3[0].time, 0.125 / 3);
+  assert('schedule: rolled notes\' first piece starts with the delayed attack and still ends with the note',
+    roll3.every(n => Math.abs(n.pieces[0].time - n.time) < 1e-9 && Math.abs(n.pieces[0].time + n.pieces[0].duration - (n.time + n.duration)) < 1e-9), true);
   near1('schedule: bar 3 roll members still end together',                     Math.max(...roll3.map(n => n.time + n.duration)) - Math.min(...roll3.map(n => n.time + n.duration)), 0);
   assert('schedule: arpStepMs option changes the step',                        (s => Math.round((s.notes.filter(n => n.roll)[1].time - s.notes.filter(n => n.roll)[0].time) * 1000))(toSchedule(s2, { arpStepMs: 50 })), 50);
   const te = toSchedule(e3);
@@ -474,6 +518,13 @@ async function selfTest() {
     assert(`${label}: no note attacked twice at the same onset (comp.bass never re-strikes the bass)`, all.flatMap(p => dupes(p.notes)), []);
     assert(`${label}: every note inside its bar (lead-in inside the predecessor), positive durations`, all.every(p => withinBar(p, p.notes) && positive(p.notes)), true);
     assert(`${label}: every own note has a staffId; lead-in notes have none`, all.every(p => p.notes.every(n => n.leadIn ? n.staffId === null : typeof n.staffId === 'string')), true);
+    assert(`${label}: own notes' pieces tile the note exactly; lead-in pieces start at beat 0 or later and only on notes sounding into the bar`, all.every(p => p.notes.every(n => {
+      if (n.leadIn) return n.pieces.every(pc => near(pc.start, 0) || pc.start > 0) && (n.start + n.duration > EPS || n.pieces.length === 0);
+      if (!n.pieces.length || n.pieces[0].staffId !== n.staffId || !near(n.pieces[0].start, n.start)) return false;
+      let t = n.start;
+      for (const pc of n.pieces) { if (!near(pc.start, t)) return false; t += pc.duration; }
+      return near(t, n.start + n.duration);
+    })), true);
     assert(`${label}: no playback warnings`, all.flatMap(p => p.warnings), []);
     const events = prog.bars.flatMap(b => (b.comp || []).map((_, i) => bar(prog, b.bar, { scope: 'event', eventIndex: i })));
     assert(`${label}: event scope — bass + voicing at the onset, melody within the window, no lead-in`,
@@ -511,6 +562,11 @@ async function selfTest() {
     const p4 = P(4);
     assert('bar 4: tied bass and chord from bar 3 → lead-in capped at -1; both struck there and held across the bar line', [p4.leadInStart, names(p4.notes.filter(n => n.leadIn))],
       [-1, ['b:E♭3@-1+2←', 'v:G3@-1+2←', 'v:B♭3@-1+2←', 'v:D4@-1+2←']]);
+    assert('bar 4: carried bass and chord light from beat 0 for their in-bar duration (1 beat), the bass on its own notehead',
+      pcs(p4.notes.filter(n => n.leadIn)), ['vs-b4-bass-0@0+1', 'vs-b4-lower-0@0+1', 'vs-b4-lower-1@0+1', 'vs-b4-lower-2@0+1']);
+    const p16 = P(16);
+    assert('bar 16 (melody on): the anticipated A4 lights from beat 0 for 1 beat; bar 15\'s clipped chord and bass end at 0 → nothing',
+      pcs(p16.notes.filter(n => n.leadIn)), ['', '', '', 'vs-b16-melody-0@0+1']);
     assert('bar 4: nothing re-attacked at beat 0; the walk follows',   names(p4.notes.filter(n => !n.leadIn)), ['b:D3@1+1', 'b:E3@2+0.5', 'b:D3@2.5+0.5']);
     assert('bar 1: no lead-in',                                        [P(1).predecessor, P(1).leadInStart], [null, null]);
     assert('bar 25: dotted-half bass on the downbeat under the chord from beat 1, no lead-in (bar 24 ties nothing)',
@@ -518,6 +574,8 @@ async function selfTest() {
     assert('bar 26: one held F2 under both chords; lead-in from bar 25 beat 2.5 (tied melody C5) clips bar 25\'s bass',
       names(role(P(26).notes, 'bass')), ['b:G2@-0.5+0.5←', 'b:F2@0+3']);
     const p27 = P(27);
+    assert('bar 27: bar 26\'s clipped bass F2 ends before beat 0 → no pieces; the tied B♭4 lights from 0 for 2 beats',
+      pcs(p27.notes.filter(n => n.leadIn)), ['', '', '', 'vs-b27-melody-0@0+2']);
     assert('bar 27: melody B♭4 tied in → lead-in from bar 26 beat 2.5; bass and second chord clipped to start there',
       [p27.leadInStart, names(p27.notes.filter(n => n.leadIn))], [-0.5, ['b:F2@-0.5+0.5←', 'v:A♭3@-0.5+0.5←', 'v:D4@-0.5+0.5←', 'm:B♭4@-0.5+2.5←']]);
     assert('bar 27: own notes start with the bass at 0, no melody at 0', names(p27.notes.filter(n => !n.leadIn)), ['b:E♭2@0+3', 'v:G3@1+2', 'v:B♭3@1+2', 'v:D4@1+2']);

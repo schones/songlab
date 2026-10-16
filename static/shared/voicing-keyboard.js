@@ -2,13 +2,16 @@
  * voicing-keyboard.js
  * ===================
  * Small page-owned keyboard for the Voicing Explorer Analyze page.
- * Colors keys by role — bass (gold), voicing (blue), melody (green,
- * reserved for Session 5) — and labels lit keys with their written
- * spelling. Independent of keyboard-view.js and HarmonyState.
+ * Colors keys by role — bass (gold), voicing (blue), melody (green) — and
+ * labels lit keys with their written spelling. Independent of
+ * keyboard-view.js and HarmonyState.
  *
  * Usage:
  *   const kb = new VoicingKeyboard('vp-keyboard', { low: 'C2', high: 'B5' });
+ *   kb.setRange(24, 95);                 // midi or spelled; rebuilds the keys
  *   kb.render({ bass: 'D3', voicing: ['F♯3', 'G3', 'A3', 'D4'], melody: [] });
+ *   kb.setHighlight(62);                 // ring one key, or a Set/array of midis; null clears
+ *   kb.setPlaying([{ midi, role }]);     // playback follow: only these keys lit, by role; null restores render()
  */
 
 import { parseNote } from './voicing-analysis.js';
@@ -56,6 +59,8 @@ class VoicingKeyboard {
     this._low = low.midi;
     this._high = high.midi;
     this._keys = new Map();   // midi → element
+    this._roles = {};         // last render() roles, restored after setPlaying(null)
+    this._wrap = null;
 
     if (!document.getElementById('vk-styles')) {
       const st = document.createElement('style');
@@ -71,6 +76,41 @@ class VoicingKeyboard {
    *   Priority when a pitch has several roles: bass > melody > voicing.
    */
   render(roles = {}) {
+    this._roles = roles;
+    this._apply(roles);
+  }
+
+  /** Rebuild the keys for a new range (midi numbers or spelled notes). Re-applies the last render(). */
+  setRange(low, high) {
+    const lo = typeof low === 'number' ? low : parseNote(low).midi;
+    const hi = typeof high === 'number' ? high : parseNote(high).midi;
+    if (lo == null || hi == null || hi < lo) return;
+    if (lo === this._low && hi === this._high) return;
+    this._low = lo; this._high = hi;
+    if (this._wrap) this._wrap.remove();
+    this._keys = new Map();
+    this._build();
+    this._apply(this._roles);
+  }
+
+  /**
+   * Playback follow: light exactly these keys by role (bass > melody > voicing
+   * when a pitch has several); null restores the last render(). Clears rings.
+   * @param {Array<{ midi:number, role:string }>|null} sounding
+   */
+  setPlaying(sounding) {
+    if (!sounding) { this._apply(this._roles); return; }
+    const roles = { bass: null, voicing: [], melody: [] };
+    for (const n of sounding) {
+      if (n.role === 'bass') roles.bass = roles.bass == null ? n.midi : Math.min(roles.bass, n.midi);
+      else if (n.role === 'melody') roles.melody.push(n.midi);
+      else roles.voicing.push(n.midi);
+    }
+    if (roles.bass != null) for (const n of sounding) if (n.role === 'bass' && n.midi !== roles.bass) roles.voicing.push(n.midi);
+    this._apply(roles);
+  }
+
+  _apply(roles = {}) {
     for (const el of this._keys.values()) {
       el.classList.remove('vk-key--lit', 'vk-key--bass', 'vk-key--voicing', 'vk-key--melody', 'vk-key--hit');
       const label = el.querySelector('.vk-key__label');
@@ -96,12 +136,12 @@ class VoicingKeyboard {
 
   clear() { this.render({}); }
 
-  /** Ring one key (by midi number) on top of its role color; null clears. Cleared by render(). */
-  setHighlight(midi) {
+  /** Ring keys on top of their role color: one midi, or a Set/array of midis; null clears. Cleared by render(). */
+  setHighlight(midis) {
     for (const el of this._keys.values()) el.classList.remove('vk-key--hit');
-    if (midi == null) return;
-    const el = this._keys.get(Number(midi));
-    if (el) el.classList.add('vk-key--hit');
+    if (midis == null) return;
+    const list = typeof midis === 'number' || typeof midis === 'string' ? [midis] : [...midis];
+    for (const m of list) { const el = this._keys.get(Number(m)); if (el) el.classList.add('vk-key--hit'); }
   }
 
   destroy() { this._wrap.remove(); }

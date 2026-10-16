@@ -132,7 +132,7 @@
   import { HarmonyState }          from "{{ url_for('static', filename='shared/harmony-state.js') }}";
   import { TonnetzNeighborhood }   from "{{ url_for('static', filename='shared/tonnetz-neighborhood.js') }}";
   import { ChordBubbleRenderer }   from "{{ url_for('static', filename='shared/chord-bubble-renderer.js') }}";
-  import { analyzeProgression, toHarmonyNotes } from "{{ url_for('static', filename='shared/voicing-analysis.js') }}";
+  import { analyzeProgression, toHarmonyNotes, parseNote } from "{{ url_for('static', filename='shared/voicing-analysis.js') }}";
   import { VoicingChart }          from "{{ url_for('static', filename='shared/voicing-chart.js') }}";
   import { VoicingKeyboard }       from "{{ url_for('static', filename='shared/voicing-keyboard.js') }}";
   import { VoicingDetail }         from "{{ url_for('static', filename='shared/voicing-detail.js') }}";
@@ -163,6 +163,7 @@
   // ── Views ───────────────────────────────────────────────────────
   const chart    = new VoicingChart('vp-chart', { onSelect: select, onStepEvent: stepEvent });
   const detail   = new VoicingDetail({ info: 'vp-info', rubs: 'vp-rubs', nvp: 'vp-nvp' }, { onSelectEvent: selectEvent });
+  // Sized per piece at load: lowest and highest written notes rounded out to whole octaves (C..B).
   const keyboard = new VoicingKeyboard('vp-keyboard', { low: 'C2', high: 'B5' });
   // Verovio loads lazily on the first staff render. A clicked notehead rings its
   // key; a comp note of another event also selects that event.
@@ -302,9 +303,32 @@
     const list = buildPlaybackList(state.progression, state.selectedBar, { scope, eventIndex: state.selectedEvent, includeMelody: state.includeMelody });
     for (const w of list.warnings) console.warn(`[voicings playback] ${w}`);
     const schedule = toSchedule(list);
+    // Follow: staff and keyboard show every note sounding now. Nothing lights
+    // before beat 0 (the player gates lead-in notes to the bar start; a
+    // carried note lights its in-bar noteheads from beat 0). Selection,
+    // detail and Tonnetz are untouched. On end or Stop both restore the
+    // selected event's normal state.
+    const ROLE_PRIORITY = { bass: 3, melody: 2, voicing: 1 };
+    const soundingKeys = new Map();     // midi → { midi, role, count }
+    const soundingPieces = new Set();   // staff notehead ids
     const result = await player.play(schedule, {
-      onNote: () => {},                      // highlighting follows in part 3
-      onEnd: () => renderPlayButton(),
+      onNote: (note, phase) => {
+        const cur = soundingKeys.get(note.midi) || { midi: note.midi, role: note.role, count: 0 };
+        cur.count += phase === 'on' ? 1 : -1;
+        if (phase === 'on' && ROLE_PRIORITY[note.role] > ROLE_PRIORITY[cur.role]) cur.role = note.role;   // one pitch in two roles: bass > melody > voicing
+        if (cur.count <= 0) soundingKeys.delete(note.midi); else soundingKeys.set(note.midi, cur);
+        keyboard.setPlaying([...soundingKeys.values()]);
+      },
+      onPiece: (piece, phase) => {
+        if (phase === 'on') soundingPieces.add(piece.staffId); else soundingPieces.delete(piece.staffId);
+        staff.setPlaying(soundingPieces);
+      },
+      onEnd: () => {
+        soundingKeys.clear(); soundingPieces.clear();
+        keyboard.setPlaying(null);
+        staff.setPlaying(null);
+        renderPlayButton();
+      },
     });
     if (!result.played && result.reason === 'muted') {
       els.playHint.textContent = 'sound is muted — unmute in the nav to hear playback';
@@ -348,6 +372,20 @@
     renderPlayButton();
   }
 
+  /** [low, high] midi: the piece's extreme written notes rounded out to whole octaves (C..B). */
+  function pieceRange(progression) {
+    const midis = [];
+    for (const b of progression.bars || []) {
+      for (const e of b.comp || []) for (const n of [e.bass, ...(e.voicing || [])]) midis.push(parseNote(n)?.midi);
+      for (const e of b.bassLine || []) midis.push(parseNote(e.note)?.midi);
+      for (const e of b.melody || []) midis.push(parseNote(e.note)?.midi);
+    }
+    const valid = midis.filter(m => m != null);
+    if (!valid.length) return [36, 83];
+    const lo = Math.floor(Math.min(...valid) / 12) * 12, hi = Math.floor(Math.max(...valid) / 12) * 12 + 11;
+    return [lo, hi];
+  }
+
   async function fetchPiece(name) {
     const res = await fetch(`/voicings/data/${encodeURIComponent(name)}`, { headers: { Accept: 'application/json' } });
     if (!res.ok) return null;
@@ -375,6 +413,7 @@
 
     state.piece = loadedName;
     state.progression = progression;
+    keyboard.setRange(...pieceRange(progression));
     state.analysis = analyzeProgression(progression, { includeMelody: state.includeMelody });
     els.page.classList.remove('vp-empty');
     els.title.textContent = progression.title || loadedName;

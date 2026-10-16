@@ -9,10 +9,13 @@
  *
  * Usage:
  *   const player = new VoicingPlayer({ onState: s => … });   // 'idle' | 'loading' | 'ready' | 'playing' | 'blocked' | 'error'
- *   const result = await player.play(schedule, { onNote, onEnd });
+ *   const result = await player.play(schedule, { onNote, onPiece, onEnd });
  *     result: { played: true } | { played: false, reason: 'muted' | 'blocked' | 'error' | 'empty' }
- *     onNote(note, 'on' | 'off')  at each note's attack and release (frame-aligned via Tone.Draw)
- *     onEnd({ stopped })          when the schedule runs out, or on stop()
+ *     onNote(note, 'on' | 'off')          at each note's attack and release (frame-aligned via Tone.Draw);
+ *                                         a lead-in note fires 'on' at the bar start (schedule.barStart) if it
+ *                                         is still sounding then, and not at all if it ended before
+ *     onPiece(piece, 'on' | 'off', note)  for each of the note's staff pieces ({ staffId, time, duration })
+ *     onEnd({ stopped })                  when the schedule runs out, or on stop()
  *   player.stop();                                              // releases every note immediately
  *
  * Gesture: call play() from the click handler. Tone.start() is awaited there;
@@ -111,9 +114,9 @@ class VoicingPlayer {
    * Play a schedule. Stops any current playback first. Must be called from a
    * user gesture the first time (Tone.start()).
    * @param {{ notes: Array, duration: number }} schedule  from toSchedule()
-   * @param {{ onNote?: (note, phase: 'on'|'off') => void, onEnd?: ({ stopped: boolean }) => void }} [callbacks]
+   * @param {{ onNote?: (note, phase: 'on'|'off') => void, onPiece?: (piece, phase: 'on'|'off', note) => void, onEnd?: ({ stopped: boolean }) => void }} [callbacks]
    */
-  async play(schedule, { onNote = () => {}, onEnd = () => {} } = {}) {
+  async play(schedule, { onNote = () => {}, onPiece = () => {}, onEnd = () => {} } = {}) {
     if (this.playing) this.stop();
     if (typeof window !== 'undefined' && window.AudioToggle && window.AudioToggle.isMuted()) return { played: false, reason: 'muted' };
     if (!schedule || !schedule.notes || !schedule.notes.length) return { played: false, reason: 'empty' };
@@ -141,12 +144,22 @@ class VoicingPlayer {
     transport.position = 0;
 
     this._onEnd = onEnd;
+    const visibleFrom = Number(schedule.barStart) || 0;   // nothing lights before the selected bar's beat 0
     this._part = new Tone.Part((time, note) => {
       const name = Tone.Frequency(note.midi, 'midi').toNote();
       const velocity = (VELOCITY[note.role] || 0.6) * (note.leadIn ? LEAD_IN_GAIN : 1);
       sampler.triggerAttackRelease(name, Math.max(note.duration, 0.02), time, velocity);
-      Tone.Draw.schedule(() => onNote(note, 'on'), time);
-      Tone.Draw.schedule(() => onNote(note, 'off'), time + note.duration);
+      const lightAt = time + Math.max(0, visibleFrom - note.time), lightEnd = time + note.duration;
+      if (lightEnd > lightAt + 1e-6) {
+        Tone.Draw.schedule(() => onNote(note, 'on'), lightAt);
+        Tone.Draw.schedule(() => onNote(note, 'off'), lightEnd);
+      }
+      // Staff pieces have their own spans (tied noteheads of one note); times are relative to the note's.
+      for (const piece of note.pieces || []) {
+        const at = time + (piece.time - note.time);
+        Tone.Draw.schedule(() => onPiece(piece, 'on', note), at);
+        Tone.Draw.schedule(() => onPiece(piece, 'off', note), at + piece.duration);
+      }
     }, schedule.notes.map(n => [n.time + START_DELAY, n]));
     this._part.start(0);
     this._endId = transport.scheduleOnce(time => {

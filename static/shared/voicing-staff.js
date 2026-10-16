@@ -11,11 +11,14 @@
  *   const staff = new VoicingStaff('vp-staff', { onNoteClick: note => … });
  *   staff.render(progression, 17);   // async; the latest call wins
  *   staff.highlight(noteId);         // or null to clear
+ *   staff.setPlaying(ids);           // Set / array of notehead ids sounding now; null or empty clears
  *
  * onNoteClick receives { id, midi, name, role, bar, event } for a notehead
  * (event = comp event index for comp notes, null for bassLine / melody
  * notes), or null when the user clicks empty staff area. setEvent(index)
- * dims the comp notes of the other events.
+ * dims the comp notes of the other events. setPlaying(ids) lights the given
+ * noteheads on top of the dim state (playback follow); each tied piece of a
+ * note is its own id, so a dotted or cross-beat note lights piece by piece.
  */
 
 import { buildBarModel, toMEI } from './voicing-staff-model.js';
@@ -56,6 +59,7 @@ const CSS = /* css */ `
 .vs-svg g.note { cursor: pointer; }
 .vs-svg g.note.vs-note--hit { filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 6px rgba(255,255,255,0.8)); }
 .vs-svg g.note.vs-note--dim { opacity: 0.3; }
+.vs-svg g.note.vs-note--playing, .vs-svg g.note.vs-note--playing.vs-note--dim { opacity: 1; filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 7px rgba(255,255,255,0.9)); }
 .vs-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; font-size: var(--font-size-xs, 12px); color: var(--text-muted, #8A8678); pointer-events: none; }
 .vs-wrap[data-state="ready"] .vs-status { display: none; }
 .vs-wrap[data-state="loading"] .vs-svg, .vs-wrap[data-state="error"] .vs-svg { opacity: 0.3; }
@@ -83,6 +87,7 @@ class VoicingStaff {
     this._colors = resolveColors();
     this._hits = new Map();     // svg id → { id, midi, name, role, bar, event }
     this._hitEl = null;
+    this._playing = new Set();   // notehead ids lit by setPlaying
     this._token = 0;
     this._event = null;
     this.model = null;
@@ -115,7 +120,7 @@ class VoicingStaff {
    */
   async render(progression, barNumber, options = {}) {
     const token = ++this._token;
-    this._hits.clear(); this._hitEl = null;
+    this._hits.clear(); this._hitEl = null; this._playing = new Set();
     this._event = options.event ?? null;
     this.model = buildBarModel(progression, barNumber);
     if (!this.model) { this._setState('error', `No data for bar ${barNumber}`); return; }
@@ -155,6 +160,14 @@ class VoicingStaff {
     }
   }
 
+  /** Light the noteheads sounding now (playback follow); null or empty restores the normal state. */
+  setPlaying(ids) {
+    const next = new Set(ids || []);
+    for (const id of this._playing) if (!next.has(id)) { const el = this._svgHost.querySelector(`#${CSS_escape(id)}`); if (el) el.classList.remove('vs-note--playing'); }
+    for (const id of next) if (!this._playing.has(id)) { const el = this._svgHost.querySelector(`#${CSS_escape(id)}`); if (el) el.classList.add('vs-note--playing'); }
+    this._playing = next;
+  }
+
   /** Highlight one note group by id; null clears. */
   highlight(noteId) {
     if (this._hitEl) this._hitEl.classList.remove('vs-note--hit');
@@ -164,7 +177,7 @@ class VoicingStaff {
 
   clear() {
     this._token++;
-    this.model = null; this._hits.clear(); this._hitEl = null; this._event = null;
+    this.model = null; this._hits.clear(); this._hitEl = null; this._event = null; this._playing = new Set();
     this._svgHost.innerHTML = '';
     this._setState('empty', '');
   }
