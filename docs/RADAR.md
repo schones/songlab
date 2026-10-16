@@ -17,6 +17,17 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-16] Explore melody rule is a heuristic.** "Voicing below
+  the melody" is a piano-solo rule (chord-melody, comping under your own
+  right hand). With a separate melody instrument — Summertime's vocal —
+  piano voicings routinely sit at or above the tune, and inner-voice
+  melodies break it too. Eventual fix: the melody carries its
+  instrument (piano vs voice/other); piano melody keeps the
+  below-melody constraint, a separate melody allows crossing and scores
+  closeness as tension. Small schema addition.
+  See: `static/shared/voicing-explore.js` header (candidate rules);
+  `tools/voicings/schema.md`.
+
 - **[2026-10-16] Role inference is a transcription task, separate from
   Explore.** Pieces like Summertime, Linus and Lucy and Habanera put
   the interesting voicings in the melody / right hand. Decision: keep

@@ -19,9 +19,9 @@
  *
  * Exports:
  *   parseNote, parseSymbol, intervalTension, melodyTension,
- *   namedVsPlayed, voiceMotion, analyzeProgression, toHarmonyNotes,
- *   tensionWeight, TENSION_WEIGHTS, OCTAVE_DISCOUNTS, INTERVAL_LABELS,
- *   LOCAL_CHORD_TYPES, selfTest
+ *   namedVsPlayed, voiceMotion, barNeighbours, analyzeProgression,
+ *   toHarmonyNotes, tensionWeight, TENSION_WEIGHTS, OCTAVE_DISCOUNTS,
+ *   INTERVAL_LABELS, LOCAL_CHORD_TYPES, selfTest
  *
  * Tension: every bass/voicing pair (and each melody pitch against every
  * comp note, weighted by duration) is reduced to its interval class
@@ -458,14 +458,31 @@ function voiceMotion(prevVoicing, voicing) {
   return { total: best.cost, perVoice, matched: small.length, unmatched };
 }
 
-/** Performance predecessor of each bar: the bar before its first occurrence in form.playOrder (written order without one). */
-function _predecessors(progression) {
+/**
+ * Performance neighbours of each bar: the bars before and after its FIRST
+ * occurrence in form.playOrder (written order without one). A second
+ * ending's predecessor is the bar before the first ending; a repeat's last
+ * bar has the repeat's first bar as successor. The last bar played has
+ * no successor; the first has no predecessor.
+ *
+ * @returns {{ prev: Object<number, number|null>, next: Object<number, number|null> }}
+ */
+function barNeighbours(progression) {
   const bars = progression.bars || [];
   const order = progression.form && Array.isArray(progression.form.playOrder) && progression.form.playOrder.length
     ? progression.form.playOrder : bars.map(b => b.bar);
-  const pred = {};
-  order.forEach((b, i) => { if (!(b in pred)) pred[b] = i > 0 ? order[i - 1] : null; });
-  return pred;
+  const prev = {}, next = {};
+  order.forEach((b, i) => {
+    if (b in prev) return;
+    prev[b] = i > 0 ? order[i - 1] : null;
+    next[b] = i < order.length - 1 ? order[i + 1] : null;
+  });
+  return { prev, next };
+}
+
+/** Performance predecessor of each bar (see barNeighbours). */
+function _predecessors(progression) {
+  return barNeighbours(progression).prev;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -599,14 +616,14 @@ function toHarmonyNotes(notes) {
 export {
   tensionWeight, TENSION_WEIGHTS, OCTAVE_DISCOUNTS, INTERVAL_LABELS, LOCAL_CHORD_TYPES,
   parseNote, parseSymbol, intervalTension, melodyTension, namedVsPlayed,
-  voiceMotion, analyzeProgression, toHarmonyNotes, selfTest,
+  voiceMotion, barNeighbours, analyzeProgression, toHarmonyNotes, selfTest,
 };
 
 if (typeof window !== 'undefined') {
   window.VoicingAnalysis = {
     tensionWeight, TENSION_WEIGHTS, OCTAVE_DISCOUNTS, INTERVAL_LABELS, LOCAL_CHORD_TYPES,
     parseNote, parseSymbol, intervalTension, melodyTension, namedVsPlayed,
-    voiceMotion, analyzeProgression, toHarmonyNotes,
+    voiceMotion, barNeighbours, analyzeProgression, toHarmonyNotes,
   };
 }
 
