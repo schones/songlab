@@ -80,6 +80,14 @@
     overflow-x: auto;
   }
 
+  /* ── Info pills (explainer layer, Session 6.5) ────── */
+  .ts-pills { margin-top: 1.5rem; }
+  .ts-panel { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); padding: 10px 14px; margin-bottom: 8px; }
+  .ts-panel__label { display: flex; align-items: center; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: 0 0 6px; }
+  .ts-panel__body { font-size: 0.85rem; color: var(--text-secondary); }
+  .ts-dark { background: #15151B; color: #F2EFE6; border-color: #2E2E3A; }
+  .ts-dark .ts-panel__body { color: #B5AE9F; }
+
   /* ── Event log ───────────────────────────────────── */
   .ts-log {
     margin-top: 1.25rem;
@@ -152,6 +160,20 @@
   <div class="ts-components">
     <div id="tonnetz-container"></div>
     <div id="keyboard-container"></div>
+  </div>
+
+  <!-- Info pills: panel-header triggers with popovers from the explainer registry.
+       ?open=<slug> opens that pill on load (headless verification). -->
+  <div class="ts-pills" id="ts-pills">
+    <div class="ts-row"><span class="ts-row__label">Info pills</span>
+      <span class="ts-panel__body">registry slugs: a heuristic, a fact, a stub, a theory topic; a dynamic one; one on a dark panel</span></div>
+    <div class="ts-panel"><p class="ts-panel__label" data-pill="tension-scoring">Tension per bar</p><div class="ts-panel__body">heuristic · claude-draft</div></div>
+    <div class="ts-panel"><p class="ts-panel__label" data-pill="staff-panel">Staff</p><div class="ts-panel__body">fact · claude-draft</div></div>
+    <div class="ts-panel"><p class="ts-panel__label" data-pill="tritone">Tritone</p><div class="ts-panel__body">stub</div></div>
+    <div class="ts-panel"><p class="ts-panel__label" data-pill="guide-tones-and-shells" data-pill-label="Learn">Guide tones</p><div class="ts-panel__body">theory · labelled trigger</div></div>
+    <div class="ts-panel"><p class="ts-panel__label" id="ts-pill-dynamic">Dynamic (render callback)</p><div class="ts-panel__body">content object rebuilt on every open — click count: <span id="ts-pill-count">0</span></div></div>
+    <div class="ts-panel ts-dark" data-theme="dark"><p class="ts-panel__label" data-pill="explore-panel">Explore (dark panel)</p><div class="ts-panel__body">same pill on a dark surface</div></div>
+    <div class="ts-row"><button class="ts-btn ts-btn--control" id="ts-pill-swap">setContent → melody-rule on the first pill</button></div>
   </div>
 
   <!-- Event log -->
@@ -262,6 +284,31 @@
     HarmonyState.update({ tonnetzDepth: 2 });
     log('tonnetzDepth = 2');
   });
+
+  // ── Info pills (explainer layer) ──────────────────
+  const { InfoPill } = await import('{{ url_for("static", filename="shared/info-pill.js") }}');
+  window.InfoPill = InfoPill;
+  const pills = {};
+  document.querySelectorAll('[data-pill]').forEach(el => {
+    const slug = el.dataset.pill;
+    pills[slug] = InfoPill.mount(el, { slug, label: el.dataset.pillLabel || undefined,
+      onOpen: () => log(`pill open → ${slug}`), onClose: () => log(`pill close → ${slug}`) });
+  });
+  let pillClicks = 0;
+  pills.dynamic = InfoPill.mount(document.getElementById('ts-pill-dynamic'), {
+    render: () => {
+      pillClicks++;
+      document.getElementById('ts-pill-count').textContent = pillClicks;
+      return { title: `Dynamic content #${pillClicks}`, kind: pillClicks % 2 ? 'fact' : 'heuristic',
+        summaryHtml: `Built by a <strong>render()</strong> callback at ${new Date().toLocaleTimeString()}.`,
+        seeAlso: [{ title: 'How tension is scored', url: '/learn/tension-scoring' }, { title: 'Meet the Tonnetz', url: '/intro/5', kind: 'page' }] };
+    },
+    onOpen: () => log('pill open → dynamic'), onClose: () => log('pill close → dynamic'),
+  });
+  document.getElementById('ts-pill-swap').addEventListener('click', () => { pills['tension-scoring'].setContent('melody-rule'); log('setContent(melody-rule)'); });
+  window.__pills = pills;
+  const openParam = new URLSearchParams(location.search).get('open');
+  if (openParam && pills[openParam]) pills[openParam].open();
 
   // ── Initialize components ─────────────────────────
   TonnetzNeighborhood.init('tonnetz-container', {

@@ -345,6 +345,26 @@ def theory_modes():
     return render_template("theory/modes.html")
 
 
+_LEARN_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+@app.route("/learn")
+def learn_index():
+    # Explainer layer (Voicing Explorer Session 6.5): every topic in
+    # static/shared/voicing-explainer-content.js, rendered client-side from
+    # that registry so pills and pages share one source.
+    return render_template("learn/index.html")
+
+
+@app.route("/learn/<slug>")
+def learn_topic(slug):
+    # The registry lives in JS, so an unknown slug renders the template's
+    # not-found state (HTTP 200); a malformed one goes back to the index.
+    if not _LEARN_SLUG_RE.match(slug):
+        return redirect("/learn")
+    return render_template("learn/topic.html", slug=slug)
+
+
 @app.route("/intro")
 def intro_hub():
     return render_template("intro/hub.html")

@@ -1,0 +1,65 @@
+/* ============================================================
+   learn.css — shared styles for the explainer layer
+   ------------------------------------------------------------
+   Badges, disclaimers and rendered-body typography used by the
+   info pills (info-pill.js), the docked Theory card and the
+   /learn pages. Loaded by the templates directly and injected
+   by info-pill.js on pages that do not extend base.html.
+   Reads design-tokens.css variables with fallbacks.
+   ============================================================ */
+
+/* ── Badges ───────────────────────────────────────────────── */
+.learn-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 8px; border-radius: 999px;
+  font-size: var(--font-size-2xs, 0.8rem); font-weight: var(--font-weight-medium, 500);
+  line-height: 1.6; letter-spacing: 0.02em; white-space: nowrap;
+  border: 1px solid var(--border-color, #D9D2C0);
+  color: var(--text-secondary, #4A4339); background: var(--bg-raised, transparent);
+}
+.learn-badge--status-stub         { color: var(--text-muted, #8C8576); border-style: dashed; }
+.learn-badge--status-claude-draft { color: var(--accent-gold, #D4A03C); border-color: rgba(212, 160, 60, 0.5); background: rgba(212, 160, 60, 0.10); }
+.learn-badge--status-verified     { color: var(--accent-green, #4CAF50); border-color: rgba(76, 175, 80, 0.5); background: rgba(76, 175, 80, 0.10); }
+.learn-badge--status-own-words    { color: var(--accent-blue-bright, #3A8BC9); border-color: rgba(58, 139, 201, 0.5); background: rgba(58, 139, 201, 0.10); }
+.learn-badge--kind-fact           { color: var(--accent-blue-bright, #3A8BC9); border-color: rgba(58, 139, 201, 0.45); }
+.learn-badge--kind-heuristic      { color: var(--accent-coral, #E87461); border-color: rgba(232, 116, 97, 0.5); background: rgba(232, 116, 97, 0.08); }
+.learn-badge--category            { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; }
+
+/* ── Disclaimer ───────────────────────────────────────────── */
+.learn-disclaimer {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 6px 10px; border-radius: var(--radius-md, 6px);
+  font-size: var(--font-size-2xs, 0.8rem); line-height: 1.45;
+  color: var(--text-secondary, #4A4339);
+  border: 1px solid rgba(212, 160, 60, 0.45); background: rgba(212, 160, 60, 0.10);
+}
+.learn-disclaimer--stub { border-style: dashed; border-color: var(--border-color, #D9D2C0); background: transparent; color: var(--text-muted, #8C8576); }
+.learn-disclaimer__icon { flex: none; color: var(--accent-gold, #D4A03C); }
+.learn-disclaimer--stub .learn-disclaimer__icon { color: var(--text-muted, #8C8576); }
+
+/* ── Heuristic vs fact: a left rule on bodies and cards ────── */
+.learn-kind--heuristic { border-left: 3px solid var(--accent-coral, #E87461); }
+.learn-kind--fact      { border-left: 3px solid var(--accent-blue-bright, #3A8BC9); }
+
+/* ── Links to Learn pages (mini-markdown resolveLink) ─────── */
+.learn-link { color: var(--accent, var(--accent-blue, #2D5F8A)); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.learn-link--stub { text-decoration-style: dashed; }
+.learn-link--stub::after { content: ' (stub)'; font-size: 0.75em; color: var(--text-muted, #8C8576); }
+
+/* ── Rendered Markdown body ───────────────────────────────── */
+.learn-body { font-size: var(--font-size-sm, 1rem); line-height: 1.65; color: var(--text-primary, #1F1B16); }
+.learn-body h2, .learn-body h3, .learn-body h4 { margin: 1.4em 0 0.5em; line-height: 1.25; color: var(--text-primary, #1F1B16); font-weight: var(--font-weight-medium, 500); }
+.learn-body h2 { font-size: var(--font-size-md, 1.25rem); }
+.learn-body h3 { font-size: var(--font-size-base, 1.1rem); }
+.learn-body h4 { font-size: var(--font-size-sm, 1rem); }
+.learn-body > :first-child { margin-top: 0; }
+.learn-body p, .learn-body ul, .learn-body ol, .learn-body blockquote { margin: 0 0 0.9em; }
+.learn-body ul, .learn-body ol { padding-left: 1.4em; }
+.learn-body li { margin: 0.25em 0; }
+.learn-body li > p { margin: 0; }
+.learn-body code { font-family: var(--font-family-mono, ui-monospace, Menlo, monospace); font-size: 0.88em; padding: 1px 5px; border-radius: 4px; background: var(--bg-raised, rgba(0,0,0,0.05)); border: 1px solid var(--border-subtle, transparent); }
+.learn-body blockquote { padding: 0.2em 0 0.2em 1em; border-left: 3px solid var(--border-strong, #BFB6A0); color: var(--text-secondary, #4A4339); }
+.learn-body table { border-collapse: collapse; width: 100%; margin: 0.6em 0 1.1em; font-size: var(--font-size-xs, 0.9rem); display: block; overflow-x: auto; }
+.learn-body th, .learn-body td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--border-subtle, #E8E2D2); vertical-align: top; }
+.learn-body th { font-weight: var(--font-weight-medium, 500); color: var(--text-secondary, #4A4339); font-size: var(--font-size-2xs, 0.8rem); text-transform: uppercase; letter-spacing: 0.05em; }
+.learn-body strong { font-weight: 700; }

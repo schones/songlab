@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Learn — Voicing Explorer topics · SongLab{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='shared/learn.css') }}">
+<style>
+  .ln-page { max-width: 960px; margin: 0 auto; padding: var(--space-2xl) var(--space-xl) 4rem; }
+  .ln-eyebrow { font-size: var(--font-size-2xs); font-weight: var(--font-weight-medium); text-transform: uppercase; letter-spacing: 0.14em; color: var(--accent); margin-bottom: 6px; }
+  .ln-title { font-family: var(--font-family-display); font-size: var(--font-size-2xl); font-weight: var(--font-weight-medium); letter-spacing: -0.01em; line-height: 1.1; margin: 0 0 10px; }
+  .ln-lede { font-size: var(--font-size-base); color: var(--text-secondary); max-width: 680px; line-height: 1.55; margin: 0 0 1.5rem; }
+
+  .ln-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 1.5rem; }
+  .ln-filter__label { font-size: var(--font-size-2xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-right: 4px; }
+  .ln-filter__btn { padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary); font: inherit; font-size: var(--font-size-xs); cursor: pointer; }
+  .ln-filter__btn:hover { border-color: var(--accent); color: var(--text-primary); }
+  .ln-filter__btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ln-filter__count { opacity: 0.7; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+  .ln-group { margin-bottom: 2rem; }
+  .ln-group__head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; }
+  .ln-group__title { font-size: var(--font-size-md); font-weight: var(--font-weight-medium); margin: 0; }
+  .ln-group__desc { color: var(--text-muted); font-size: var(--font-size-xs); }
+  .ln-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .ln-card { display: block; padding: 12px 14px 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--bg-card); color: inherit; text-decoration: none; transition: border-color 0.15s, transform 0.15s; }
+  .ln-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .ln-card[hidden] { display: none; }
+  .ln-card__title { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); margin: 0 0 6px; line-height: 1.3; }
+  .ln-card__badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .ln-card__summary { font-size: var(--font-size-xs); color: var(--text-secondary); line-height: 1.5; margin: 0; }
+  .ln-card__panel { font-size: var(--font-size-2xs); color: var(--text-muted); margin-top: 8px; }
+  .ln-empty { color: var(--text-muted); font-style: italic; font-size: var(--font-size-xs); }
+
+  .ln-external { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+  .ln-external ul { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .ln-external a { display: inline-block; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); text-decoration: none; font-size: var(--font-size-2xs); }
+  .ln-external a:hover { border-color: var(--accent); color: var(--text-primary); }
+
+  @media (max-width: 700px) { .ln-page { padding: var(--space-xl) var(--space-lg) 3rem; } .ln-cards { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="ln-page" id="ln-page">
+  <div class="ln-eyebrow">Learn</div>
+  <h1 class="ln-title">Voicing Explorer topics</h1>
+  <p class="ln-lede">
+    What each panel on <a href="/voicings">/voicings</a> shows and the music theory behind it.
+    Every topic carries a status; drafts by Claude are marked until they have been checked.
+  </p>
+
+  <div class="ln-filter" id="ln-filter" role="group" aria-label="Filter by status">
+    <span class="ln-filter__label">Status</span>
+    <!-- buttons rendered by script -->
+  </div>
+
+  <div id="ln-groups"></div>
+
+  <section class="ln-external" id="ln-external" hidden>
+    <div class="ln-eyebrow">Also on SongLab</div>
+    <ul id="ln-external-list"></ul>
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { TOPICS, EXTERNAL, STATUSES, renderTopic } from "{{ url_for('static', filename='shared/voicing-explainer-content.js') }}";
+
+  const CATEGORIES = [
+    { id: 'tool',   title: 'How the page works', desc: 'what each panel shows and how to read it' },
+    { id: 'theory', title: 'Music theory',       desc: 'the ideas the panels rely on' },
+  ];
+  const PANEL_NAMES = { chart: 'Tension chart', melody: 'Melody toggle', play: 'Playback', selected: 'Selected bar', staff: 'Staff', tonnetz: 'Tonnetz', rubs: 'Intervals that rub', nvp: 'Named vs played', explore: 'Explore', keyboard: 'Keyboard' };
+
+  const slugs = Object.keys(TOPICS);
+  const counts = Object.fromEntries(STATUSES.map(s => [s, 0]));
+  for (const s of slugs) counts[TOPICS[s].status]++;
+
+  // Filter from the URL hash (#status=claude-draft) so a verification pass can be bookmarked.
+  const hashStatus = () => (new URLSearchParams(location.hash.replace(/^#/, '')).get('status')) || 'all';
+  let filter = STATUSES.includes(hashStatus()) ? hashStatus() : 'all';
+
+  const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+  // Filter buttons
+  const filterEl = document.getElementById('ln-filter');
+  const filterBtns = {};
+  for (const s of ['all', ...STATUSES]) {
+    const b = h('button', 'ln-filter__btn', s === 'all' ? 'all' : s);
+    b.type = 'button';
+    b.appendChild(h('span', 'ln-filter__count', String(s === 'all' ? slugs.length : counts[s])));
+    b.addEventListener('click', () => setFilter(s));
+    filterEl.appendChild(b);
+    filterBtns[s] = b;
+  }
+
+  // Cards grouped by category
+  const groupsEl = document.getElementById('ln-groups');
+  const cards = [];
+  for (const cat of CATEGORIES) {
+    const group = h('section', 'ln-group');
+    const head = h('div', 'ln-group__head');
+    head.appendChild(h('h2', 'ln-group__title', cat.title));
+    head.appendChild(h('span', 'ln-group__desc', cat.desc));
+    group.appendChild(head);
+    const grid = h('div', 'ln-cards');
+    for (const slug of slugs.filter(s => TOPICS[s].category === cat.id)) {
+      const r = renderTopic(slug);
+      const a = h('a', `ln-card learn-kind--${r.kind}`);
+      a.href = `/learn/${slug}`;
+      a.dataset.status = r.status;
+      a.appendChild(h('h3', 'ln-card__title', r.title));
+      const badges = h('div', 'ln-card__badges');
+      badges.appendChild(h('span', `learn-badge learn-badge--status-${r.status}`, r.status));
+      badges.appendChild(h('span', `learn-badge learn-badge--kind-${r.kind}`, r.kind));
+      a.appendChild(badges);
+      const p = h('p', 'ln-card__summary'); p.innerHTML = r.summaryHtml; a.appendChild(p);
+      if (r.panel) a.appendChild(h('div', 'ln-card__panel', `Panel: ${PANEL_NAMES[r.panel] || r.panel}`));
+      grid.appendChild(a);
+      cards.push(a);
+    }
+    const empty = h('p', 'ln-empty', 'Nothing with this status here.'); empty.hidden = true;
+    group.appendChild(grid); group.appendChild(empty);
+    group._empty = empty; group._grid = grid;
+    groupsEl.appendChild(group);
+  }
+
+  function setFilter(s) {
+    filter = s;
+    for (const [k, b] of Object.entries(filterBtns)) b.setAttribute('aria-pressed', k === s ? 'true' : 'false');
+    for (const c of cards) c.hidden = s !== 'all' && c.dataset.status !== s;
+    for (const g of groupsEl.children) g._empty.hidden = [...g._grid.children].some(c => !c.hidden);
+    history.replaceState(null, '', s === 'all' ? location.pathname : `#status=${s}`);
+  }
+  setFilter(filter);
+  window.addEventListener('hashchange', () => { const s = hashStatus(); setFilter(STATUSES.includes(s) ? s : 'all'); });
+
+  // External targets the registry links to
+  const ext = Object.entries(EXTERNAL);
+  if (ext.length) {
+    document.getElementById('ln-external').hidden = false;
+    const ul = document.getElementById('ln-external-list');
+    for (const [, e] of ext) { const li = h('li'); const a = h('a', null, e.title); a.href = e.url; li.appendChild(a); ul.appendChild(li); }
+  }
+</script>
+{% endblock %}

@@ -367,7 +367,7 @@ function toSchedule(playback, { arpStepMs = ARP_STEP_MS } = {}) {
   return { secondsPerQuarter: spq, barStart: -origin * spq, duration, notes };
 }
 
-export { buildPlaybackList, toSchedule, ARP_STEP_MS, ROLL_SPREAD_FRACTION, LEAD_IN_MAX_BEATS, selfTest };
+export { buildPlaybackList, toSchedule, ARP_STEP_MS, ROLL_SPREAD_FRACTION, LEAD_IN_MAX_BEATS, DEFAULT_TEMPO, selfTest };
 
 if (typeof window !== 'undefined') {
   window.VoicingPlaybackModel = { buildPlaybackList, toSchedule, ARP_STEP_MS, ROLL_SPREAD_FRACTION, LEAD_IN_MAX_BEATS };

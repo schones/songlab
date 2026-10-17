@@ -195,7 +195,11 @@ class VoicingPlayer {
   }
 }
 
-export { VoicingPlayer, loadTone, loadSampler, SALAMANDER_VERSION, SALAMANDER_BASE, SALAMANDER_URLS };
+export {
+  VoicingPlayer, loadTone, loadSampler, SALAMANDER_VERSION, SALAMANDER_BASE, SALAMANDER_URLS,
+  // Explainer layer (Session 6.5): read-only constants for interpolation into content.
+  TONE_URL, VELOCITY, LEAD_IN_GAIN, START_TIMEOUT_MS,
+};
 
 if (typeof window !== 'undefined') {
   window.VoicingPlayer = VoicingPlayer;

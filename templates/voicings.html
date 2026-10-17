@@ -164,9 +164,9 @@
     <div class="vp-explore__head">
       <p class="vp-panel__label" id="vp-explore-label">Explore — candidate voicings for the selected event; click a row to preview, Keep to swap it in</p>
       <label class="vp-explore__ctl">target
-        <button type="button" class="vp-explore__btn" id="vp-explore-target-dec" title="target − 0.5">−</button>
-        <input type="number" id="vp-explore-target" step="0.5" min="0">
-        <button type="button" class="vp-explore__btn" id="vp-explore-target-inc" title="target + 0.5">+</button>
+        <button type="button" class="vp-explore__btn" id="vp-explore-target-dec">−</button>
+        <input type="number" id="vp-explore-target" min="0">
+        <button type="button" class="vp-explore__btn" id="vp-explore-target-inc">+</button>
       </label>
       <label class="vp-explore__ctl">voices
         <select id="vp-explore-count"><option value="0">original</option><option value="1">±1</option></select>
@@ -206,7 +206,7 @@
   import { VoicingStaff }          from "{{ url_for('static', filename='shared/voicing-staff.js') }}";
   import { buildPlaybackList, toSchedule } from "{{ url_for('static', filename='shared/voicing-playback-model.js') }}";
   import { VoicingPlayer }         from "{{ url_for('static', filename='shared/voicing-player.js') }}";
-  import { eventContext, generateCandidates, scoreCandidate, rankCandidates, applyOverrides, expandOverrides, overrideKey }
+  import { eventContext, generateCandidates, scoreCandidate, rankCandidates, applyOverrides, expandOverrides, overrideKey, TARGET_STEP, EXPLORE_ROWS }
                                    from "{{ url_for('static', filename='shared/voicing-explore.js') }}";
 
   const DEFAULT_PIECE = 'dont-be-sad';
@@ -468,8 +468,8 @@
     if (e.key === 'p' || e.key === 'P') { e.preventDefault(); playSelected(e.shiftKey ? 'event' : 'bar'); }
     else if (e.key === '[' || e.key === ']') { if (!els.explore.hidden) { e.preventDefault(); stepPreview(e.key === ']' ? 1 : -1); } }
     else if (e.key === 'k' || e.key === 'K') { if (state.preview) { e.preventDefault(); keepPreview(); } }
-    else if (e.key === '-' || e.key === '_') { if (!els.explore.hidden) { e.preventDefault(); nudgeTarget(-0.5); } }
-    else if (e.key === '=' || e.key === '+') { if (!els.explore.hidden) { e.preventDefault(); nudgeTarget(0.5); } }
+    else if (e.key === '-' || e.key === '_') { if (!els.explore.hidden) { e.preventDefault(); nudgeTarget(-TARGET_STEP); } }
+    else if (e.key === '=' || e.key === '+') { if (!els.explore.hidden) { e.preventDefault(); nudgeTarget(TARGET_STEP); } }
     else if (e.key === 'Escape') {
       if (player.playing) { e.preventDefault(); player.stop(); }
       else if (state.preview) { e.preventDefault(); clearPreview(); }
@@ -482,7 +482,7 @@
   // keeps voicings below the tune). A previewed candidate is applied to a
   // trial progression that every panel renders from; Keep moves it into
   // state.overrides. "Original" is the pristine piece's voicing and total.
-  const EXPLORE_ROWS = 12;
+  // EXPLORE_ROWS (12) comes from voicing-explore.js so the explainer content can quote it.
   let exploreRows = [];   // the ranked rows currently shown
 
   /** The effective progression, plus the previewed candidate when there is one. */
@@ -703,15 +703,19 @@
   function setTarget(value) {
     const v = Number(value);
     if (!Number.isFinite(v)) return;
-    state.explore.target = Math.max(0, Math.round(v * 2) / 2);
+    state.explore.target = Math.max(0, Math.round(v / TARGET_STEP) * TARGET_STEP);
     renderExplore();
   }
   function setCountRange(v) { state.explore.countRange = Number(v) ? 1 : 0; renderExplore(); }
   function setSourceFilter(v) { state.explore.sourceFilter = ['all', 'symbol', 'shape'].includes(v) ? v : 'all'; renderExplore(); }
 
   els.exploreTarget.addEventListener('change', () => setTarget(els.exploreTarget.value));
-  els.exploreTargetDec.addEventListener('click', () => setTarget((Number(els.exploreTarget.value) || 0) - 0.5));
-  els.exploreTargetInc.addEventListener('click', () => setTarget((Number(els.exploreTarget.value) || 0) + 0.5));
+  // The target steps in TARGET_STEP (the ranking's bucket size) everywhere: buttons, keys, the input.
+  els.exploreTarget.step = String(TARGET_STEP);
+  els.exploreTargetDec.title = `target − ${TARGET_STEP}`;
+  els.exploreTargetInc.title = `target + ${TARGET_STEP}`;
+  els.exploreTargetDec.addEventListener('click', () => setTarget((Number(els.exploreTarget.value) || 0) - TARGET_STEP));
+  els.exploreTargetInc.addEventListener('click', () => setTarget((Number(els.exploreTarget.value) || 0) + TARGET_STEP));
   els.exploreCount.addEventListener('change', () => setCountRange(els.exploreCount.value));
   els.exploreSource.addEventListener('change', () => setSourceFilter(els.exploreSource.value));
   els.exploreKeep.addEventListener('click', keepPreview);

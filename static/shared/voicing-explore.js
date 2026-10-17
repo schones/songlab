@@ -64,7 +64,7 @@
  *               later clashes score as tension; range.fallback reports it.
  *   Doubling    no pitch class twice; the bass pitch class is excluded
  *               unless opts.allowBassDouble.
- *   Ranking     distance from the tension target (rounded to 0.5), then
+ *   Ranking     distance from the tension target (rounded to TARGET_STEP, 0.5), then
  *               total motion (in + out), then fewer omitted named tones.
  *
  * Self-test (from the repo root):
@@ -98,6 +98,8 @@ const DEGREE_CLASS = {
 const EXTENSION_SEMIS = { '♭9': 1, '9': 2, '♯9': 3, '11': 5, '♯11': 6, '♭13': 8, '13': 9 };
 const MIN_COUNT = 2, MAX_COUNT = 4;
 const DEFAULT_COUNT = 3;            // when the original voicing is empty
+const TARGET_STEP = 0.5;            // tension-target granularity: ranking buckets, and the page's − / + nudges
+const EXPLORE_ROWS = 12;            // ranked rows the Explore panel shows (the page reads this)
 const LETTER_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -543,11 +545,11 @@ function scoreCandidate(candidate, ctx, opts = {}) {
   };
 }
 
-/** Distance from the target in chart units, rounded to the nearest 0.5. */
-function targetDistance(total, target) { return Math.round(Math.abs(total - target) * 2) / 2; }
+/** Distance from the target in chart units, rounded to the nearest TARGET_STEP. */
+function targetDistance(total, target) { return Math.round(Math.abs(total - target) / TARGET_STEP) * TARGET_STEP; }
 
 /**
- * Rank scored candidates: distance from the tension target (0.5 steps),
+ * Rank scored candidates: distance from the tension target (TARGET_STEP buckets),
  * then total motion, then fewer omitted named tones, then voicing text.
  * Returns a sorted copy with `rank` (1-based) and `distance`.
  */
@@ -638,6 +640,8 @@ export {
   generateCandidates, scoreCandidate, rankCandidates,
   expandOverrides, applyOverrides, overrideKey, voiceCounts, spellMidi,
   MIN_ABOVE_BASS, DEFAULT_MAX_SPAN, SHAPE_NAMES, selfTest,
+  // Explainer layer (Session 6.5): read-only constants for interpolation into content.
+  TARGET_STEP, EXPLORE_ROWS, MIN_COUNT, MAX_COUNT, DEFAULT_COUNT, FALLBACK_CEILING, DEGREE_CLASS, EXTENSION_SEMIS, targetDistance,
 };
 
 if (typeof window !== 'undefined') {
@@ -646,6 +650,7 @@ if (typeof window !== 'undefined') {
     generateCandidates, scoreCandidate, rankCandidates,
     expandOverrides, applyOverrides, overrideKey, voiceCounts, spellMidi,
     MIN_ABOVE_BASS, DEFAULT_MAX_SPAN, SHAPE_NAMES,
+    TARGET_STEP, EXPLORE_ROWS, MIN_COUNT, MAX_COUNT, DEFAULT_COUNT, FALLBACK_CEILING, DEGREE_CLASS, EXTENSION_SEMIS, targetDistance,
   };
 }
 

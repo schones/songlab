@@ -192,7 +192,7 @@ class VoicingStaff {
 
 const CSS_escape = s => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(s) : s.replace(/[^\w-]/g, '\\$&'));
 
-export { VoicingStaff };
+export { VoicingStaff, VEROVIO_VERSION };
 
 if (typeof window !== 'undefined') {
   window.VoicingStaff = VoicingStaff;

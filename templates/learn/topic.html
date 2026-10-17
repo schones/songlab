@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Learn · SongLab{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='shared/learn.css') }}">
+<style>
+  .lt-page { max-width: 760px; margin: 0 auto; padding: var(--space-2xl) var(--space-xl) 4rem; }
+  .lt-back { display: inline-block; font-size: var(--font-size-xs); color: var(--text-muted); text-decoration: none; margin-bottom: 1.25rem; }
+  .lt-back:hover { color: var(--accent); }
+  .lt-eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .lt-title { font-family: var(--font-family-display); font-size: var(--font-size-xl); font-weight: var(--font-weight-medium); letter-spacing: -0.01em; line-height: 1.15; margin: 0 0 12px; }
+  .lt-summary { font-size: var(--font-size-base); color: var(--text-secondary); line-height: 1.55; margin: 0 0 1.25rem; }
+  .lt-disclaimer { margin-bottom: 1.5rem; font-size: var(--font-size-xs); }
+  .lt-body { padding-left: 18px; }
+  .lt-stub { padding: 1.25rem 18px; border: 1px dashed var(--border); border-radius: var(--radius-xl); color: var(--text-muted); font-style: italic; }
+  .lt-seealso { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+  .lt-seealso h2 { font-size: var(--font-size-2xs); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin: 0 0 10px; font-weight: var(--font-weight-medium); }
+  .lt-seealso ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+  .lt-seealso a { display: inline-flex; align-items: center; gap: 8px; color: var(--text-primary); text-decoration: none; font-size: var(--font-size-sm); }
+  .lt-seealso a:hover { color: var(--accent); }
+  .lt-seealso .learn-badge { font-size: 0.7rem; }
+  .lt-notfound { padding: 2rem; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--bg-card); }
+  .lt-notfound h1 { margin: 0 0 8px; font-size: var(--font-size-lg); }
+  .lt-notfound p { color: var(--text-secondary); margin: 0 0 12px; }
+  .lt-notfound code { background: var(--bg-secondary); padding: 1px 6px; border-radius: 4px; }
+  @media (max-width: 700px) { .lt-page { padding: var(--space-xl) var(--space-lg) 3rem; } .lt-body { padding-left: 12px; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="lt-page" id="lt-page" data-slug="{{ slug }}">
+  <a class="lt-back" href="/learn">← All topics</a>
+  <div id="lt-content"><p class="lt-summary">Loading…</p></div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { renderTopic, EXTERNAL } from "{{ url_for('static', filename='shared/voicing-explainer-content.js') }}";
+
+  const slug = document.getElementById('lt-page').dataset.slug;
+  const root = document.getElementById('lt-content');
+  const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const CATEGORY_NAME = { tool: 'How the page works', theory: 'Music theory' };
+
+  const r = renderTopic(slug);
+  root.textContent = '';
+
+  if (!r) {
+    // An external target's key (e.g. /learn/intro-tonnetz) forwards to the page it stands for.
+    if (EXTERNAL[slug]) { location.replace(EXTERNAL[slug].url); }
+    else {
+      document.title = 'Topic not found · SongLab';
+      const box = h('div', 'lt-notfound');
+      box.appendChild(h('h1', null, 'No such topic'));
+      const p = h('p'); p.appendChild(document.createTextNode('There is no Learn topic called ')); p.appendChild(h('code', null, slug)); p.appendChild(document.createTextNode('.')); box.appendChild(p);
+      const a = h('a', 'learn-link', 'See all topics →'); a.href = '/learn'; box.appendChild(a);
+      root.appendChild(box);
+    }
+  } else {
+    document.title = `${r.title} · Learn · SongLab`;
+    const eyebrow = h('div', 'lt-eyebrow');
+    eyebrow.appendChild(h('span', 'learn-badge learn-badge--category', CATEGORY_NAME[r.category] || r.category));
+    eyebrow.appendChild(h('span', `learn-badge learn-badge--kind-${r.kind}`, r.kind));
+    eyebrow.appendChild(h('span', `learn-badge learn-badge--status-${r.status}`, r.status));
+    root.appendChild(eyebrow);
+    root.appendChild(h('h1', 'lt-title', r.title));
+    if (r.summaryHtml) { const p = h('p', 'lt-summary'); p.innerHTML = r.summaryHtml; root.appendChild(p); }
+    if (r.disclaimer) {
+      const d = h('div', 'learn-disclaimer lt-disclaimer' + (r.status === 'stub' ? ' learn-disclaimer--stub' : ''));
+      d.appendChild(h('span', 'learn-disclaimer__icon', r.status === 'stub' ? '○' : '⚠'));
+      d.appendChild(h('span', null, r.disclaimer));
+      root.appendChild(d);
+    }
+    if (r.status === 'stub' || !r.html) {
+      root.appendChild(h('div', 'lt-stub', 'Not written yet.'));
+    } else {
+      const body = h('article', `learn-body lt-body learn-kind--${r.kind}`);
+      body.innerHTML = r.html;
+      root.appendChild(body);
+    }
+    if (r.seeAlso.length) {
+      const sec = h('section', 'lt-seealso');
+      sec.appendChild(h('h2', null, 'See also'));
+      const ul = h('ul');
+      for (const s of r.seeAlso) {
+        const li = h('li');
+        const a = h('a');
+        a.href = s.url;
+        a.appendChild(document.createTextNode(s.kind === 'page' ? `${s.title} ↗` : s.title));
+        if (s.kind === 'topic') a.appendChild(h('span', `learn-badge learn-badge--status-${s.status}`, s.status));
+        li.appendChild(a); ul.appendChild(li);
+      }
+      sec.appendChild(ul);
+      root.appendChild(sec);
+    }
+  }
+</script>
+{% endblock %}

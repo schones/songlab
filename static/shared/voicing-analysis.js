@@ -617,6 +617,8 @@ export {
   tensionWeight, TENSION_WEIGHTS, OCTAVE_DISCOUNTS, INTERVAL_LABELS, LOCAL_CHORD_TYPES,
   parseNote, parseSymbol, intervalTension, melodyTension, namedVsPlayed,
   voiceMotion, barNeighbours, analyzeProgression, toHarmonyNotes, selfTest,
+  // Explainer layer (Session 6.5): read-only constants for interpolation into content.
+  INTERVAL_KEYS, _COMPOUND_LABELS as COMPOUND_LABELS, SUFFIX_TO_TYPE, STEP_DEGREE,
 };
 
 if (typeof window !== 'undefined') {
@@ -624,6 +626,7 @@ if (typeof window !== 'undefined') {
     tensionWeight, TENSION_WEIGHTS, OCTAVE_DISCOUNTS, INTERVAL_LABELS, LOCAL_CHORD_TYPES,
     parseNote, parseSymbol, intervalTension, melodyTension, namedVsPlayed,
     voiceMotion, barNeighbours, analyzeProgression, toHarmonyNotes,
+    INTERVAL_KEYS, COMPOUND_LABELS: _COMPOUND_LABELS, SUFFIX_TO_TYPE, STEP_DEGREE,
   };
 }
 
