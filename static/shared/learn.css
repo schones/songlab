@@ -43,8 +43,7 @@
 
 /* ── Links to Learn pages (mini-markdown resolveLink) ─────── */
 .learn-link { color: var(--accent, var(--accent-blue, #2D5F8A)); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
-.learn-link--stub { text-decoration-style: dashed; }
-.learn-link--stub::after { content: ' (stub)'; font-size: 0.75em; color: var(--text-muted, #8C8576); }
+.learn-link--stub { text-decoration-style: dotted; opacity: 0.8; }   /* a topic not written yet; the title attribute says so */
 
 /* ── Rendered Markdown body ───────────────────────────────── */
 .learn-body { font-size: var(--font-size-sm, 1rem); line-height: 1.65; color: var(--text-primary, #1F1B16); }

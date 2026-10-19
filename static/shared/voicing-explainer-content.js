@@ -947,7 +947,8 @@ function resolveSlug(slug) {
 /** mini-markdown link resolver: topic slug → /learn/<slug>; EXTERNAL key → its url; paths and http(s) pass through. */
 function resolveLink(target) {
   const r = resolveSlug(target);
-  if (r) return { href: r.url, title: r.title, className: r.kind === 'topic' && r.status === 'stub' ? 'learn-link learn-link--stub' : 'learn-link' };
+  const stub = r && r.kind === 'topic' && r.status === 'stub';
+  if (r) return { href: r.url, title: stub ? `${r.title} — not written yet` : r.title, className: stub ? 'learn-link learn-link--stub' : 'learn-link' };
   if (/^\/[^\s]*$/.test(target)) return { href: target };
   if (/^https?:\/\/[^\s]+$/.test(target)) return { href: target, external: true };
   return null;

@@ -111,10 +111,12 @@
   .vp-theory__items li.vp-theory__item--heuristic { list-style: none; margin-left: -1.1em; padding-left: calc(1.1em - 3px); border-left: 3px solid var(--accent-coral, #E87461); color: var(--text-secondary); }
   .vp-theory__items li.vp-theory__item--heuristic::before { content: 'rule of thumb · '; color: var(--accent-coral, #E87461); font-size: var(--font-size-2xs); }
   .vp-theory__items .learn-link { color: var(--accent-gold, #D4A03C); }
-  .vp-theory__chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0; }
+  .vp-theory__more { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border-subtle); }
+  .vp-theory__more-label { font-size: var(--font-size-2xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+  .vp-theory__chips { display: flex; flex-wrap: wrap; gap: 4px; }
   .vp-theory__chip { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-color); color: var(--text-muted); font-size: var(--font-size-2xs); text-decoration: none; }
   .vp-theory__chip:hover { border-color: var(--accent-gold, #D4A03C); color: var(--text-primary); }
-  .vp-theory__chip--stub { border-style: dashed; }
+  .vp-theory__chip--stub { border-style: dotted; opacity: 0.75; }
   .vp-theory__chip--page::after { content: ' ↗'; opacity: 0.7; }
   .vp-theory__empty { color: var(--text-muted); font-style: italic; font-size: var(--font-size-xs); margin: 0; }
 
@@ -386,7 +388,7 @@
     const hit = item.term ? glossaryLookup(item.term) : null;
     if (!hit) { li.textContent = item.text; return; }
     const a = el('a', 'learn-link' + (hit.status === 'stub' ? ' learn-link--stub' : ''));
-    a.href = hit.url; a.target = '_blank'; a.rel = 'noopener'; a.title = hit.title;
+    a.href = hit.url; a.target = '_blank'; a.rel = 'noopener'; a.title = hit.status === 'stub' ? `${hit.title} — not written yet` : hit.title;
     const m = item.text.match(new RegExp(`(^|[^\\p{L}])(${item.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s?)(?![\\p{L}])`, 'iu'));
     if (m) {
       const at = m.index + m[1].length;
@@ -399,7 +401,7 @@
   }
   function renderTheory(progression, bar, event) {
     const preview = state.preview;
-    if (preview) els.theoryWhat.textContent = `Previewing candidate #${preview.rank} of ${exploreRows.length}`;
+    if (preview) els.theoryWhat.textContent = `Previewing candidate #${preview.rank} of ${exploreMeta ? exploreMeta.total : exploreRows.length} (${exploreRows.length} shown)`;
     else if (event) els.theoryWhat.textContent = `Bar ${bar.bar}${bar.events.length > 1 ? `, event ${state.selectedEvent + 1}` : ''} — ${event.symbol || 'no symbol'}`;
     else els.theoryWhat.textContent = `Bar ${bar.bar} — no comp event`;
     els.theoryWhat.classList.toggle('vp-theory__what--preview', !!preview);
@@ -432,17 +434,22 @@
         ul.appendChild(li);
       }
       sec.appendChild(ul);
-      const links = s.see_also.map(resolveSlug).filter(Boolean);
-      if (links.length) {
-        const chips = el('div', 'vp-theory__chips');
-        for (const r of links) {
-          const a = el('a', 'vp-theory__chip' + (r.status === 'stub' ? ' vp-theory__chip--stub' : '') + (r.kind === 'page' ? ' vp-theory__chip--page' : ''), r.title);
-          a.href = r.url; a.target = '_blank'; a.rel = 'noopener';
-          chips.appendChild(a);
-        }
-        sec.appendChild(chips);
-      }
       els.theorySections.appendChild(sec);
+    }
+    // One "Read more" row for the whole card: every section's see_also, deduped, in first-seen order.
+    const links = [...new Set(sections.flatMap(s => s.see_also))].map(resolveSlug).filter(Boolean);
+    if (links.length) {
+      const more = el('div', 'vp-theory__more');
+      more.appendChild(el('span', 'vp-theory__more-label', 'Read more'));
+      const chips = el('div', 'vp-theory__chips');
+      for (const r of links) {
+        const a = el('a', 'vp-theory__chip' + (r.status === 'stub' ? ' vp-theory__chip--stub' : '') + (r.kind === 'page' ? ' vp-theory__chip--page' : ''), r.title);
+        a.href = r.url; a.target = '_blank'; a.rel = 'noopener';
+        if (r.status === 'stub') a.title = 'Not written yet';
+        chips.appendChild(a);
+      }
+      more.appendChild(chips);
+      els.theorySections.appendChild(more);
     }
   }
 
@@ -623,6 +630,7 @@
   // state.overrides. "Original" is the pristine piece's voicing and total.
   // EXPLORE_ROWS (12) comes from voicing-explore.js so the explainer content can quote it.
   let exploreRows = [];   // the ranked rows currently shown
+  let exploreRanked = []; // every ranked candidate of that computation (a preview may sit beyond the rows shown)
   let exploreMeta = null; // { target, total, originalTotal } of that computation, for the Theory card's "why it ranked here"
 
   /** The effective progression, plus the previewed candidate when there is one. */
@@ -664,7 +672,7 @@
 
   function renderExplore() {
     const ex = computeExplore();
-    if (!ex) { els.explore.hidden = true; exploreRows = []; exploreMeta = null; return; }
+    if (!ex) { els.explore.hidden = true; exploreRows = []; exploreRanked = []; exploreMeta = null; return; }
     els.explore.hidden = false;
     const label = `Explore — bar ${state.selectedBar}, event ${state.selectedEvent + 1} (${ex.ctx.symbol || 'no symbol'}): ${ex.ranked.length} candidates, ${ex.rows.length} shown · click a row to preview, ▶ to hear it, Keep to swap it in · [ ] step · K keep · − = target`;
     document.getElementById('vp-explore-label-text').textContent = label;   // the span, not the <p>: the ⓘ pill lives in the <p>
@@ -680,6 +688,7 @@
     els.exploreReset.disabled = !nOver;
     els.exploreCopy.disabled = !nOver;
     exploreRows = ex.rows;
+    exploreRanked = ex.ranked;
     exploreMeta = { target: ex.target, total: ex.ranked.length, originalTotal: ex.originalTotal };
 
     const root = els.exploreRows;
@@ -778,6 +787,11 @@
     if (typeof row === 'number') row = exploreRows.find(r => r.rank === row) || exploreRows[row - 1];
     if (!row) return;
     player.stop();
+    showPreview(key, row);
+  }
+
+  /** Render a candidate as the preview (no stop: setTarget re-shows the current preview at its new rank mid-playback). */
+  function showPreview(key, row) {
     state.preview = { key, voicing: row.voicing.slice(), rank: row.rank };
     const trial = trialProgression();
     const analysis = analyzeProgression(trial, { includeMelody: state.includeMelody });
@@ -846,6 +860,13 @@
     if (!Number.isFinite(v)) return;
     state.explore.target = Math.max(0, Math.round(v / TARGET_STEP) * TARGET_STEP);
     renderExplore();
+    // A previewed candidate keeps its voicing but may have a new rank: re-show
+    // it so the Theory card's "why it ranked here", the hint and the row
+    // highlight all follow (renderExplore runs once more inside showPreview).
+    if (state.preview) {
+      const row = exploreRanked.find(r => sameNotes(r.voicing, state.preview.voicing));
+      if (row) showPreview(state.preview.key, row);
+    }
   }
   function setCountRange(v) { state.explore.countRange = Number(v) ? 1 : 0; renderExplore(); }
   function setSourceFilter(v) { state.explore.sourceFilter = ['all', 'symbol', 'shape'].includes(v) ? v : 'all'; renderExplore(); }

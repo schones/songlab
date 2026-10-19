@@ -17,6 +17,22 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-19] Rag derived symbols: slash bass is the top note.** Bar 12
+  reads A♭/C over E♭4 A♭4 C5 and E♭7/D♭ over E♭4 G4 D♭5: the slash names
+  the highest note of the chord cluster, not the lowest. The Theory card
+  reports the mismatch neutrally ("the bass note in effect here is E♭4").
+  Check the symbol derivation (`chordSymbols: derived` in
+  `tests/fixtures/maple-leaf-rag.src.py`), not the engine's bass lookback.
+  See: `tools/voicings/export_json.py` `convert_symbol`; rag bars 12, 16, 17.
+
+- **[2026-10-19] /voicings scrolls horizontally at 390px.** Pre-existing:
+  chart or keyboard SVG lines and rects reach ~411px on a 390px viewport
+  (document scrollWidth ~700). Not the Theory card (342px, no overflow).
+  See: `static/shared/voicing-chart.js`, `voicing-keyboard.js`.
+
+- **[2026-10-19] favicon 404** on every page load (`/favicon.ico`). The only
+  console error on /voicings. Add an icon or a route.
+
 - **[2026-10-16] Explore tuning hypotheses (from bar 21, F7 in G).**
   Test on other dominant bars before encoding: on dominants, ♯11 needs
   both the 3rd and ♭7 (A-B-D and D-A-B drift to F Lydian / the home

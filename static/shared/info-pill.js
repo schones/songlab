@@ -103,7 +103,7 @@ const PILL_CSS = /* css */ `
   transition: border-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease);
 }
 .ip-chip:hover { border-color: var(--accent-gold, #D4A03C); color: var(--text-primary, #1F1B16); }
-.ip-chip--stub { border-style: dashed; color: var(--text-muted, #8C8576); }
+.ip-chip--stub { border-style: dotted; color: var(--text-muted, #8C8576); opacity: 0.8; }
 .ip-chip--page::after { content: ' ↗'; opacity: 0.7; }
 .ip-pop__foot { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 8px 14px 12px; border-top: 1px solid var(--border-subtle, #E8E2D2); }
 .ip-pop__more { color: var(--accent-gold, #D4A03C); font-weight: var(--font-weight-medium, 500); text-decoration: none; font-size: var(--font-size-xs, 0.9rem); }
@@ -298,6 +298,7 @@ class InfoPill {
       const chips = h('div', 'ip-pop__chips');
       for (const s of c.seeAlso) {
         const a = h('a', 'ip-chip' + (s.status === 'stub' ? ' ip-chip--stub' : '') + (s.kind === 'page' ? ' ip-chip--page' : ''), s.title);
+        if (s.status === 'stub') a.title = 'Not written yet';
         a.href = s.url; a.target = '_blank'; a.rel = 'noopener';
         chips.appendChild(a);
       }
