@@ -127,3 +127,173 @@ section after verification.*
 - Shell voicings' association with Bud Powell.
 - Guide tones moving by step through a ii–V–I (e.g. Dm7–G7–Cmaj7:
   F→F→E and C→B→B). One of the most useful ideas in the topic.
+
+## Session 6.5 — decisions and build state
+
+Recorded 2026-10-19 after P2 landed (commit db3d6b5). The two blocks
+below are the P1 prompt, verbatim.
+
+### Decisions (from the P1 prompt)
+
+```
+DECISIONS
+1. Storage: Option B. JS registry static/shared/voicing-explainer-content.js,
+   Markdown-subset bodies in template strings, constants imported (never
+   copied), rendered by static/shared/mini-markdown.js. Pages and pills
+   consume the same registry.
+2. Namespace: /learn/<slug> (new route + templates/learn/topic.html).
+   Existing /intro/N and /theory/* pages are registered as external
+   targets ({ kind: 'page', url, title }) so see_also can point at them.
+3. Theory pill = a DOCKED, collapsible "Theory" card in the Selected-bar
+   column, always visible, re-rendered from renderPanels. Panel pills
+   stay small anchored popovers ("how to read this panel").
+4. Focus = selected event, or the previewed candidate (click or [ ]).
+   No hover state.
+5. Shape: small degree-set catalogue (shell R–3–7 / R–7–3, rootless
+   A-form 3–5–7–9, B-form 7–9–3–5), fallback to the plain degree list.
+   Never surface the private piece's SHAPE_NAMES in published text.
+   Catalogue is claude-draft.
+6. Motion: voiced-neighbour definition (eventContext), and the section
+   names what it compares against ("from bar 4, event 2"). Add bass to
+   the neighbour ref.
+7. Constant exports + TARGET_STEP extraction: approved, additive only.
+8. Nav: flat "Voicings" link in base.html and explorer.html's own nav.
+```
+
+### Content rules (from the P1 prompt)
+
+```
+CONTENT RULES
+- status enum: stub | claude-draft | verified | own-words.
+  Disclaimer for claude-draft: "Info from Claude — verify before
+  relying on it." Rendered from status, in pills, the card and pages.
+- Facts vs heuristics are a field (kind), styled distinctly.
+- Err toward more detail. Public examples only (rag, fixture,
+  constructed). I'll rewrite blurbs later.
+```
+
+### Build order
+
+One prompt each; stop after each for review.
+
+- **P1 content foundation — done.** Additive exports in
+  voicing-analysis.js (INTERVAL_KEYS, COMPOUND_LABELS, SUFFIX_TO_TYPE,
+  STEP_DEGREE), voicing-explore.js (TARGET_STEP extracted and used at
+  every former 0.5 site, EXPLORE_ROWS, MIN/MAX/DEFAULT_COUNT,
+  FALLBACK_CEILING, DEGREE_CLASS, EXTENSION_SEMIS, targetDistance),
+  voicing-player.js, voicing-playback-model.js, voicing-staff.js;
+  new `static/shared/mini-markdown.js` (28/28) and
+  `static/shared/voicing-explainer-content.js` (33/33; 25 topics:
+  15 claude-draft, 10 stub; 10 external targets; 56 glossary terms;
+  T2 moved in). Engine suites unchanged: 64 / 76 / 70 / 95.
+- **P2 info-pill.js + /learn — done.** New `static/shared/info-pill.js`,
+  `static/shared/learn.css`, `templates/learn/index.html`,
+  `templates/learn/topic.html`; routes `/learn` and `/learn/<slug>` in
+  app.py; pill demo section on `templates/test-shared.html`. Follow-ups:
+  `melody-rule` split into its own topic, constructed C7 shell example
+  added to guide-tones-and-shells. Nothing on /voicings changed. All six
+  suites pass: 64 / 76 / 70 / 95 / 28 / 33.
+- **P3 panel pills on /voicings** — mount one pill per panel header via
+  `topicsForPanel(panelId)`; Escape precedence verified against the
+  page keydown handler (Stop / clear preview).
+- **P4 voicing-describe.js** — `describeVoicing` pure function;
+  `shapeKey` refactor; bass added to `voicedNeighbours` refs; degree-set
+  shape catalogue (decision 5).
+- **P5 docked Theory card** — Selected-bar column, collapsible, re-rendered
+  from `renderPanels`; "why ranked" section needs a `rankKey` export from
+  voicing-explore.js.
+- **P6 nav + Salamander attribution + docs** — flat "Voicings" link in
+  base.html and explorer.html; Salamander Grand Piano attribution where
+  the player is documented; STATUS / SESSION_LOG / RADAR.
+- **Then:** abbreviated tuning step, dominant rule only (♯11 requires
+  3rd + ♭7; 13 requires ♭7), and merge `voicing-explorer` to `dev`.
+
+### Registry shape (as built)
+
+Topic entry in `TOPICS`:
+
+```
+{ title, status, category: 'tool' | 'theory', kind: 'fact' | 'heuristic',
+  panel?, see_also: [slug | externalKey], summary, body, notes? }
+```
+
+- `category` says what the topic is about: `tool` = how the /voicings
+  page works (one per panel, plus chord-symbols, roles-in-the-data,
+  explore-ranking, melody-rule); `theory` = music. `kind` says how to
+  trust it: `fact` is derived from code or standard definitions,
+  `heuristic` is a scoring rule or rule of thumb. They are independent
+  fields; e.g. tension-scoring is tool + heuristic, staff-panel is tool
+  + fact.
+- `panel` is one of `PANELS` (chart, melody, play, selected, staff,
+  tonnetz, rubs, nvp, explore, keyboard) and is what P3 mounts by.
+- `notes` is a private field for verification checklists and sources
+  (T2's claims-to-verify live there). It is never rendered: not in
+  pills, not on /learn, not in the card. selfTest does not check it.
+- `status` drives `DISCLAIMER[status]`: stub → "Not written yet — this
+  page is a placeholder so links resolve."; claude-draft → "Info from
+  Claude — verify before relying on it."; verified and own-words → none.
+- `EXTERNAL[key] = { title, url }` for /intro/1–6 and the four
+  /theory/* pages. `GLOSSARY[term] = slug`.
+- Bodies are Markdown-subset template strings; numbers come from
+  imported constants through `fmt` (≤3 decimals) and `frac` (2/3 as a
+  fraction) and generated tables (TENSION_WEIGHTS × OCTAVE_DISCOUNTS,
+  SUFFIX_TO_TYPE sorted by interval count).
+
+Lookup API:
+
+- `getTopic(slug)` → raw entry or null.
+- `resolveSlug(slug)` → `{ kind:'topic', slug, title, url, status }` or
+  `{ kind:'page', key, title, url }` or null.
+- `resolveLink(target)` → mini-markdown link resolver: topic slug →
+  `/learn/<slug>` with class `learn-link` (`learn-link--stub` added for
+  stubs), EXTERNAL key → its url, `/path` and `http(s)://` pass through,
+  anything else drops to plain text.
+- `glossaryLookup(term)` → `resolveSlug` result, case-insensitive.
+- `renderTopic(slug)` → everything a pill, page or card needs:
+  `{ slug, title, status, disclaimer, category, kind, panel,
+  summaryHtml, html, seeAlso[] }` (`seeAlso` entries are `resolveSlug`
+  results, so external pages are included).
+- `topicsForPanel(panel)` → slugs whose `panel` matches.
+- `selfTest()`: every status valid, every see_also / glossary slug
+  resolves, every body renders with no "undefined" / "NaN", notes not
+  rendered, generated tables contain the live constants.
+
+### InfoPill API (as built)
+
+```
+import { InfoPill } from '/static/shared/info-pill.js';
+const pill = InfoPill.mount(anchorEl, {
+  slug,            // registry slug, or
+  content,         // { title, status?, disclaimer?, kind?, summaryHtml, seeAlso?, url? }, or
+  render,          // () => slug | content, called on every open
+  label,           // optional text next to ⓘ ("Learn"); icon-only when omitted
+  position,        // 'append' (default) | 'after'
+  onOpen, onClose,
+});
+pill.setContent(slugOrContent); pill.open(); pill.close(); pill.toggle();
+pill.destroy(); pill.isOpen;
+```
+
+- Popover shows title, status disclaimer, kind + status badges, the
+  summary, see-also chips (stub chips dashed, page chips marked ↗) and
+  "Read more →" to `/learn/<slug>` in a new tab. Never the body.
+- Trigger is a `<button aria-haspopup="dialog" aria-expanded>`; the
+  popover is `role="dialog" aria-modal="false"`, appended to body and
+  fixed-positioned below the trigger (shifts or flips to stay in the
+  viewport; repositions on scroll / resize). Under 700px it is a
+  full-width bottom sheet.
+- Focus moves into the popover on open and returns to the trigger on
+  close only if it was still inside (so an outside click on a control
+  keeps that control's focus). One pill open at a time.
+- The module injects its own CSS and a `<link>` to
+  `/static/shared/learn.css`, so it works on pages that do not extend
+  base.html (explorer.html).
+
+**Escape precedence.** The pill adds a capture-phase `keydown` listener
+on `document` only while it is open and removes it on close. While
+open, Escape calls `preventDefault()` and `stopImmediatePropagation()`
+and closes the pill, so the page's bubbling handler never sees it. When
+no pill is open there is no listener at all, so the /voicings keydown
+handler (Stop playback, clear preview) keeps its current behaviour
+untouched. Outside `mousedown` is handled the same way (capture, only
+while open).
