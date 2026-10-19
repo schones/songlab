@@ -15,6 +15,7 @@ Routes:
 
 from datetime import datetime
 import io
+import json
 import os
 import re
 import struct
@@ -301,6 +302,42 @@ def voicings():
 
 
 _VOICING_PIECE_RE = re.compile(r"^[a-z0-9-]+$")
+
+
+@app.route("/voicings/pieces")
+def voicings_pieces():
+    """List the pieces /voicings/data/<name> can serve: [{ name, title, source }],
+    source 'private' (static/private/<name>.json, gitignored) or 'public'
+    (tests/fixtures/voicing-<name>.json). Same folders and precedence as the
+    data route; a name present in both is listed once, as private. Title from
+    the JSON's "title", else the name. Scanned from disk: nothing hardcoded."""
+    base = os.path.dirname(os.path.abspath(__file__))
+    folders = (
+        ("private", os.path.join(base, "static", "private"), r"^([a-z0-9-]+)\.json$"),
+        ("public", os.path.join(base, "tests", "fixtures"), r"^voicing-([a-z0-9-]+)\.json$"),
+    )
+    pieces, seen = [], set()
+    for source, directory, pattern in folders:
+        if not os.path.isdir(directory):
+            continue
+        for filename in sorted(os.listdir(directory)):
+            m = re.match(pattern, filename)
+            if not m or m.group(1) in seen:
+                continue
+            path = os.path.join(directory, filename)
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    data = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(data, dict) or not isinstance(data.get("bars"), list):
+                continue
+            name = m.group(1)
+            seen.add(name)
+            title = data.get("title")
+            pieces.append({"name": name, "title": title if isinstance(title, str) and title.strip() else name, "source": source})
+    pieces.sort(key=lambda p: (p["source"] != "private", p["title"].lower()))
+    return jsonify(pieces)
 
 
 @app.route("/voicings/data/<name>")

@@ -20,6 +20,10 @@
   .vp-piece-form { margin-left: auto; display: flex; gap: 6px; align-items: center; font-size: var(--font-size-xs); color: var(--text-muted); }
   .vp-piece-form input { width: 11em; padding: 4px 8px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font: inherit; }
   .vp-piece-form button { padding: 4px 10px; border-radius: var(--radius-md); border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text-secondary); font: inherit; cursor: pointer; }
+  .vp-piece-form select { max-width: 18em; padding: 4px 8px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font: inherit; }
+  /* The picker shows once /voicings/pieces answers; until then, and if it fails, the text box. */
+  .vp-piece-form--list .vp-piece-form__text { display: none; }
+  .vp-piece-form:not(.vp-piece-form--list) .vp-piece-form__list { display: none; }
 
   .vp-banner { padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-raised); color: var(--text-secondary); font-size: var(--font-size-xs); }
   .vp-banner--error { border-color: var(--accent-coral); color: var(--text-primary); }
@@ -159,9 +163,11 @@
     <h1 class="vp-title">Voicings <span class="vp-title__piece" id="vp-piece-title">…</span></h1>
     <p class="vp-meta" id="vp-meta"></p>
     <form class="vp-piece-form" id="vp-piece-form">
-      <label for="vp-piece-input">piece</label>
-      <input id="vp-piece-input" name="piece" type="text" pattern="[a-z0-9-]+" placeholder="dont-be-sad">
-      <button type="submit">Load</button>
+      <label for="vp-piece-select" class="vp-piece-form__list">piece</label>
+      <select id="vp-piece-select" class="vp-piece-form__list" aria-label="Piece"></select>
+      <label for="vp-piece-input" class="vp-piece-form__text">piece</label>
+      <input id="vp-piece-input" class="vp-piece-form__text" name="piece" type="text" pattern="[a-z0-9-]+" placeholder="dont-be-sad">
+      <button type="submit" class="vp-piece-form__text">Load</button>
     </form>
   </header>
 
@@ -297,6 +303,7 @@
     banner: document.getElementById('vp-banner'),
     form:   document.getElementById('vp-piece-form'),
     input:  document.getElementById('vp-piece-input'),
+    select: document.getElementById('vp-piece-select'),
     play:   document.getElementById('vp-play'),
     playHint: document.getElementById('vp-play-hint'),
     melody: document.getElementById('vp-melody'),
@@ -989,6 +996,7 @@
       `${progression.bars.length} bars`,
     ].filter(Boolean).map(s => `<span>${s}</span>`).join('');
     els.input.value = loadedName;
+    syncPicker(loadedName);
 
     // Anchor the shared Tonnetz on the piece's key, depth 3 so all twelve
     // pitch classes are on the grid for Note Mode's compact cluster.
@@ -1003,15 +1011,49 @@
     renderPlayButton();
   }
 
-  els.form.addEventListener('submit', e => {
-    e.preventDefault();
-    const name = els.input.value.trim();
+  /** Switch piece from the header: the URL keeps the choice (same param as a deep link), then load() as an explicit request. */
+  function switchPiece(name) {
     if (!/^[a-z0-9-]+$/.test(name)) return;
     const url = new URL(window.location.href);
     url.searchParams.set('piece', name);
     history.replaceState(null, '', url);
     load(name, { explicit: true });
-  });
+  }
+
+  els.form.addEventListener('submit', e => { e.preventDefault(); switchPiece(els.input.value.trim()); });
+  els.select.addEventListener('change', () => { if (els.select.value) switchPiece(els.select.value); });
+
+  // ── Piece picker ────────────────────────────────────────────────
+  // /voicings/pieces lists what the data route can serve, private pieces
+  // first. The select replaces the text box once the list arrives; if the
+  // fetch fails the text box stays, so the page still works.
+  let pieceList = [];
+  function syncPicker(name) {
+    if (!pieceList.length) return;
+    const has = [...els.select.options].some(o => o.value === name);
+    if (has) els.select.value = name; else els.select.selectedIndex = -1;   // unknown name: nothing selected, the banner explains
+  }
+  async function loadPieceList() {
+    try {
+      const res = await fetch('/voicings/pieces', { headers: { Accept: 'application/json' } });
+      if (!res.ok) return;
+      const list = await res.json();
+      if (!Array.isArray(list) || !list.length) return;
+      pieceList = list;
+      els.select.textContent = '';
+      for (const source of ['private', 'public']) {
+        const group = list.filter(p => p.source === source);
+        if (!group.length) continue;
+        const og = document.createElement('optgroup');
+        og.label = source === 'private' ? 'local (private)' : 'public';
+        for (const p of group) { const o = document.createElement('option'); o.value = p.name; o.textContent = source === 'private' ? `${p.title} (local)` : p.title; og.appendChild(o); }
+        els.select.appendChild(og);
+      }
+      els.form.classList.add('vp-piece-form--list');
+      syncPicker(state.piece);
+    } catch (_) { /* list unavailable: the text box stays */ }
+  }
+  loadPieceList();
 
   const params = new URLSearchParams(window.location.search);
   state.includeMelody = params.get('melody') === '1';
@@ -1022,6 +1064,7 @@
   // Debug handle for the browser console (no behaviour depends on it).
   window.__voicings = {
     state, select, selectEvent, stepEvent, chart, keyboard, detail, bubble, staff, player, playSelected, setIncludeMelody,
+    switchPiece, pieces: () => pieceList,
     explore: {
       compute: computeExplore, rows: () => exploreRows, preview: previewCandidate, clear: clearPreview, keep: keepPreview, playRow, stepPreview, nudgeTarget,
       revert: revertBar, reset: resetOverrides, copy: copyOverrides, json: overridesJSON,
