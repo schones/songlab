@@ -17,6 +17,14 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-19] /voicings layout on wide screens and tablets.** The Tonnetz
+  (fixed 380px height) and the staff (Verovio at its own scale) do not grow
+  with their panels, so at 1800px+ the middle of the page is mostly empty
+  surface; the keyboard now scales to its panel and the Theory card sits
+  beside Explore. Tablet widths (700–1200px) get the two-column detail grid
+  and the stacked Explore, both untuned. Future layout session.
+  See: `templates/voicings.html` `.vp-detail`, `.vp-tonnetz`; `static/shared/voicing-staff.js`.
+
 - **[2026-10-19] Dominant rule: "needs the ♭7" decided by ear on one bar.**
   Rag bar 12, event 2 (E♭7 over E♭4) after the first version of the rule:
   #3 F4 G4 (9, 3, no ♭7) does not sound dominant; #5 F4 D♭5 (9, ♭7, no 3)

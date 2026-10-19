@@ -9,6 +9,7 @@
     display: flex; flex-direction: column; gap: var(--space-lg, 16px);
     padding: var(--space-lg, 16px) var(--space-xl, 24px) var(--space-2xl, 32px);
     box-sizing: border-box; min-height: calc(100vh - 72px);
+    max-width: 1800px; width: 100%; margin: 0 auto;
     background: var(--bg-base, #15151B); color: var(--text-primary, #F2EFE6);
   }
   .vp-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-sm, 8px) var(--space-lg, 16px); }
@@ -67,9 +68,16 @@
   .vp-explore__actions { margin-left: auto; display: inline-flex; gap: 6px; }
   .vp-explore__flag { font-size: var(--font-size-2xs); color: var(--accent-coral); }
   .vp-explore__hint { font-size: var(--font-size-2xs); color: var(--text-muted); }
+  .vp-explore__grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-lg, 16px); align-items: start; }
+  .vp-explore__main { min-width: 0; overflow-x: auto; }   /* the table scrolls inside its column on narrow screens; the page never widens */
   .vp-explore__table { width: 100%; border-collapse: collapse; font-size: var(--font-size-xs); }
-  .vp-explore__table th { text-align: left; font-weight: 500; color: var(--text-muted); font-size: var(--font-size-2xs); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 8px; border-bottom: 1px solid var(--border-subtle); }
-  .vp-explore__table td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; white-space: nowrap; }
+  .vp-explore__table th { text-align: left; font-weight: 500; color: var(--text-muted); font-size: var(--font-size-2xs); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 6px; border-bottom: 1px solid var(--border-subtle); white-space: normal; line-height: 1.2; vertical-align: bottom; }
+  .vp-explore__table td { padding: 4px 6px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; white-space: nowrap; }
+  .vp-explore__table td:nth-child(1), .vp-explore__table th:nth-child(1) { padding-left: 2px; padding-right: 2px; width: 1.6em; }
+  .vp-explore__table td:nth-child(2), .vp-explore__table th:nth-child(2) { padding-left: 0; padding-right: 2px; width: 28px; }
+  .vp-explore__table td:nth-child(6), .vp-explore__table td:nth-child(7) { white-space: normal; line-height: 1.5; }   /* omitted / added, source: wrap */
+  .vp-explore__table td:nth-child(8) { white-space: normal; }
+  .vp-explore__table .vp-explore__note { margin: 1px 3px 1px 0; }
   .vp-explore__row { cursor: pointer; }
   .vp-explore__row:hover td { background: rgba(255, 255, 255, 0.03); }
   .vp-explore__row--preview td { background: rgba(212, 160, 60, 0.12); }
@@ -92,6 +100,16 @@
   .vp-explore__empty { color: var(--text-muted); font-style: italic; font-size: var(--font-size-xs); }
   .vp-explore__json { width: 100%; min-height: 6em; margin-top: 8px; font-family: var(--font-family-mono, monospace); font-size: var(--font-size-2xs); background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); }
   .vp-explore__json[hidden] { display: none; }
+
+  /* ── Theory card: right column of Explore, sticky, scrolls inside ─ */
+  /* The site nav is not sticky, so the top offset is only a gutter. */
+  .vp-explore .vp-theory { position: sticky; top: 12px; max-height: calc(100vh - 24px); display: flex; flex-direction: column; background: var(--bg-raised); }
+  .vp-explore .vp-theory__body { overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+  @media (max-width: 1200px) {
+    .vp-explore__grid { grid-template-columns: 1fr; }
+    .vp-explore .vp-theory { position: static; max-height: none; }
+    .vp-explore .vp-theory__body { overflow: visible; }
+  }
 
   /* ── Theory card (docked, collapsible; voicing-describe.js) ── */
   .vp-theory { padding: 0; }
@@ -171,17 +189,6 @@
         <p class="vp-panel__label" data-explain="staff">Staff — click a note to find it on the keyboard</p>
         <div id="vp-staff"></div>
       </div>
-      <section class="vp-panel vp-theory" id="vp-theory" aria-label="Theory">
-        <button type="button" class="vp-theory__toggle" id="vp-theory-toggle" aria-expanded="true" aria-controls="vp-theory-body">
-          <span class="vp-panel__label">Theory</span>
-          <span class="vp-theory__what" id="vp-theory-what">—</span>
-          <span class="vp-theory__chev" aria-hidden="true">▾</span>
-        </button>
-        <div class="vp-theory__body" id="vp-theory-body">
-          <div id="vp-theory-disclaimer"></div>
-          <div id="vp-theory-sections"></div>
-        </div>
-      </section>
     </div>
     <div class="vp-panel vp-panel--tonnetz">
       <p class="vp-panel__label" data-explain="tonnetz">Tonnetz</p>
@@ -222,8 +229,23 @@
         <button type="button" class="vp-explore__btn" id="vp-explore-copy" disabled title="Copy the overrides as JSON">Copy JSON</button>
       </span>
     </div>
-    <div id="vp-explore-rows"></div>
-    <textarea class="vp-explore__json" id="vp-explore-json" hidden readonly aria-label="Overrides as JSON"></textarea>
+    <div class="vp-explore__grid">
+      <div class="vp-explore__main">
+        <div id="vp-explore-rows"></div>
+        <textarea class="vp-explore__json" id="vp-explore-json" hidden readonly aria-label="Overrides as JSON"></textarea>
+      </div>
+      <section class="vp-panel vp-theory" id="vp-theory" aria-label="Theory">
+        <button type="button" class="vp-theory__toggle" id="vp-theory-toggle" aria-expanded="true" aria-controls="vp-theory-body">
+          <span class="vp-panel__label">Theory</span>
+          <span class="vp-theory__what" id="vp-theory-what">—</span>
+          <span class="vp-theory__chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="vp-theory__body" id="vp-theory-body">
+          <div id="vp-theory-disclaimer"></div>
+          <div id="vp-theory-sections"></div>
+        </div>
+      </section>
+    </div>
   </section>
 
   <section class="vp-panel vp-keyboard-panel" aria-label="Keyboard">
@@ -367,7 +389,7 @@
   }
 
   // ── Theory card ─────────────────────────────────────────────────
-  // Docked under the staff: describeVoicing() for the selected event, or for
+  // Docked beside the Explore rows: describeVoicing() for the selected event, or for
   // the previewed candidate (with its rank, the rows shown and the target, so
   // it can say why it ranked there). Re-rendered from renderPanels only —
   // playback follow never touches it. Open / closed is remembered per browser.

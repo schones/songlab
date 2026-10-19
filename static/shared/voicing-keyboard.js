@@ -4,7 +4,9 @@
  * Small page-owned keyboard for the Voicing Explorer Analyze page.
  * Colors keys by role — bass (gold), voicing (blue), melody (green) — and
  * labels lit keys with their written spelling. Independent of
- * keyboard-view.js and HarmonyState.
+ * keyboard-view.js and HarmonyState. Keys are laid out from a white-key
+ * unit that grows with the container so the keyboard spans its panel
+ * (a ResizeObserver relays them); below the base unit the wrap scrolls.
  *
  * Usage:
  *   const kb = new VoicingKeyboard('vp-keyboard', { low: 'C2', high: 'B5' });
@@ -17,6 +19,7 @@
 import { parseNote } from './voicing-analysis.js';
 
 const WHITE_W = 28, WHITE_H = 112, BLACK_W = 17, BLACK_H = 70;
+const MAX_UNIT = 64;   // widest white key: on a very wide panel the keyboard stops growing and centres
 const BLACK_PCS = new Set([1, 3, 6, 8, 10]);
 /** Horizontal offset of a black key from its left white neighbour, as a fraction of WHITE_W. */
 const BLACK_OFFSET = { 1: 0.62, 3: 0.72, 6: 0.60, 8: 0.66, 10: 0.74 };
@@ -29,13 +32,13 @@ const ROLE_COLORS = {
 
 const CSS = /* css */ `
 .vk-wrap { width: 100%; overflow-x: auto; overflow-y: hidden; }
-.vk { position: relative; height: ${WHITE_H}px; user-select: none; }
+.vk { position: relative; height: ${WHITE_H}px; user-select: none; margin: 0 auto; }
 .vk-key { position: absolute; top: 0; box-sizing: border-box; border-radius: 0 0 4px 4px;
   display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px;
   font-family: var(--font-family-base, system-ui, sans-serif); font-size: 10px; line-height: 1;
   transition: background-color 120ms ease, box-shadow 120ms ease; }
-.vk-key--white { width: ${WHITE_W}px; height: ${WHITE_H}px; background: #ECE8DC; border: 1px solid #2A2620; color: #6B6457; z-index: 1; }
-.vk-key--black { width: ${BLACK_W}px; height: ${BLACK_H}px; background: #1A1A22; border: 1px solid #0E0E12; color: #C7C2B5; z-index: 2; border-radius: 0 0 3px 3px; }
+.vk-key--white { height: ${WHITE_H}px; background: #ECE8DC; border: 1px solid #2A2620; color: #6B6457; z-index: 1; }
+.vk-key--black { height: ${BLACK_H}px; background: #1A1A22; border: 1px solid #0E0E12; color: #C7C2B5; z-index: 2; border-radius: 0 0 3px 3px; }
 .vk-key__label { opacity: 0; font-weight: 700; white-space: nowrap; }
 .vk-key--octave .vk-key__label { opacity: 0.55; font-weight: 400; }
 .vk-key--lit .vk-key__label { opacity: 1; color: #fff; text-shadow: 0 0 2px rgba(0,0,0,0.6); }
@@ -61,6 +64,8 @@ class VoicingKeyboard {
     this._keys = new Map();   // midi → element
     this._roles = {};         // last render() roles, restored after setPlaying(null)
     this._wrap = null;
+    this._unit = WHITE_W;     // current white-key width in px
+    this._observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => this._layout()) : null;
 
     if (!document.getElementById('vk-styles')) {
       const st = document.createElement('style');
@@ -144,7 +149,24 @@ class VoicingKeyboard {
     for (const m of list) { const el = this._keys.get(Number(m)); if (el) el.classList.add('vk-key--hit'); }
   }
 
-  destroy() { this._wrap.remove(); }
+  destroy() { if (this._observer) this._observer.disconnect(); this._wrap.remove(); }
+
+  /** Lay the keys out from the white-key unit that fills the wrap (never below WHITE_W, never above MAX_UNIT). */
+  _layout() {
+    if (!this._wrap) return;
+    const kb = this._wrap.firstElementChild;
+    const whites = Number(kb.dataset.whites) || 1;
+    const avail = this._wrap.clientWidth;
+    const unit = Math.max(WHITE_W, Math.min(MAX_UNIT, Math.floor(avail / whites)));
+    if (unit === this._unit && kb.style.width) return;
+    this._unit = unit;
+    kb.style.width = `${whites * unit}px`;
+    for (const el of this._keys.values()) {
+      const black = el.classList.contains('vk-key--black');
+      el.style.left = `${Number(el.dataset.slot) * unit}px`;
+      el.style.width = `${black ? Math.round(unit * BLACK_W / WHITE_W) : unit}px`;
+    }
+  }
 
   // ── internal ────────────────────────────────────────────────────
 
@@ -159,7 +181,7 @@ class VoicingKeyboard {
     let whiteIdx = 0;
     let whites = 0;
     for (let m = this._low; m <= this._high; m++) if (!BLACK_PCS.has(m % 12)) whites++;
-    kb.style.width = `${whites * WHITE_W}px`;
+    kb.dataset.whites = String(whites);
 
     for (let m = this._low; m <= this._high; m++) {
       const pc = m % 12, octave = Math.floor(m / 12) - 1;
@@ -170,11 +192,10 @@ class VoicingKeyboard {
       const label = document.createElement('span');
       label.className = 'vk-key__label';
       if (black) {
-        const leftWhiteIdx = whiteIdx - 1;
-        el.style.left = `${(leftWhiteIdx + BLACK_OFFSET[pc]) * WHITE_W}px`;
+        el.dataset.slot = String(whiteIdx - 1 + BLACK_OFFSET[pc]);   // position in white-key units; _layout() turns it into px
         el.dataset.defaultLabel = '';
       } else {
-        el.style.left = `${whiteIdx * WHITE_W}px`;
+        el.dataset.slot = String(whiteIdx);
         if (pc === 0) { el.classList.add('vk-key--octave'); el.dataset.defaultLabel = `C${octave}`; }
         else el.dataset.defaultLabel = '';
         whiteIdx++;
@@ -186,6 +207,9 @@ class VoicingKeyboard {
     }
     this._wrap.appendChild(kb);
     this._container.appendChild(this._wrap);
+    this._unit = 0;
+    this._layout();
+    if (this._observer) { this._observer.disconnect(); this._observer.observe(this._wrap); }
   }
 }
 
