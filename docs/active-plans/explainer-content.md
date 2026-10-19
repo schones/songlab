@@ -193,20 +193,27 @@ One prompt each; stop after each for review.
   `melody-rule` split into its own topic, constructed C7 shell example
   added to guide-tones-and-shells. Nothing on /voicings changed. All six
   suites pass: 64 / 76 / 70 / 95 / 28 / 33.
-- **P3 panel pills on /voicings** — mount one pill per panel header via
-  `topicsForPanel(panelId)`; Escape precedence verified against the
-  page keydown handler (Stop / clear preview).
-- **P4 voicing-describe.js** — `describeVoicing` pure function;
-  `shapeKey` refactor; bass added to `voicedNeighbours` refs; degree-set
-  shape catalogue (decision 5).
-- **P5 docked Theory card** — Selected-bar column, collapsible, re-rendered
-  from `renderPanels`; "why ranked" section needs a `rankKey` export from
-  voicing-explore.js.
-- **P6 nav + Salamander attribution + docs** — flat "Voicings" link in
-  base.html and explorer.html; Salamander Grand Piano attribution where
-  the player is documented; STATUS / SESSION_LOG / RADAR.
-- **Then:** abbreviated tuning step, dominant rule only (♯11 requires
-  3rd + ♭7; 13 requires ♭7), and merge `voicing-explorer` to `dev`.
+- **P3 panel pills on /voicings — done** (`a4b19a4`, 2026-10-19). One
+  pill per panel header via `topicsForPanel(panelId)`; Escape precedence
+  verified against the page keydown handler.
+- **P4 voicing-describe.js — done** (`cf6d5ff`). `describeVoicing(event,
+  context) → Section[]` (shape, guide tones, colour tones, omissions,
+  motion, why-ranked); `shapeKey` factored out of `harvestShapes`; bass
+  and event count on `voicedNeighbours` refs; `SHAPE_CATALOGUE`
+  (shells, rootless A/B forms incl. dominant versions). 61/61.
+- **P5 docked Theory card — done** (`cf6d5ff`, `5d46699`, `fbc59d0`).
+  `rankKey` exported; card rendered from `renderPanels`, now beside the
+  Explore table (3fr/2fr, sticky, stacks under 1200px); one deduped
+  "Read more" row; quiet stub links; target nudge re-ranks an open
+  preview; header "Previewing candidate #n of N (12 shown)".
+- **P6 nav + Salamander attribution + docs — done** (2026-10-19).
+- **Then — done:** dominant rule (`DOMINANT_RULE`: every candidate keeps
+  the ♭7, ♯11 also needs the 3rd; by-ear evidence in RADAR), piece
+  picker (`/voicings/pieces` + header select), rag `SYMBOLS` corrected
+  (slash = lowest non-root sounding note), `bassSource` recorded and
+  shown ("the lowest note" wording for inferred basses), Theory-card
+  layout. Session 6.5 build state: **complete**. Next: merge
+  `voicing-explorer` to `dev`.
 
 ### Registry shape (as built)
 

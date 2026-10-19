@@ -381,7 +381,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - ChordResolver with interval-content fallback
 - Full three-panel bidirectional sync via HarmonyState
 
-### Voicing Explorer — Analyze + Explore — current state (updated 2026-10-16)
+### Voicing Explorer — Analyze + Explore — current state (updated 2026-10-19)
 
 **Landed on `voicing-explorer` (Sessions 1–3, 2026-10-14):**
 - `static/shared/voicing-analysis.js` — pure engine: `parseSymbol`,
@@ -622,14 +622,52 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - Listening, bar 21: see SESSION_LOG 2026-10-16 Session 6; tuning
   hypotheses in RADAR.
 
+**Landed on `voicing-explorer` (Session 6.5 + extras, 2026-10-17 → 19, `db3d6b5` … `47d8b24` and P6):**
+- Explainer layer: `voicing-explainer-content.js` (25 topics, claude-draft
+  or stub, constants interpolated), `mini-markdown.js`, `info-pill.js`
+  (one ⓘ per /voicings panel), `/learn` + `/learn/<slug>`, `learn.css`.
+- `voicing-describe.js` — `describeVoicing(event, context)` → sections
+  (shape via `SHAPE_CATALOGUE`, guide tones, colour tones with rubs and
+  unusual-label heuristics, omissions, motion vs the voiced neighbour,
+  why-ranked via `rankKey`); inferred basses worded "the lowest note".
+- Theory card on /voicings beside the Explore table (sticky, scrolls
+  inside, stacks under 1200px); page max-width 1800; keyboard scales to
+  its panel (`voicing-keyboard.js` ResizeObserver).
+- Dominant rule in `generateCandidates` (`DOMINANT_RULE`: every
+  candidate keeps the ♭7, ♯11 also needs the 3rd; bass counts; original
+  exempt; `removed[]` with reasons shown in the hint and card).
+- Piece picker: `/voicings/pieces` (private then public, from disk) and
+  a header `<select>`; deep links unchanged; text-box fallback.
+- Rag: `SYMBOLS` corrected (slash only when the lowest sounding note is
+  not the root; Bdim7 unslashed); provenance comment and header note
+  ("symbols added by analysis", from `chordSymbols: "derived"`); source
+  credit in the header meta from `attribution`.
+- Exporter: `comp[].bassSource` (`voice` / `carried` / `inferred`);
+  Selected bar tags an inferred bass. check_export 25/25, check_midi 0.
+- Nav: "Voicings" after Explorer in `base.html` and `explorer.html`;
+  Salamander CC BY 3.0 credit in the base footer, the explorer status
+  bar and the playback topic.
+- Suites: analysis 64, staff 70, playback 95, explore 89, mini-markdown
+  28, content 34, describe 61. Verified in headless Chrome at 2560 /
+  1440 / 1100 / 390.
+
 **In progress:**
-- Nothing; Session 6.5 (explainer layer) next.
+- Session 7: merge `voicing-explorer` to `dev` (Dustin), clean-clone
+  check. dev has not moved since the branch point (`57afaa9`).
 
 **Open / deferred:**
-- Session 6.5 (explainer layer), Explore tuning (RADAR hypotheses
-  from bar 21: dominant ♯11 / 13 need the ♭7; register factor by
-  degree; 0.5 ranking buckets create cliffs), Session 7 (merge to
-  dev, clean-clone check).
+- Explore tuning still open: register factor by degree; 0.5 ranking
+  buckets create cliffs; piece ceiling self-limiting (RADAR). The
+  dominant rule's "needs the ♭7" was decided by ear on one bar —
+  revisit with more examples (RADAR).
+- Private piece data under `static/private/` is directly fetchable
+  via Flask's static route; move to a non-static folder before any
+  shared deploy (RADAR).
+- Rag bars 16–17: the real bass dyad on beat 1.5 goes to `bassLine`
+  only; Explore never voices against it (RADAR).
+- Tonnetz and staff do not scale to their panels on wide screens;
+  tablet layout untuned (RADAR). 390px: the Explore column scrolls
+  sideways for the right-hand table columns.
 - Explore overrides are not persisted (Revert / Reset / Copy JSON
   only); the melody rule is a piano-solo heuristic (RADAR); the piece
   ceiling is self-limiting in melody-less events (RADAR).
@@ -649,15 +687,13 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   Verovio URL is one constant in `voicing-staff.js`.
 - Staff polish: keep each comp chord on one staff instead of
   splitting by pitch at `SPLIT_MIDI`; beam melody eighths.
-- `/voicings` is not in the nav; placement (Explorer menu vs top
-  level) to decide, see RADAR 2026-10-16. Not-found state shows the
-  default C-major Tonnetz (no key to anchor on).
+- Not-found state shows the default C-major Tonnetz (no key to anchor
+  on).
 - Chord-symbol suffix table lives in the engine
   (`SUFFIX_TO_TYPE`); fold into the canonical registry when
   `chord-types.json` lands.
-- Salamander: CC BY attribution owed app-wide; three other URL maps
-  (audio-bridge, keyboard-view, intro-audio) still point at the
-  unpinned GitHub Pages copy (RADAR).
+- Salamander: three other URL maps (audio-bridge, keyboard-view,
+  intro-audio) still point at the unpinned GitHub Pages copy (RADAR).
 
 **Public surfaces (debugging):**
 - `window.__voicings` on `/voicings`: `{ state, select, selectEvent,
@@ -667,12 +703,17 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   `state.overrides` / `state.effective` / `state.preview`;
   `explore: { compute, rows, preview, clear, keep, playRow,
   stepPreview, nudgeTarget, revert, reset, copy, json, setTarget,
-  setCountRange, setSourceFilter, trialProgression }`.
+  setCountRange, setSourceFilter, trialProgression }`, plus
+  `switchPiece(name)` and `pieces()`. `/voicings/pieces` lists what
+  `/voicings/data/<name>` can serve.
 - Self-tests:
   `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
   `node --input-type=module -e "import('./static/shared/voicing-staff-model.js').then(m => m.selfTest())"`
   `node --input-type=module -e "import('./static/shared/voicing-playback-model.js').then(m => m.selfTest())"`
   `node --input-type=module -e "import('./static/shared/voicing-explore.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/mini-markdown.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/voicing-explainer-content.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/voicing-describe.js').then(m => m.selfTest())"`
   `python3 tools/voicings/check_export.py`
   `python3 tools/voicings/check_midi.py --fixture tests/fixtures/voicing-maple-leaf-rag.json`
 - Regenerate the rag: `python3 tools/voicings/ly_to_src.py --ly tests/fixtures/maple-leaf-rag.ly --out tests/fixtures/maple-leaf-rag.src.py && python3 tools/voicings/export_json.py --src tests/fixtures/maple-leaf-rag.src.py --out tests/fixtures/voicing-maple-leaf-rag.json`

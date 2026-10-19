@@ -308,7 +308,7 @@ const TOPICS = {
       ## Sound
 
       The first Play downloads a sampled piano (about 2 MB, 29 samples):
-      Salamander Grand Piano, CC BY 3.0 Alexander Holm, pinned to version
+      Salamander Grand Piano by Alexander Holm, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), pinned to version
       \`${SALAMANDER_VERSION.slice(0, 12)}\`. Tempo comes from the piece
       (${DEFAULT_TEMPO} when it has none). Velocities by role: ${velocityList}.
       The nav's speaker button mutes everything; if the browser blocks audio

@@ -310,9 +310,8 @@ def check_lengths(bars, beats, label):
 
 # ── Maple Leaf Rag specifics ─────────────────────────────────────────
 
-# Chord symbols are NOT in the Mutopia edition (rags carry none) and were not
-# written by Dustin: an earlier Claude session derived them by analysing the
-# reduction (2026-10). Corrected 2026-10-19: the first version put the top note
+# Chord symbols are not in the Mutopia edition (rags carry none): derived by
+# Claude (AI-assisted analysis of the reduction, 2026-10). Corrected 2026-10-19: the first version put the top note
 # of the chord cluster in the slash; a slash names the bass, so now a slash
 # appears only when the lowest sounding note is not the root, and names that
 # note (the dim7 bars stay unslashed by decision). The JSON carries
@@ -349,7 +348,7 @@ META = {
         'composer': 'Scott Joplin (1868–1917), c. 1899',
         'source': 'Mutopia Project, Mutopia-2011/11/13-23',
         'url': 'https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=23',
-        'edition': 'Reproduction of original edition (1899), typeset in LilyPond 2.14.2',
+        'edition': 'Reproduction of the original edition (John Stark & Son, 1899), typeset in LilyPond 2.14.2',
         'typesetter': 'Chris Sawer (maintainer, Mutopia Project)',
         'license': 'Public Domain (Creative Commons public domain mark)',
         'notes': (
@@ -357,8 +356,8 @@ META = {
             'the eighth-note pickup is dropped). melody = the top note of each right-hand event; '
             'right-hand inner tones and octave doublings are dropped. bass voice = left-hand single '
             'notes and octave dyads, of which bassLine keeps the lower note; chord voice = every other '
-            'left-hand event. Chord symbols are not part of the edition: an earlier Claude session '
-            'derived them by analysis (chordSymbols: derived). '
+            'left-hand event. Chord symbols are not part of the edition: derived by Claude '
+            '(AI-assisted analysis; chordSymbols: derived). '
             'Staff-vs-PDF differences that follow from these rules are expected.'
         ),
     },
@@ -388,7 +387,7 @@ def main():
              '# tools/voicings/ly_to_src.py from tests/fixtures/maple-leaf-rag.ly',
              '# (Mutopia-2011/11/13-23, Public Domain). See META["attribution"]["notes"]',
              '# for the reduction rules. Chord symbols are not in the edition: derived by',
-             '# analysis in an earlier Claude session (see SYMBOLS in ly_to_src.py).',
+             '# Claude, AI-assisted analysis (see SYMBOLS in ly_to_src.py).',
              '#',
              '# Each bar: (chord symbols, melody, bass voice, chord voice) — the grammar of',
              '# static/private/score_src.py, read by tools/voicings/export_json.py.',

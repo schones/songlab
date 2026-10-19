@@ -17,6 +17,15 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-19] Private piece data under `static/` is directly fetchable.**
+  `static/private/dont-be-sad.json` answers HTTP 200 at
+  `/static/private/dont-be-sad.json` through Flask's static route, not
+  only via `/voicings/data/<name>`. It is gitignored, so Railway never has
+  it today, but any shared deploy with the file present would expose it.
+  Move private pieces to a non-static folder (and point `voicings_data` and
+  `voicings_pieces` there) before any shared deploy.
+  See: `app.py` `voicings_data`, `voicings_pieces`; `.gitignore`.
+
 - **[2026-10-19] Late-bar bass notes never become comp events.** Rag bars 16
   and 17: the real left-hand octave on beat 1.5 (E♭2, A2) lands in
   `bassLine` only, because comp events are keyed to chord-voice onsets and
@@ -45,14 +54,6 @@ out of awareness.
   before treating it as more than a hint.
   See: `static/shared/voicing-explore.js` `DOMINANT_RULE`; explore-ranking topic.
 
-- **[2026-10-19] Rag derived symbols: slash bass is the top note.** Bar 12
-  reads A♭/C over E♭4 A♭4 C5 and E♭7/D♭ over E♭4 G4 D♭5: the slash names
-  the highest note of the chord cluster, not the lowest. The Theory card
-  reports the mismatch neutrally ("the bass note in effect here is E♭4").
-  Check the symbol derivation (`chordSymbols: derived` in
-  `tests/fixtures/maple-leaf-rag.src.py`), not the engine's bass lookback.
-  See: `tools/voicings/export_json.py` `convert_symbol`; rag bars 12, 16, 17.
-
 - **[2026-10-19] /voicings scrolls horizontally at 390px.** Pre-existing:
   chart or keyboard SVG lines and rects reach ~411px on a 390px viewport
   (document scrollWidth ~700). Not the Theory card (342px, no overflow).
@@ -71,17 +72,23 @@ out of awareness.
   interval. Liked: G-D-E♭ (9 13 ♭7), the shell, the piece's own
   C-A-B♭ (5-3-11).
   See: SESSION_LOG 2026-10-16 Session 6 "Listening"; `static/shared/voicing-explore.js` `chordTones`.
+  **Update 2026-10-19:** the dominant clauses are built as `DOMINANT_RULE`
+  (every candidate keeps the ♭7; ♯11 also needs the 3rd), so every
+  dominant candidate now keeps at least one guide tone — resolved by the
+  ♭7 rule. The register-by-degree factor is still open.
 
 - **[2026-10-16] Explore ranking: 0.5 buckets create cliffs.** Bar 21's
   original fell from #3 at its own target to #12 at target 3. Consider
   finer buckets or a blended cost (distance + λ · motion). The
-  motion-first tiebreak may favour blander voicings.
-  See: `static/shared/voicing-explore.js` `rankCandidates`, `targetDistance`.
+  motion-first tiebreak may favour blander voicings. Still open
+  2026-10-19 (the Theory card now explains each rank by `rankKey`).
+  See: `static/shared/voicing-explore.js` `rankCandidates`, `rankKey`, `targetDistance`.
 
 - **[2026-10-16] Piece ceiling is self-limiting.** In melody-less
   events Explore never goes above the piece's existing comp top
   (`pieceCeiling`: private G4, rag D♭5). Fine for re-voicing within a
   piece's register; wrong for a piece whose comp is uniformly low.
+  Still open 2026-10-19.
   See: `static/shared/voicing-explore.js` `pieceCeiling`.
 
 - **[2026-10-16] Explainer layer planned as Session 6.5.** Info pills
@@ -136,11 +143,6 @@ out of awareness.
   See: `static/shared/voicing-playback-model.js`;
   `docs/active-plans/voicing-explorer-build-plan.md` Session 6.
 
-- **[2026-10-16] `/voicings` link in the top nav.** Decide placement
-  (Explorer menu vs top level) now that it is a main tool.
-  See: `templates/base.html` nav; `docs/STATUS.md` Voicing Explorer
-  "Open / deferred".
-
 - **[2026-10-16] Three unpinned Salamander URL maps.**
   `audio-bridge.js`, `keyboard-view.js`, `intro-audio.js` each carry
   the same sample map against the unversioned GitHub Pages URL;
@@ -148,11 +150,6 @@ out of awareness.
   `static/vendor/salamander/`. Consolidate the three onto it when
   `keyboard-view.js` opens up (do-not-touch).
   See: `static/vendor/salamander/README.md`; `static/shared/voicing-player.js`.
-
-- **[2026-10-16] Salamander CC BY attribution owed app-wide.** The
-  samples are CC BY 3.0 (Alexander Holm); the vendor README carries
-  the notice, the app does not. Footer or About page.
-  See: `static/vendor/salamander/README.md`.
 
 - **[2026-10-16] Tonnetz: melody as separate dots, not lit triangles.**
   The Tonnetz on `/voicings` is comp-only by decision; when Explore
@@ -299,6 +296,24 @@ out of awareness.
 ## Retired
 (items move here when resolved, for short-term reference, then get
 cleared periodically.)
+
+- **[2026-10-19] Rag derived symbols: slash bass is the top note** —
+  resolved 2026-10-19. The symbols were a hand-entered table
+  (`SYMBOLS` in `tools/voicings/ly_to_src.py`, derived by Claude), not
+  computed; 15 of 27 corrected so a slash appears only when the lowest
+  sounding note is not the root (A♭/C → A♭/E♭, F♭/C♭ → F♭, E♭7/D♭ → E♭7;
+  Bdim7 bars left unslashed by decision). No analysis number or Explore
+  ranking moved. The page now notes "symbols added by analysis" from
+  `chordSymbols: "derived"`.
+
+- **[2026-10-16] `/voicings` link in the top nav** — resolved
+  2026-10-19: flat "Voicings" link after Explorer in `base.html` and
+  `explorer.html`.
+
+- **[2026-10-16] Salamander CC BY attribution owed app-wide** — resolved
+  2026-10-19: footer line in `base.html`, credit in `explorer.html`'s
+  status bar, licence link in the playback topic. The three unpinned URL
+  maps remain a separate open item.
 
 - **[2026-10-16] Explore: motion from the most recent bar WITH a
   voicing** — resolved 2026-10-16 by `voicedNeighbours` in

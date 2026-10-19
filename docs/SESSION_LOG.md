@@ -3,6 +3,90 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-10-17 → 19 — Voicing Explorer Session 6.5: explainer layer, Theory card, dominant rule, piece picker, rag fixes, P6 close-out
+
+Nine build-then-STOP prompts plus read-only checks (P1–P2 on 10-17,
+`db3d6b5`; the rest on 10-19: `a4b19a4` P3, `cf6d5ff` P4–P5,
+`5d46699` P5 follow-ups, `e04bb53` dominant rule, `fbc59d0` layout,
+`690ead8` piece picker, `47d8b24` bass provenance, then the rag symbol
+correction and P6). Each prompt ran its suites and a headless-Chrome
+check over CDP; nothing private landed in a committed file.
+
+### Landed
+- Explainer layer: registry (`voicing-explainer-content.js`, 25
+  topics, constants interpolated), `mini-markdown.js`, `info-pill.js`,
+  `/learn` pages, panel pills on /voicings.
+- `voicing-describe.js`: `describeVoicing` → shape (catalogue of
+  shells and rootless A/B forms incl. dominant versions), guide tones,
+  colour tones (rubs, "unusual label" heuristics), omissions
+  (routine vs notable), motion vs the voiced neighbour, why-ranked by
+  the first differing `rankKey` component; inferred basses worded
+  "the lowest note".
+- Theory card beside the Explore table (sticky, scrolls inside, stacks
+  under 1200px); deduped Read more row; quiet stub links; target
+  nudges re-rank an open preview; keyboard scales to its panel; page
+  max-width 1800.
+- Dominant rule (`DOMINANT_RULE`): every candidate keeps the ♭7, ♯11
+  also needs the 3rd; bass counts as sounding; original exempt;
+  removals reported in the hint and card. Rag 12.2 keeps 6 of 31.
+- Piece picker: `/voicings/pieces` route (disk scan, private first)
+  and a header select; deep links and fallback text box kept.
+- Rag `SYMBOLS` corrected (15 of 27): slash only when the lowest
+  sounding note is not the root; Bdim7 left unslashed. No analysis
+  number or ranking moved. Provenance stated in `ly_to_src.py`, the
+  JSON notes and a header note on the page; source credit (Mutopia
+  edition of the 1899 Stark original) in the header meta.
+- Exporter `bassSource` (`voice` / `carried` / `inferred`) in the
+  schema and all three JSONs; Selected bar tags an inferred bass.
+- P6: "Voicings" nav link (base + explorer); Salamander CC BY 3.0
+  credit app-wide (base footer, explorer status bar, playback topic).
+
+### Diagnosed / decided
+- Sections carry one `kind`; omissions are a separate heuristic
+  section, and item-level `kind` marks a heuristic remark inside a
+  fact section.
+- By ear on rag 12.2: 9+3 without the ♭7 is not dominant, 9+♭7
+  without the 3rd is — hence "every candidate keeps the ♭7" rather
+  than "needs both guide tones". Decided on one bar; RADAR.
+- The rag's symbols were a hand-entered table derived by Claude, not
+  computed; the slash slip was systematic (top note of the cluster).
+- Bars 9–17 have no left-hand bass voice in the reduction: the
+  "bass" there is the lowest chord note (now `bassSource:
+  "inferred"`); bars 16–17's real bass dyad on beat 1.5 reaches
+  `bassLine` only.
+- Playback follow never calls `renderPanels`, so the card does not
+  re-render per note; no throttling needed.
+- Sticky rarely engages: the card is capped at viewport height and is
+  usually the taller column; its internal scroll does the work.
+
+### Setup for next session
+- Branch `voicing-explorer`, 29 commits ahead of `dev`; `dev` has not
+  moved since the branch point (`57afaa9`). Session 7 = merge.
+- `static/private/dont-be-sad.json` regenerated (adds `bassSource`
+  only; backup kept outside the repo during the session). The dev
+  server on 5001 runs with `FLASK_DEBUG=true` and reloads itself.
+
+### Calibration notes
+- Headless Chrome over the DevTools protocol (Node's built-in
+  WebSocket, no extra dependencies) made every UI change checkable
+  without a browser tool; keep the scripts' shape for Session 7.
+- "Build, then STOP" with a before/after list per prompt kept the
+  rag symbol fix and the bass-provenance change honest: both changed
+  no number, and the comparison scripts proved it.
+
+### Flagged for later
+- Private piece data under `static/` answers HTTP 200 directly; move
+  before any shared deploy (RADAR).
+- Two-voice dominants over a root bass can never carry ♯11 under the
+  rule; more listening needed (RADAR).
+- Tonnetz and staff do not scale on wide screens; tablet layout;
+  favicon 404 (RADAR).
+
+### Out of scope / deferred
+- Merging or rebasing (Dustin's). Moving private data out of
+  `static/`. Explore register-by-degree factor, 0.5 ranking cliffs,
+  piece ceiling (all still open in RADAR).
+
 ## 2026-10-16 — Voicing Explorer Session 6: Explore first slice (candidates, shapes, ranking, panel), event-scope bass onset
 
 One read-and-report, then three build parts (core, harvested shapes,

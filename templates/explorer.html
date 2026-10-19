@@ -1495,6 +1495,8 @@
     #exp-fretboard-container { width: 100%; min-height: 140px; }
 
     /* ── Status bar ────────────────────────────────────────── */
+    .sl-status__credit { font-size: var(--font-size-2xs); color: var(--daw-text-dim); white-space: nowrap; }
+    .sl-status__credit a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
     .sl-status {
       display: flex;
       align-items: center;
@@ -1596,6 +1598,7 @@
     </a>
     <div class="sl-nav__links">
       <a href="/explorer" class="sl-nav__link sl-nav__link--active">Explorer</a>
+      <a href="/voicings" class="sl-nav__link">Voicings</a>
       <a href="/harmony" class="sl-nav__link">Ear training</a>
       <a href="/rhythm" class="sl-nav__link">Rhythm &amp; play</a>
       <a href="/skratchlab" class="sl-nav__link">SkratchLab</a>
@@ -1860,6 +1863,7 @@
       <button class="sl-panel-chip sl-panel-chip--inactive" id="sl-chip-wheel" type="button">+ Chord wheel</button>
       <button class="sl-panel-chip sl-panel-chip--inactive" id="sl-chip-fretboard" type="button">+ Fretboard</button>
     </div>
+    <span class="sl-status__credit">Piano: <a href="https://github.com/Tonejs/audio" target="_blank" rel="noopener">Salamander Grand Piano</a>, Alexander Holm, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a></span>
     <div class="sl-status__right">
       <span class="sl-seq-count" id="sequence-count" hidden>0 chords</span>
       <button class="sl-btn" id="btn-clear-sequence" hidden>Clear</button>
