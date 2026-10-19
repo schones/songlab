@@ -124,6 +124,38 @@ explicit `chordType`; delegates parsing to
 a consumer whose string vocabulary must stay parseable against the
 canonical symbol set.
 
+### 9. `static/shared/voicing-analysis.js` — `LOCAL_CHORD_TYPES` + `SUFFIX_TO_TYPE` (added 2026-10-14)
+
+Voicing Explorer analysis engine. **Not a new interval registry**: it
+imports `CHORD_TYPES` from `transforms.js` for every type transforms
+defines (`m9` resolves to transforms' `min9`), and defines locally only
+what transforms lacks.
+
+```javascript
+const LOCAL_CHORD_TYPES = {
+  '6':       { intervals: [0, 4, 7, 9],       symbol: '6',       base: 'major' },
+  'm6':      { intervals: [0, 3, 7, 9],       symbol: 'm6',      base: 'minor' },
+  '7#11':    { intervals: [0, 4, 7, 10, 18],  symbol: '7♯11',    base: 'major' },
+  '7b9':     { intervals: [0, 4, 7, 10, 13],  symbol: '7♭9',     base: 'major' },
+  '7#9':     { intervals: [0, 4, 7, 10, 15],  symbol: '7♯9',     base: 'major' },
+  'maj7#11': { intervals: [0, 4, 7, 11, 18],  symbol: 'maj7♯11', base: 'major' },
+  'maj9#5':  { intervals: [0, 4, 8, 11, 14],  symbol: 'maj9♯5',  base: 'augmented' },
+};
+```
+
+- **Also carries:** `SUFFIX_TO_TYPE`, a chord-symbol suffix → type-id
+  parse table (`"m7"` → `min7`, `"ø7"` → `half-dim7`, `"°"` →
+  `diminished`, …). This is the only shared symbol parser besides
+  `parseChordName()` in `walkthrough-sidebar.js`; a canonical
+  `symbolAlternates` list should absorb it.
+- **Slash bass** is handled by `parseSymbol` (root / type / bass), not
+  by any registry — consistent with edge case 4 above.
+- **Consumers:** the `/voicings` page (Session 3+), self-test via
+  `tests/fixtures/voicing-fixture.json`.
+- **Migration note:** when `chord-types.json` lands, the seven local
+  entries move there (all `detectable: false`, resolver priority 3+)
+  and `LOCAL_CHORD_TYPES` is deleted.
+
 ---
 
 ## Discrepancies
@@ -145,6 +177,7 @@ Coverage gaps (type exists in some registries, not others):
 | augmaj7, aug7 | ✗ | ✓ | ✗ | ✗ | ✓ |
 | add9, dom9, maj9, min9 | ✓ | ✗ | ✗ | ✗ | ✗ |
 | power (5) | ✗ | only on `chord-melody-research` | ✗ | ✗ | ✗ |
+| 6, m6, 7♯11, 7♭9, 7♯9, maj7♯11, maj9♯5 | ✗ | ✗ | ✗ | ✗ | ✗ (voicing-analysis.js only) |
 
 ---
 

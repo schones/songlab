@@ -1,0 +1,1462 @@
+{
+ "schemaVersion": 1,
+ "title": "Maple Leaf Rag (A strain)",
+ "key": "A♭",
+ "timeSignature": "2/4",
+ "beatsPerBar": 2,
+ "tempo": 88,
+ "chordSymbols": "derived",
+ "attribution": {
+  "composer": "Scott Joplin (1868–1917), c. 1899",
+  "source": "Mutopia Project, Mutopia-2011/11/13-23",
+  "url": "https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=23",
+  "edition": "Reproduction of the original edition (John Stark & Son, 1899), typeset in LilyPond 2.14.2",
+  "typesetter": "Chris Sawer (maintainer, Mutopia Project)",
+  "license": "Public Domain (Creative Commons public domain mark)",
+  "notes": "Reduction of the A strain (bars 1–15 plus first and second endings as bars 16 and 17; the eighth-note pickup is dropped). melody = the top note of each right-hand event; right-hand inner tones and octave doublings are dropped. bass voice = left-hand single notes and octave dyads, of which bassLine keeps the lower note; chord voice = every other left-hand event. Chord symbols are not part of the edition: derived by Claude (AI-assisted analysis; chordSymbols: derived). Staff-vs-PDF differences that follow from these rules are expected."
+ },
+ "form": {
+  "repeats": [
+   [
+    1,
+    16
+   ]
+  ],
+  "endings": {
+   "1": [
+    16,
+    16
+   ],
+   "2": [
+    17,
+    17
+   ]
+  },
+  "playOrder": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   17
+  ]
+ },
+ "bars": [
+  {
+   "bar": 1,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "A♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "A♭2",
+     "bassSource": "voice",
+     "voicing": [
+      "E♭3",
+      "A♭3",
+      "C4"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "A♭2",
+     "bassSource": "voice",
+     "voicing": [
+      "E♭3",
+      "A♭3",
+      "C4"
+     ]
+    }
+   ],
+   "bassLine": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "note": "A♭2"
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "note": "A2"
+    }
+   ],
+   "melody": [
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "A♭4"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "E♭5"
+    },
+    {
+     "beat": 0.75,
+     "dur": 0.25,
+     "note": "A♭4"
+    },
+    {
+     "beat": 1,
+     "dur": 0.25,
+     "note": "C5"
+    },
+    {
+     "beat": 1.25,
+     "dur": 0.5,
+     "note": "E♭5"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "G4"
+    }
+   ]
+  },
+  {
+   "bar": 2,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "E♭7/B♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "B♭2",
+     "bassSource": "voice",
+     "voicing": [
+      "E♭3",
+      "G3",
+      "D♭4"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "B♭2",
+     "bassSource": "voice",
+     "voicing": [
+      "E♭3",
+      "G3",
+      "D♭4"
+     ]
+    }
+   ],
+   "bassLine": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "note": "B♭2"
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "note": "E♭2"
+    }
+   ],
+   "melody": [
+    {
+     "beat": 0,
+     "dur": 0.25,
+     "note": "E♭5"
+    },
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "G4"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "B♭4"
+    },
+    {
+     "beat": 0.75,
+     "dur": 1.25,
+     "note": "E♭5"
+    }
+   ]
+  },
+  {
+   "bar": 3,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "A♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "A♭2",
+     "bassSource": "voice",
+     "voicing": [
+      "E♭3",
+      "A♭3",
+      "C4"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "A♭2",
+     "bassSource": "voice",
+     "voicing": [
+      "E♭3",
+      "A♭3",
+      "C4"
+     ]
+    }
+   ],
+   "bassLine": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "note": "A♭2"
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "note": "A2"
+    }
+   ],
+   "melody": [
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "A♭4"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "E♭5"
+    },
+    {
+     "beat": 0.75,
+     "dur": 0.25,
+     "note": "A♭4"
+    },
+    {
+     "beat": 1,
+     "dur": 0.25,
+     "note": "C5"
+    },
+    {
+     "beat": 1.25,
+     "dur": 0.5,
+     "note": "E♭5"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "G4"
+    }
+   ]
+  },
+  {
+   "bar": 4,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "E♭7/B♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "B♭2",
+     "bassSource": "voice",
+     "voicing": [
+      "E♭3",
+      "G3",
+      "D♭4"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "B♭2",
+     "bassSource": "voice",
+     "voicing": [
+      "E♭3",
+      "G3",
+      "D♭4"
+     ]
+    }
+   ],
+   "bassLine": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "note": "B♭2"
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "note": "E♭2"
+    }
+   ],
+   "melody": [
+    {
+     "beat": 0,
+     "dur": 0.25,
+     "note": "E♭5"
+    },
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "G4"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "B♭4"
+    },
+    {
+     "beat": 0.75,
+     "dur": 0.75,
+     "note": "E♭5"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "E♭5"
+    }
+   ]
+  },
+  {
+   "bar": 5,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "F♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 1,
+     "bass": "F♭2",
+     "bassSource": "voice",
+     "voicing": []
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "E♭2",
+     "bassSource": "voice",
+     "voicing": []
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "bass": "E♭2",
+     "bassSource": "voice",
+     "voicing": []
+    }
+   ],
+   "bassLine": [
+    {
+     "beat": 0,
+     "dur": 1,
+     "note": "F♭2"
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "note": "E♭2"
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "note": "E♭2"
+    }
+   ],
+   "melody": [
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "A♭4"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "C♭5"
+    },
+    {
+     "beat": 0.75,
+     "dur": 0.25,
+     "note": "F♭5"
+    },
+    {
+     "beat": 1.25,
+     "dur": 0.25,
+     "note": "E♭5"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "E♭5"
+    }
+   ]
+  },
+  {
+   "bar": 6,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "F♭"
+    },
+    {
+     "beat": 1,
+     "symbol": "E♭7"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 1,
+     "bass": "F♭2",
+     "bassSource": "voice",
+     "voicing": []
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "E♭2",
+     "bassSource": "voice",
+     "voicing": []
+    }
+   ],
+   "bassLine": [
+    {
+     "beat": 0,
+     "dur": 1,
+     "note": "F♭2"
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "note": "E♭2"
+    }
+   ],
+   "melody": [
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "A♭4"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "C♭5"
+    },
+    {
+     "beat": 0.75,
+     "dur": 0.25,
+     "note": "F♭5"
+    },
+    {
+     "beat": 1.25,
+     "dur": 0.25,
+     "note": "E♭5"
+    }
+   ]
+  },
+  {
+   "bar": 7,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "A♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "bass": "A♭1",
+     "bassSource": "voice",
+     "voicing": []
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "A♭2",
+     "bassSource": "voice",
+     "voicing": []
+    }
+   ],
+   "bassLine": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "note": "A♭1"
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "note": "A♭2"
+    }
+   ],
+   "melody": [
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "A♭2"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "C♭3"
+    },
+    {
+     "beat": 0.75,
+     "dur": 0.25,
+     "note": "A♭3"
+    },
+    {
+     "beat": 1.25,
+     "dur": 0.25,
+     "note": "A♭3"
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.25,
+     "note": "C♭4"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "A♭4"
+    }
+   ]
+  },
+  {
+   "bar": 8,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "A♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "bass": "A♭3",
+     "bassSource": "voice",
+     "voicing": []
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "A♭4",
+     "bassSource": "voice",
+     "voicing": []
+    }
+   ],
+   "bassLine": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "note": "A♭3"
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "note": "A♭4"
+    }
+   ],
+   "melody": [
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "A♭4"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "C♭5"
+    },
+    {
+     "beat": 0.75,
+     "dur": 0.25,
+     "note": "A♭5"
+    },
+    {
+     "beat": 1.25,
+     "dur": 0.25,
+     "note": "A♭5"
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.25,
+     "note": "C♭6"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "A♭6"
+    }
+   ]
+  },
+  {
+   "bar": 9,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "Bdim7"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "bass": "D4",
+     "bassSource": "inferred",
+     "voicing": [
+      "F4",
+      "A♭4",
+      "B4"
+     ]
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "D4",
+     "bassSource": "inferred",
+     "voicing": [
+      "F4",
+      "A♭4",
+      "B4"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "D4",
+     "bassSource": "inferred",
+     "voicing": [
+      "F4",
+      "A♭4",
+      "B4"
+     ]
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "bass": "D4",
+     "bassSource": "inferred",
+     "voicing": [
+      "F4",
+      "A♭4",
+      "B4"
+     ]
+    }
+   ],
+   "bassLine": [],
+   "melody": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "note": "A♭6"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "note": "A♭6"
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "note": "A♭6"
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.25,
+     "note": "A♭6"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "A♭6",
+     "tie": true
+    }
+   ]
+  },
+  {
+   "bar": 10,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "A♭/E♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "bass": "E♭4",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭4",
+      "C5"
+     ]
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "E♭4",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭4",
+      "C5"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "E♭4",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭4",
+      "C5"
+     ]
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "bass": "E♭4",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭4",
+      "C5"
+     ]
+    }
+   ],
+   "bassLine": [],
+   "melody": [
+    {
+     "beat": 0,
+     "dur": 0.25,
+     "note": "A♭6"
+    },
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "E♭6"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "F6"
+    },
+    {
+     "beat": 0.75,
+     "dur": 0.25,
+     "note": "C6"
+    },
+    {
+     "beat": 1,
+     "dur": 0.25,
+     "note": "E♭6"
+    },
+    {
+     "beat": 1.25,
+     "dur": 0.5,
+     "note": "F6"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "A♭5",
+     "tie": true
+    }
+   ]
+  },
+  {
+   "bar": 11,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "F♭"
+    },
+    {
+     "beat": 1,
+     "symbol": "A♭/E♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "bass": "F♭4",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭4",
+      "C♭5"
+     ]
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "F♭4",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭4",
+      "C♭5"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "E♭4",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭4",
+      "C5"
+     ]
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "bass": "E♭4",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭4",
+      "C5"
+     ]
+    }
+   ],
+   "bassLine": [],
+   "melody": [
+    {
+     "beat": 0,
+     "dur": 0.25,
+     "note": "A♭5"
+    },
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "B♭5"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "C♭6"
+    },
+    {
+     "beat": 0.75,
+     "dur": 0.25,
+     "note": "A♭5"
+    },
+    {
+     "beat": 1,
+     "dur": 0.25,
+     "note": "B♭5"
+    },
+    {
+     "beat": 1.25,
+     "dur": 0.5,
+     "note": "C6"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "A♭5"
+    }
+   ]
+  },
+  {
+   "bar": 12,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "A♭/E♭"
+    },
+    {
+     "beat": 0.5,
+     "symbol": "E♭7"
+    },
+    {
+     "beat": 1,
+     "symbol": "A♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "bass": "E♭4",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭4",
+      "C5"
+     ]
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "E♭4",
+     "bassSource": "inferred",
+     "voicing": [
+      "G4",
+      "D♭5"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "A♭4",
+     "bassSource": "inferred",
+     "voicing": [
+      "C5"
+     ]
+    }
+   ],
+   "bassLine": [],
+   "melody": [
+    {
+     "beat": 0,
+     "dur": 0.25,
+     "note": "C6"
+    },
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "A♭5"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "note": "B♭5"
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "note": "A♭5"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "A♭5",
+     "tie": true
+    }
+   ]
+  },
+  {
+   "bar": 13,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "Bdim7"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "bass": "D3",
+     "bassSource": "inferred",
+     "voicing": [
+      "F3",
+      "A♭3",
+      "B3"
+     ]
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "D3",
+     "bassSource": "inferred",
+     "voicing": [
+      "F3",
+      "A♭3",
+      "B3"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "D3",
+     "bassSource": "inferred",
+     "voicing": [
+      "F3",
+      "A♭3",
+      "B3"
+     ]
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "bass": "D3",
+     "bassSource": "inferred",
+     "voicing": [
+      "F3",
+      "A♭3",
+      "B3"
+     ]
+    }
+   ],
+   "bassLine": [],
+   "melody": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "note": "A♭5"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "note": "A♭5"
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "note": "A♭5"
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.25,
+     "note": "A♭5"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "A♭5",
+     "tie": true
+    }
+   ]
+  },
+  {
+   "bar": 14,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "A♭/E♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "bass": "E♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭3",
+      "C4"
+     ]
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "E♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭3",
+      "C4"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "E♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭3",
+      "C4"
+     ]
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "bass": "E♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭3",
+      "C4"
+     ]
+    }
+   ],
+   "bassLine": [],
+   "melody": [
+    {
+     "beat": 0,
+     "dur": 0.25,
+     "note": "A♭5"
+    },
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "E♭5"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "F5"
+    },
+    {
+     "beat": 0.75,
+     "dur": 0.25,
+     "note": "C5"
+    },
+    {
+     "beat": 1,
+     "dur": 0.25,
+     "note": "E♭5"
+    },
+    {
+     "beat": 1.25,
+     "dur": 0.5,
+     "note": "F5"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "A♭4",
+     "tie": true
+    }
+   ]
+  },
+  {
+   "bar": 15,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "F♭"
+    },
+    {
+     "beat": 1,
+     "symbol": "A♭/E♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "bass": "F♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭3",
+      "C♭4"
+     ]
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "F♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭3",
+      "C♭4"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "E♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭3",
+      "C4"
+     ]
+    },
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "bass": "E♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭3",
+      "C4"
+     ]
+    }
+   ],
+   "bassLine": [],
+   "melody": [
+    {
+     "beat": 0,
+     "dur": 0.25,
+     "note": "A♭4"
+    },
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "B♭4"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.25,
+     "note": "C♭5"
+    },
+    {
+     "beat": 0.75,
+     "dur": 0.25,
+     "note": "A♭4"
+    },
+    {
+     "beat": 1,
+     "dur": 0.25,
+     "note": "B♭4"
+    },
+    {
+     "beat": 1.25,
+     "dur": 0.5,
+     "note": "C5"
+    },
+    {
+     "beat": 1.75,
+     "dur": 0.25,
+     "note": "A♭4"
+    }
+   ]
+  },
+  {
+   "bar": 16,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "A♭/E♭"
+    },
+    {
+     "beat": 0.5,
+     "symbol": "E♭7"
+    },
+    {
+     "beat": 1,
+     "symbol": "A♭"
+    },
+    {
+     "beat": 1.5,
+     "symbol": "E♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "bass": "E♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭3",
+      "C4"
+     ]
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "E♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "G3",
+      "D♭4"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "A♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "C4"
+     ]
+    }
+   ],
+   "bassLine": [
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "note": "E♭2"
+    }
+   ],
+   "melody": [
+    {
+     "beat": 0,
+     "dur": 0.25,
+     "note": "C5"
+    },
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "A♭4"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "note": "B♭4"
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "note": "A♭4"
+    }
+   ]
+  },
+  {
+   "bar": 17,
+   "section": "A",
+   "source": "transcribed",
+   "symbols": [
+    {
+     "beat": 0,
+     "symbol": "A♭/E♭"
+    },
+    {
+     "beat": 0.5,
+     "symbol": "E♭7"
+    },
+    {
+     "beat": 1,
+     "symbol": "A♭"
+    }
+   ],
+   "annotation": null,
+   "comp": [
+    {
+     "beat": 0,
+     "dur": 0.5,
+     "bass": "E♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "A♭3",
+      "C4"
+     ]
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "bass": "E♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "G3",
+      "D♭4"
+     ]
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "bass": "A♭3",
+     "bassSource": "inferred",
+     "voicing": [
+      "C4"
+     ]
+    }
+   ],
+   "bassLine": [
+    {
+     "beat": 1.5,
+     "dur": 0.5,
+     "note": "A2"
+    }
+   ],
+   "melody": [
+    {
+     "beat": 0,
+     "dur": 0.25,
+     "note": "C5"
+    },
+    {
+     "beat": 0.25,
+     "dur": 0.25,
+     "note": "A♭4"
+    },
+    {
+     "beat": 0.5,
+     "dur": 0.5,
+     "note": "B♭4"
+    },
+    {
+     "beat": 1,
+     "dur": 0.5,
+     "note": "A♭4"
+    }
+   ]
+  }
+ ]
+}

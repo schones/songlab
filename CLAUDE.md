@@ -37,5 +37,7 @@ session log / status update templates in `docs/templates/`.
 - Shared JS modules: `static/shared/`
 - SkratchLab code: `static/skratch-studio/`
 - Games: `static/games/` + `templates/games/`
-- Test locally: `python3 app.py` → http://127.0.0.1:5000
+- Test locally: `python3 app.py` (project venv active) → http://127.0.0.1:5001
+  The server reads `PORT` from `.env` (5001 on the Mac mini; macOS AirPlay
+  Receiver holds 5000). Don't hardcode 5000 in prompts or test scripts.
 - Dev branch: `dev` · Production: `main` (Railway)

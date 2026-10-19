@@ -1,0 +1,1083 @@
+{% extends "base.html" %}
+{% block theme %}dark{% endblock %}
+{% block title %}Voicings · SongLab{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Page frame ───────────────────────────────────────────── */
+  .vp-page {
+    display: flex; flex-direction: column; gap: var(--space-lg, 16px);
+    padding: var(--space-lg, 16px) var(--space-xl, 24px) var(--space-2xl, 32px);
+    box-sizing: border-box; min-height: calc(100vh - 72px);
+    max-width: 1800px; width: 100%; margin: 0 auto;
+    background: var(--bg-base, #15151B); color: var(--text-primary, #F2EFE6);
+  }
+  .vp-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-sm, 8px) var(--space-lg, 16px); }
+  .vp-title { margin: 0; font-family: var(--font-family-display); font-size: var(--font-size-xl); font-weight: var(--font-weight-medium); letter-spacing: -0.01em; }
+  .vp-title__piece { color: var(--accent-gold, #D4A03C); }
+  .vp-meta { margin: 0; color: var(--text-secondary); font-size: var(--font-size-sm); }
+  .vp-meta span + span::before { content: '·'; margin: 0 8px; color: var(--text-muted); }
+  .vp-meta__note { color: var(--accent-gold, #D4A03C); }
+  .vp-meta__credit a { color: inherit; text-decoration: underline dotted; text-underline-offset: 2px; }
+  .vp-piece-form { margin-left: auto; display: flex; gap: 6px; align-items: center; font-size: var(--font-size-xs); color: var(--text-muted); }
+  .vp-piece-form input { width: 11em; padding: 4px 8px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font: inherit; }
+  .vp-piece-form button { padding: 4px 10px; border-radius: var(--radius-md); border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text-secondary); font: inherit; cursor: pointer; }
+  .vp-piece-form select { max-width: 18em; padding: 4px 8px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font: inherit; }
+  /* The picker shows once /voicings/pieces answers; until then, and if it fails, the text box. */
+  .vp-piece-form--list .vp-piece-form__text { display: none; }
+  .vp-piece-form:not(.vp-piece-form--list) .vp-piece-form__list { display: none; }
+
+  .vp-banner { padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-raised); color: var(--text-secondary); font-size: var(--font-size-xs); }
+  .vp-banner--error { border-color: var(--accent-coral); color: var(--text-primary); }
+  .vp-banner code { color: var(--accent-gold); }
+  .vp-banner[hidden] { display: none; }
+
+  /* ── Panels ───────────────────────────────────────────────── */
+  .vp-panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-md, 12px) var(--space-lg, 16px); min-width: 0; }
+  .vp-panel__label { font-size: var(--font-size-2xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: 0 0 var(--space-sm, 8px); }
+
+  .vp-detail { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.4fr) minmax(240px, 1fr); gap: var(--space-lg, 16px); }
+  .vp-tonnetz { position: relative; height: 380px; border-radius: var(--radius-md); overflow: hidden; background: var(--bg-deep); }
+  .vp-tonnetz svg { width: 100%; height: 100%; }
+  .vp-side { display: flex; flex-direction: column; gap: var(--space-lg, 16px); }
+
+  .vp-keyboard-panel { padding-bottom: var(--space-lg, 16px); }
+
+  .vp-empty .vp-panel { opacity: 0.55; }
+
+  /* ── Playback ─────────────────────────────────────────────── */
+  .vp-panel__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm, 8px) var(--space-md, 12px); margin-bottom: var(--space-sm, 8px); }
+  .vp-panel__head .vp-panel__label { margin: 0; flex: 1 1 auto; }
+  .vp-play { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text-primary); font: inherit; font-size: var(--font-size-xs); cursor: pointer; white-space: nowrap; }
+  .vp-play:hover:not(:disabled) { border-color: var(--accent-gold, #D4A03C); }
+  .vp-play:disabled { opacity: 0.55; cursor: default; }
+  .vp-play--playing { border-color: var(--accent-gold, #D4A03C); color: var(--accent-gold, #D4A03C); }
+  .vp-play--error { border-color: var(--accent-coral); }
+  .vp-play__hint { color: var(--text-muted); font-size: var(--font-size-2xs); }
+  .vp-play__hint--warn { color: var(--accent-coral); }
+  .vp-melody { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-raised); color: var(--text-muted); font-size: var(--font-size-xs); cursor: pointer; white-space: nowrap; user-select: none; }
+  .vp-melody input { margin: 0; accent-color: var(--accent-green, #4CAF50); }
+  .vp-melody__state { font-variant-numeric: tabular-nums; }
+  .vp-melody--on { color: var(--accent-green, #4CAF50); border-color: var(--accent-green, #4CAF50); }
+
+  /* ── Explore ──────────────────────────────────────────────── */
+  .vp-explore[hidden] { display: none; }
+  .vp-explore__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm, 8px) var(--space-lg, 16px); margin-bottom: var(--space-sm, 8px); }
+  .vp-explore__head .vp-panel__label { margin: 0; flex: 1 1 100%; }
+  .vp-explore__ctl { display: inline-flex; align-items: center; gap: 6px; font-size: var(--font-size-xs); color: var(--text-muted); }
+  .vp-explore__ctl select, .vp-explore__ctl input { padding: 3px 6px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font: inherit; font-size: var(--font-size-xs); }
+  .vp-explore__ctl input[type=number] { width: 4.5em; text-align: center; }
+  .vp-explore__btn { padding: 3px 10px; border-radius: var(--radius-md); border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text-secondary); font: inherit; font-size: var(--font-size-xs); cursor: pointer; }
+  .vp-explore__btn:hover:not(:disabled) { border-color: var(--accent-gold, #D4A03C); color: var(--text-primary); }
+  .vp-explore__btn:disabled { opacity: 0.45; cursor: default; }
+  .vp-explore__btn--keep { border-color: var(--accent-green, #4CAF50); color: var(--accent-green, #4CAF50); }
+  .vp-explore__actions { margin-left: auto; display: inline-flex; gap: 6px; }
+  .vp-explore__flag { font-size: var(--font-size-2xs); color: var(--accent-coral); }
+  .vp-explore__hint { font-size: var(--font-size-2xs); color: var(--text-muted); }
+  .vp-explore__grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-lg, 16px); align-items: start; }
+  .vp-explore__main { min-width: 0; overflow-x: auto; }   /* the table scrolls inside its column on narrow screens; the page never widens */
+  .vp-explore__table { width: 100%; border-collapse: collapse; font-size: var(--font-size-xs); }
+  .vp-explore__table th { text-align: left; font-weight: 500; color: var(--text-muted); font-size: var(--font-size-2xs); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 6px; border-bottom: 1px solid var(--border-subtle); white-space: normal; line-height: 1.2; vertical-align: bottom; }
+  .vp-explore__table td { padding: 4px 6px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; white-space: nowrap; }
+  .vp-explore__table td:nth-child(1), .vp-explore__table th:nth-child(1) { padding-left: 2px; padding-right: 2px; width: 1.6em; }
+  .vp-explore__table td:nth-child(2), .vp-explore__table th:nth-child(2) { padding-left: 0; padding-right: 2px; width: 28px; }
+  .vp-explore__table td:nth-child(6), .vp-explore__table td:nth-child(7) { white-space: normal; line-height: 1.5; }   /* omitted / added, source: wrap */
+  .vp-explore__table td:nth-child(8) { white-space: normal; }
+  .vp-explore__table .vp-explore__note { margin: 1px 3px 1px 0; }
+  .vp-explore__row { cursor: pointer; }
+  .vp-explore__row:hover td { background: rgba(255, 255, 255, 0.03); }
+  .vp-explore__row--preview td { background: rgba(212, 160, 60, 0.12); }
+  .vp-explore__row--preview td:first-child { box-shadow: inset 3px 0 0 var(--accent-gold, #D4A03C); }
+  .vp-explore__play { width: 26px; height: 22px; padding: 0; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-raised); color: var(--text-secondary); font: inherit; font-size: var(--font-size-2xs); cursor: pointer; line-height: 1; }
+  .vp-explore__play:hover { border-color: var(--accent-gold, #D4A03C); color: var(--text-primary); }
+  .vp-explore__play--playing { border-color: var(--accent-gold, #D4A03C); color: var(--accent-gold, #D4A03C); }
+  .vp-explore__num { font-variant-numeric: tabular-nums; }
+  .vp-explore__delta { color: var(--text-muted); margin-left: 4px; font-size: var(--font-size-2xs); }
+  .vp-explore__delta--up { color: var(--accent-coral, #E87461); }
+  .vp-explore__delta--down { color: var(--accent-blue-bright, #3A8BC9); }
+  .vp-explore__note { display: inline-block; padding: 1px 6px; border-radius: 4px; margin-right: 3px; font-weight: 500; color: #fff; background: var(--accent-blue-bright, #3A8BC9); }
+  .vp-explore__note--bass { background: var(--accent-gold, #D4A03C); opacity: 0.8; }
+  .vp-explore__omit { color: var(--accent-coral, #E87461); text-decoration: line-through; text-decoration-color: rgba(232,116,97,0.6); margin-right: 5px; }
+  .vp-explore__add { color: var(--accent-gold, #D4A03C); margin-right: 5px; }
+  .vp-explore__src { color: var(--text-secondary); }
+  .vp-explore__src--shape { color: var(--accent-green, #4CAF50); }
+  .vp-explore__mark { color: var(--text-muted); font-size: var(--font-size-2xs); }
+  .vp-explore__mark--kept { color: var(--accent-green, #4CAF50); }
+  .vp-explore__empty { color: var(--text-muted); font-style: italic; font-size: var(--font-size-xs); }
+  .vp-explore__json { width: 100%; min-height: 6em; margin-top: 8px; font-family: var(--font-family-mono, monospace); font-size: var(--font-size-2xs); background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); }
+  .vp-explore__json[hidden] { display: none; }
+
+  /* ── Theory card: right column of Explore, sticky, scrolls inside ─ */
+  /* The site nav is not sticky, so the top offset is only a gutter. */
+  .vp-explore .vp-theory { position: sticky; top: 12px; max-height: calc(100vh - 24px); display: flex; flex-direction: column; background: var(--bg-raised); }
+  .vp-explore .vp-theory__body { overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+  @media (max-width: 1200px) {
+    .vp-explore__grid { grid-template-columns: 1fr; }
+    .vp-explore .vp-theory { position: static; max-height: none; }
+    .vp-explore .vp-theory__body { overflow: visible; }
+  }
+
+  /* ── Theory card (docked, collapsible; voicing-describe.js) ── */
+  .vp-theory { padding: 0; }
+  .vp-theory__toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: var(--space-md, 12px) var(--space-lg, 16px); border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .vp-theory__toggle .vp-panel__label { margin: 0; flex: none; }
+  .vp-theory__what { flex: 1 1 auto; min-width: 0; font-size: var(--font-size-xs); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vp-theory__what--preview { color: var(--accent-gold, #D4A03C); }
+  .vp-theory__chev { flex: none; color: var(--text-muted); font-size: var(--font-size-2xs); transition: transform 0.15s; }
+  .vp-theory--closed .vp-theory__chev { transform: rotate(-90deg); }
+  .vp-theory__body { padding: 0 var(--space-lg, 16px) var(--space-md, 12px); display: flex; flex-direction: column; gap: 10px; }
+  .vp-theory--closed .vp-theory__body { display: none; }
+  .vp-theory__section { padding: 2px 0 2px 10px; }
+  .vp-theory__head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; }
+  .vp-theory__title { margin: 0; font-size: var(--font-size-xs); font-weight: 500; color: var(--text-primary); }
+  .vp-theory__items { margin: 0; padding: 0 0 0 1.1em; font-size: var(--font-size-xs); line-height: 1.5; color: var(--text-secondary); }
+  .vp-theory__items li { margin: 2px 0; }
+  .vp-theory__items li.vp-theory__item--heuristic { list-style: none; margin-left: -1.1em; padding-left: calc(1.1em - 3px); border-left: 3px solid var(--accent-coral, #E87461); color: var(--text-secondary); }
+  .vp-theory__items li.vp-theory__item--heuristic::before { content: 'rule of thumb · '; color: var(--accent-coral, #E87461); font-size: var(--font-size-2xs); }
+  .vp-theory__items .learn-link { color: var(--accent-gold, #D4A03C); }
+  .vp-theory__more { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border-subtle); }
+  .vp-theory__more-label { font-size: var(--font-size-2xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+  .vp-theory__chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .vp-theory__chip { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-color); color: var(--text-muted); font-size: var(--font-size-2xs); text-decoration: none; }
+  .vp-theory__chip:hover { border-color: var(--accent-gold, #D4A03C); color: var(--text-primary); }
+  .vp-theory__chip--stub { border-style: dotted; opacity: 0.75; }
+  .vp-theory__chip--page::after { content: ' ↗'; opacity: 0.7; }
+  .vp-theory__empty { color: var(--text-muted); font-style: italic; font-size: var(--font-size-xs); margin: 0; }
+
+  @media (max-width: 1000px) {
+    .vp-detail { grid-template-columns: 1fr 1fr; }
+    .vp-detail > .vp-panel--tonnetz { grid-column: 1 / -1; }
+  }
+  @media (max-width: 700px) {
+    .vp-page { padding: var(--space-md, 12px) var(--space-lg, 16px) var(--space-xl, 24px); }
+    .vp-detail { grid-template-columns: 1fr; }
+    .vp-detail > .vp-panel--tonnetz { grid-column: auto; }
+    .vp-tonnetz { height: auto; aspect-ratio: 1 / 1; }
+    .vp-piece-form { margin-left: 0; }
+  }
+</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='shared/learn.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="vp-page" id="vp-page">
+  <header class="vp-header">
+    <h1 class="vp-title">Voicings <span class="vp-title__piece" id="vp-piece-title">…</span></h1>
+    <p class="vp-meta" id="vp-meta"></p>
+    <form class="vp-piece-form" id="vp-piece-form">
+      <label for="vp-piece-select" class="vp-piece-form__list">piece</label>
+      <select id="vp-piece-select" class="vp-piece-form__list" aria-label="Piece"></select>
+      <label for="vp-piece-input" class="vp-piece-form__text">piece</label>
+      <input id="vp-piece-input" class="vp-piece-form__text" name="piece" type="text" pattern="[a-z0-9-]+" placeholder="dont-be-sad">
+      <button type="submit" class="vp-piece-form__text">Load</button>
+    </form>
+  </header>
+
+  <div class="vp-banner" id="vp-banner" hidden role="status"></div>
+
+  <section class="vp-panel" aria-label="Tension per bar">
+    <div class="vp-panel__head">
+      <p class="vp-panel__label" data-explain="chart">Tension per bar — click or use ← → to select a bar, Shift+← → to step comp events</p>
+      <label class="vp-melody" id="vp-melody" data-explain="melody" data-explain-pos="after" title="Include the melody in the analysis and in playback. The staff always shows it; the Tonnetz never does.">
+        <input type="checkbox" id="vp-melody-input"> melody <span class="vp-melody__state" id="vp-melody-state">off</span>
+      </label>
+      <button type="button" class="vp-play" id="vp-play" data-explain="play" data-explain-pos="after" title="Play the selected bar (P). Shift+click or Shift+P plays the selected event. Esc stops." disabled>▶ Play bar</button>
+      <span class="vp-play__hint" id="vp-play-hint">Shift+click: event</span>
+    </div>
+    <div id="vp-chart"></div>
+  </section>
+
+  <section class="vp-detail" aria-label="Selected bar">
+    <div class="vp-side">
+      <div class="vp-panel">
+        <p class="vp-panel__label" data-explain="selected">Selected bar</p>
+        <div id="vp-info"></div>
+      </div>
+      <div class="vp-panel">
+        <p class="vp-panel__label" data-explain="staff">Staff — click a note to find it on the keyboard</p>
+        <div id="vp-staff"></div>
+      </div>
+    </div>
+    <div class="vp-panel vp-panel--tonnetz">
+      <p class="vp-panel__label" data-explain="tonnetz">Tonnetz</p>
+      <div class="vp-tonnetz" id="vp-tonnetz"></div>
+    </div>
+    <div class="vp-side">
+      <div class="vp-panel">
+        <p class="vp-panel__label" data-explain="rubs">Intervals that rub</p>
+        <div id="vp-rubs"></div>
+      </div>
+      <div class="vp-panel">
+        <p class="vp-panel__label" data-explain="nvp">Named vs played</p>
+        <div id="vp-nvp"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="vp-panel vp-explore" id="vp-explore" aria-label="Explore" hidden>
+    <div class="vp-explore__head">
+      <p class="vp-panel__label" id="vp-explore-label" data-explain="explore"><span id="vp-explore-label-text">Explore — candidate voicings for the selected event; click a row to preview, Keep to swap it in</span></p>
+      <label class="vp-explore__ctl">target
+        <button type="button" class="vp-explore__btn" id="vp-explore-target-dec">−</button>
+        <input type="number" id="vp-explore-target" min="0">
+        <button type="button" class="vp-explore__btn" id="vp-explore-target-inc">+</button>
+      </label>
+      <label class="vp-explore__ctl">voices
+        <select id="vp-explore-count"><option value="0">original</option><option value="1">±1</option></select>
+      </label>
+      <label class="vp-explore__ctl">source
+        <select id="vp-explore-source"><option value="all">all</option><option value="symbol">symbol</option><option value="shape">shapes</option></select>
+      </label>
+      <span class="vp-explore__flag" id="vp-explore-flag" hidden>fallback: the melody dips inside this event; bound = the note at its onset</span>
+      <span class="vp-explore__hint" id="vp-explore-hint"></span>
+      <span class="vp-explore__actions">
+        <button type="button" class="vp-explore__btn vp-explore__btn--keep" id="vp-explore-keep" disabled>Keep</button>
+        <button type="button" class="vp-explore__btn" id="vp-explore-revert" disabled title="Drop the overrides on this bar">Revert bar</button>
+        <button type="button" class="vp-explore__btn" id="vp-explore-reset" disabled title="Drop every override">Reset all</button>
+        <button type="button" class="vp-explore__btn" id="vp-explore-copy" disabled title="Copy the overrides as JSON">Copy JSON</button>
+      </span>
+    </div>
+    <div class="vp-explore__grid">
+      <div class="vp-explore__main">
+        <div id="vp-explore-rows"></div>
+        <textarea class="vp-explore__json" id="vp-explore-json" hidden readonly aria-label="Overrides as JSON"></textarea>
+      </div>
+      <section class="vp-panel vp-theory" id="vp-theory" aria-label="Theory">
+        <button type="button" class="vp-theory__toggle" id="vp-theory-toggle" aria-expanded="true" aria-controls="vp-theory-body">
+          <span class="vp-panel__label">Theory</span>
+          <span class="vp-theory__what" id="vp-theory-what">—</span>
+          <span class="vp-theory__chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="vp-theory__body" id="vp-theory-body">
+          <div id="vp-theory-disclaimer"></div>
+          <div id="vp-theory-sections"></div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section class="vp-panel vp-keyboard-panel" aria-label="Keyboard">
+    <p class="vp-panel__label" data-explain="keyboard">Keyboard — <span style="color:var(--accent-gold)">bass</span>, <span style="color:var(--accent-blue-bright)">voicing</span></p>
+    <div id="vp-keyboard"></div>
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { HarmonyState }          from "{{ url_for('static', filename='shared/harmony-state.js') }}";
+  import { TonnetzNeighborhood }   from "{{ url_for('static', filename='shared/tonnetz-neighborhood.js') }}";
+  import { ChordBubbleRenderer }   from "{{ url_for('static', filename='shared/chord-bubble-renderer.js') }}";
+  import { analyzeProgression, toHarmonyNotes, parseNote } from "{{ url_for('static', filename='shared/voicing-analysis.js') }}";
+  import { VoicingChart }          from "{{ url_for('static', filename='shared/voicing-chart.js') }}";
+  import { VoicingKeyboard }       from "{{ url_for('static', filename='shared/voicing-keyboard.js') }}";
+  import { VoicingDetail }         from "{{ url_for('static', filename='shared/voicing-detail.js') }}";
+  import { VoicingStaff }          from "{{ url_for('static', filename='shared/voicing-staff.js') }}";
+  import { buildPlaybackList, toSchedule } from "{{ url_for('static', filename='shared/voicing-playback-model.js') }}";
+  import { VoicingPlayer }         from "{{ url_for('static', filename='shared/voicing-player.js') }}";
+  import { eventContext, generateCandidates, scoreCandidate, rankCandidates, applyOverrides, expandOverrides, overrideKey, TARGET_STEP, EXPLORE_ROWS }
+                                   from "{{ url_for('static', filename='shared/voicing-explore.js') }}";
+  import { InfoPill }              from "{{ url_for('static', filename='shared/info-pill.js') }}";
+  import { topicsForPanel, glossaryLookup, resolveSlug, DISCLAIMER }
+                                   from "{{ url_for('static', filename='shared/voicing-explainer-content.js') }}";
+  import { describeVoicing }       from "{{ url_for('static', filename='shared/voicing-describe.js') }}";
+
+  const DEFAULT_PIECE = 'dont-be-sad';
+  const FIXTURE_PIECE = 'fixture';
+
+  // ── Page state: one object, one setter ──────────────────────────
+  // progression = the piece as loaded (never written); overrides = Explore's
+  // swaps, "bar:event" → voicing; effective = applyOverrides(progression,
+  // overrides), which analysis, staff, keyboard and playback all read;
+  // baseAnalysis = the pristine piece under the same melody toggle (the
+  // "original" Explore compares with); preview = a candidate shown in every
+  // panel without being kept.
+  const state = {
+    piece: null, progression: null, analysis: null, selectedBar: null, selectedEvent: null, includeMelody: false,
+    overrides: {}, effective: null, baseAnalysis: null, preview: null,
+    explore: { target: null, countRange: 0, sourceFilter: 'all' },
+  };
+
+  const els = {
+    page:   document.getElementById('vp-page'),
+    title:  document.getElementById('vp-piece-title'),
+    meta:   document.getElementById('vp-meta'),
+    banner: document.getElementById('vp-banner'),
+    form:   document.getElementById('vp-piece-form'),
+    input:  document.getElementById('vp-piece-input'),
+    select: document.getElementById('vp-piece-select'),
+    play:   document.getElementById('vp-play'),
+    playHint: document.getElementById('vp-play-hint'),
+    melody: document.getElementById('vp-melody'),
+    melodyInput: document.getElementById('vp-melody-input'),
+    melodyState: document.getElementById('vp-melody-state'),
+    explore: document.getElementById('vp-explore'),
+    exploreRows: document.getElementById('vp-explore-rows'),
+    exploreTarget: document.getElementById('vp-explore-target'),
+    exploreTargetDec: document.getElementById('vp-explore-target-dec'),
+    exploreTargetInc: document.getElementById('vp-explore-target-inc'),
+    exploreCount: document.getElementById('vp-explore-count'),
+    exploreSource: document.getElementById('vp-explore-source'),
+    exploreFlag: document.getElementById('vp-explore-flag'),
+    exploreHint: document.getElementById('vp-explore-hint'),
+    exploreKeep: document.getElementById('vp-explore-keep'),
+    exploreRevert: document.getElementById('vp-explore-revert'),
+    exploreReset: document.getElementById('vp-explore-reset'),
+    exploreCopy: document.getElementById('vp-explore-copy'),
+    exploreJson: document.getElementById('vp-explore-json'),
+    theory: document.getElementById('vp-theory'),
+    theoryToggle: document.getElementById('vp-theory-toggle'),
+    theoryWhat: document.getElementById('vp-theory-what'),
+    theoryDisclaimer: document.getElementById('vp-theory-disclaimer'),
+    theorySections: document.getElementById('vp-theory-sections'),
+  };
+
+  // ── Views ───────────────────────────────────────────────────────
+  const chart    = new VoicingChart('vp-chart', { onSelect: select, onStepEvent: stepEvent });
+  const detail   = new VoicingDetail({ info: 'vp-info', rubs: 'vp-rubs', nvp: 'vp-nvp' }, { onSelectEvent: selectEvent });
+  // Sized per piece at load: lowest and highest written notes rounded out to whole octaves (C..B).
+  const keyboard = new VoicingKeyboard('vp-keyboard', { low: 'C2', high: 'B5' });
+  // Verovio loads lazily on the first staff render. A clicked notehead rings its
+  // key; a comp note of another event also selects that event.
+  const staff    = new VoicingStaff('vp-staff', { onNoteClick: note => {
+    if (note && note.event != null && note.event !== state.selectedEvent) selectEvent(note.event);
+    keyboard.setHighlight(note ? note.midi : null);
+  } });
+
+  // Tonnetz: shared modules, non-interactive. The glow-worm renderer must
+  // be created AFTER TonnetzNeighborhood.init so its subscriber runs after
+  // the grid re-render.
+  TonnetzNeighborhood.init('vp-tonnetz', { interactive: false });
+  const bubble = new ChordBubbleRenderer('vp-tonnetz');
+
+  // ── Selection: a bar, and a comp event within it ─────────────────
+  // The selected event defaults to the bar's max-tension event, so every
+  // panel agrees with the chart's stack on arrival. Detail, keyboard,
+  // Tonnetz and the staff's bright notes all read from that event.
+  function select(barNumber, eventIndex = null) {
+    if (!state.analysis) return;
+    const bar = state.analysis.bars.find(b => b.bar === barNumber);
+    if (!bar) return;
+    player.stop();   // a new selection never plays on its own
+    const wasKey = state.selectedBar != null && state.selectedEvent != null ? overrideKey(state.selectedBar, state.selectedEvent) : null;
+    state.preview = null;   // a new selection drops any preview
+    state.selectedBar = barNumber;
+    state.selectedEvent = bar.events.length
+      ? Math.min(Math.max(eventIndex == null ? (bar.maxEvent ?? 0) : eventIndex, 0), bar.events.length - 1)
+      : null;
+    const nowKey = state.selectedEvent != null ? overrideKey(barNumber, state.selectedEvent) : null;
+    if (nowKey !== wasKey) state.explore.target = null;   // the target defaults per event
+
+    chart.setSelected(barNumber);
+    renderPanels(state.effective, state.analysis);
+    renderExplore();
+  }
+
+  // Detail, keyboard, staff and Tonnetz for the selected event, from a given
+  // progression + analysis: the effective one normally, a trial one while a
+  // candidate is previewed. The staff re-renders when the progression object
+  // or the bar changes; otherwise only its bright event moves.
+  let staffFrom = { progression: null, bar: null };
+  function renderPanels(progression, analysis) {
+    const bar = analysis.bars.find(b => b.bar === state.selectedBar);
+    if (!bar) return;
+    const event = state.selectedEvent == null ? null : bar.events[state.selectedEvent];
+    detail.render(bar, state.selectedEvent);
+    keyboard.render(event ? { bass: event.bass, voicing: event.voicing, melody: state.includeMelody ? melodyOver(bar.bar, event) : [] } : {});
+    if (staffFrom.progression === progression && staffFrom.bar === bar.bar && staff.model && staff.model.bar === bar.bar) staff.setEvent(state.selectedEvent);
+    else { staffFrom = { progression, bar: bar.bar }; staff.render(progression, bar.bar, { event: state.selectedEvent }); }   // async; latest wins
+    renderTheory(progression, bar, event);
+
+    // Publish exactly these pitches. source:'user' is the only path the
+    // shared Tonnetz treats as octave-faithful Note Mode. No progressionState.
+    const notes = event ? toHarmonyNotes([event.bass, ...(event.voicing || [])]) : [];
+    HarmonyState.update({
+      activeNotes: notes,
+      activeTriads: [], activeChord: null, activeTransform: null, activeInterval: null,
+    });
+  }
+
+  // ── Theory card ─────────────────────────────────────────────────
+  // Docked beside the Explore rows: describeVoicing() for the selected event, or for
+  // the previewed candidate (with its rank, the rows shown and the target, so
+  // it can say why it ranked there). Re-rendered from renderPanels only —
+  // playback follow never touches it. Open / closed is remembered per browser.
+  const THEORY_OPEN_KEY = 'vp-theory-open';
+  const THEORY_STATUS = 'claude-draft';   // every describer sentence is a Claude draft
+  function theoryOpen() { try { return localStorage.getItem(THEORY_OPEN_KEY) !== '0'; } catch (_) { return true; } }
+  function setTheoryOpen(open) {
+    try { localStorage.setItem(THEORY_OPEN_KEY, open ? '1' : '0'); } catch (_) { /* unavailable: this visit only */ }
+    els.theory.classList.toggle('vp-theory--closed', !open);
+    els.theoryToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  els.theoryToggle.addEventListener('click', () => setTheoryOpen(els.theory.classList.contains('vp-theory--closed')));
+  setTheoryOpen(theoryOpen());
+
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  /** A term link into /learn (new tab); the term is linked inside the text when it occurs there, else appended. */
+  function theoryItemContent(li, item) {
+    const hit = item.term ? glossaryLookup(item.term) : null;
+    if (!hit) { li.textContent = item.text; return; }
+    const a = el('a', 'learn-link' + (hit.status === 'stub' ? ' learn-link--stub' : ''));
+    a.href = hit.url; a.target = '_blank'; a.rel = 'noopener'; a.title = hit.status === 'stub' ? `${hit.title} — not written yet` : hit.title;
+    const m = item.text.match(new RegExp(`(^|[^\\p{L}])(${item.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s?)(?![\\p{L}])`, 'iu'));
+    if (m) {
+      const at = m.index + m[1].length;
+      a.textContent = m[2];
+      li.append(item.text.slice(0, at), a, item.text.slice(at + m[2].length));
+    } else {
+      a.textContent = item.term;
+      li.append(item.text, ' ', el('span', 'vp-explore__mark', '· '), a);
+    }
+  }
+  function renderTheory(progression, bar, event) {
+    const preview = state.preview;
+    if (preview) els.theoryWhat.textContent = `Previewing candidate #${preview.rank} of ${exploreMeta ? exploreMeta.total : exploreRows.length} (${exploreRows.length} shown)`;
+    else if (event) els.theoryWhat.textContent = `Bar ${bar.bar}${bar.events.length > 1 ? `, event ${state.selectedEvent + 1}` : ''} — ${event.symbol || 'no symbol'}`;
+    else els.theoryWhat.textContent = `Bar ${bar.bar} — no comp event`;
+    els.theoryWhat.classList.toggle('vp-theory__what--preview', !!preview);
+
+    els.theoryDisclaimer.textContent = '';
+    els.theorySections.textContent = '';
+    if (!event) { els.theorySections.appendChild(el('p', 'vp-theory__empty', 'Nothing to describe: this bar has no comp event.')); return; }
+    const ctx = eventContext(progression, bar.bar, state.selectedEvent);
+    const context = {
+      parsed: ctx ? ctx.parsed : null, bass: ctx ? ctx.bass : event.bass, bassSource: ctx ? ctx.bassSource : event.bassSource,
+      prev: ctx ? ctx.neighbours.prev : null, next: ctx ? ctx.neighbours.next : null,
+      includeMelody: state.includeMelody,
+    };
+    if (preview && exploreMeta) Object.assign(context, { rank: preview.rank, rows: exploreRows, target: exploreMeta.target, total: exploreMeta.total, originalTotal: exploreMeta.originalTotal, removed: exploreMeta.removed });
+    const sections = describeVoicing(event, context);
+    if (!sections.length) { els.theorySections.appendChild(el('p', 'vp-theory__empty', 'Nothing to describe for this event.')); return; }
+
+    const d = el('div', 'learn-disclaimer');
+    d.append(el('span', 'learn-disclaimer__icon', '⚠'), el('span', null, DISCLAIMER[THEORY_STATUS]));
+    els.theoryDisclaimer.appendChild(d);
+    for (const s of sections) {
+      const sec = el('section', `vp-theory__section learn-kind--${s.kind}`);
+      const head = el('div', 'vp-theory__head');
+      head.append(el('h4', 'vp-theory__title', s.title), el('span', `learn-badge learn-badge--kind-${s.kind}`, s.kind));
+      sec.appendChild(head);
+      const ul = el('ul', 'vp-theory__items');
+      for (const item of s.items) {
+        const li = el('li', item.kind && item.kind !== s.kind ? `vp-theory__item--${item.kind}` : null);
+        theoryItemContent(li, item);
+        ul.appendChild(li);
+      }
+      sec.appendChild(ul);
+      els.theorySections.appendChild(sec);
+    }
+    // One "Read more" row for the whole card: every section's see_also, deduped, in first-seen order.
+    const links = [...new Set(sections.flatMap(s => s.see_also))].map(resolveSlug).filter(Boolean);
+    if (links.length) {
+      const more = el('div', 'vp-theory__more');
+      more.appendChild(el('span', 'vp-theory__more-label', 'Read more'));
+      const chips = el('div', 'vp-theory__chips');
+      for (const r of links) {
+        const a = el('a', 'vp-theory__chip' + (r.status === 'stub' ? ' vp-theory__chip--stub' : '') + (r.kind === 'page' ? ' vp-theory__chip--page' : ''), r.title);
+        a.href = r.url; a.target = '_blank'; a.rel = 'noopener';
+        if (r.status === 'stub') a.title = 'Not written yet';
+        chips.appendChild(a);
+      }
+      more.appendChild(chips);
+      els.theorySections.appendChild(more);
+    }
+  }
+
+  /** Re-derive the effective progression and both analyses from the overrides. */
+  function recompute() {
+    state.effective = applyOverrides(state.progression, state.overrides);
+    state.analysis = analyzeProgression(state.effective, { includeMelody: state.includeMelody });
+    state.baseAnalysis = analyzeProgression(state.progression, { includeMelody: state.includeMelody });
+  }
+
+  function selectEvent(index) {
+    if (state.selectedBar == null) return;
+    select(state.selectedBar, index);
+  }
+
+  // Shift+←/→: previous / next comp event, crossing into the neighbouring
+  // bar (chart order) at the ends of a bar.
+  function stepEvent(delta) {
+    if (!state.analysis || state.selectedBar == null) return;
+    const bars = state.analysis.bars;
+    let idx = bars.findIndex(b => b.bar === state.selectedBar);
+    let ev = state.selectedEvent == null ? (delta > 0 ? -1 : 0) : state.selectedEvent;
+    ev += delta;
+    while (idx >= 0 && idx < bars.length && (ev < 0 || ev >= bars[idx].events.length)) {
+      idx += delta;
+      if (idx < 0 || idx >= bars.length) return;
+      ev = delta > 0 ? 0 : bars[idx].events.length - 1;
+    }
+    if (idx < 0 || idx >= bars.length) return;
+    select(bars[idx].bar, ev);
+  }
+
+  // ── Melody toggle ────────────────────────────────────────────────
+  // OFF (default): melody is out of the analysis and muted in playback.
+  // ON: scored by time overlap with each comp event (the engine's rule),
+  // lit green on the keyboard, audible. The staff always draws it; the
+  // Tonnetz is comp-only either way. State lives in the URL (&melody=1).
+  function melodyOver(barNumber, event) {
+    const bar = state.effective && state.effective.bars.find(b => b.bar === barNumber);
+    if (!bar || !event) return [];
+    const a = event.beat, z = event.beat + event.dur;
+    return (bar.melody || []).filter(m => Math.min(m.beat + m.dur, z) - Math.max(m.beat, a) > 1e-9).map(m => m.note);
+  }
+
+  function renderMelodyToggle() {
+    els.melodyInput.checked = state.includeMelody;
+    els.melodyState.textContent = state.includeMelody ? 'on' : 'off';
+    els.melody.classList.toggle('vp-melody--on', state.includeMelody);
+  }
+
+  function setIncludeMelody(on) {
+    on = !!on;
+    if (on === state.includeMelody) return;
+    player.stop();
+    state.includeMelody = on;
+    renderMelodyToggle();
+    const url = new URL(window.location.href);
+    if (on) url.searchParams.set('melody', '1'); else url.searchParams.delete('melody');
+    history.replaceState(null, '', url);
+    renderPlayButton();
+    if (!state.progression) return;
+    // Re-analyze and re-select: same bar; the current event when it still
+    // exists (the event list is the comp events, unchanged by the toggle),
+    // else the bar's max-tension event.
+    recompute();
+    chart.render(state.effective, state.analysis, state.selectedBar);
+    const bar = state.analysis.bars.find(b => b.bar === state.selectedBar);
+    if (!bar) return;
+    const keep = state.selectedEvent != null && state.selectedEvent < bar.events.length ? state.selectedEvent : null;
+    select(state.selectedBar, keep);
+  }
+
+  els.melodyInput.addEventListener('change', () => setIncludeMelody(els.melodyInput.checked));
+
+  // ── Playback ────────────────────────────────────────────────────
+  // Play = the whole selected bar (with its lead-in); Shift+Play = the
+  // selected comp event. Nothing plays without a click or a key press.
+  const PLAY_LABEL = { bar: '▶ Play bar', event: '▶ Play event' };
+  let playScope = 'bar';
+  const player = new VoicingPlayer({ onState: renderPlayButton });
+
+  function renderPlayButton(playerState = player.state) {
+    const btn = els.play, hint = els.playHint;
+    const canPlay = !!(state.analysis && state.selectedBar != null);
+    btn.classList.remove('vp-play--playing', 'vp-play--error');
+    hint.classList.remove('vp-play__hint--warn');
+    btn.disabled = !canPlay || playerState === 'loading';
+    switch (playerState) {
+      case 'loading': btn.textContent = '… Loading piano'; hint.textContent = 'first play downloads the samples (~2 MB)'; break;
+      case 'playing': btn.textContent = '■ Stop'; btn.classList.add('vp-play--playing'); hint.textContent = (playScope === 'event' ? 'playing the selected event' : 'playing the selected bar') + (state.includeMelody ? ' with melody' : ', melody off'); break;
+      case 'blocked': btn.textContent = PLAY_LABEL[playScope]; hint.textContent = 'click again to enable audio'; hint.classList.add('vp-play__hint--warn'); break;
+      case 'error':   btn.textContent = PLAY_LABEL[playScope]; btn.classList.add('vp-play--error'); hint.textContent = 'audio unavailable (piano failed to load) — click to retry'; hint.classList.add('vp-play__hint--warn'); break;
+      default:        btn.textContent = PLAY_LABEL.bar; hint.textContent = (state.includeMelody ? 'with melody · ' : 'melody off · ') + 'Shift+click: event · P / Shift+P · Esc stops';
+    }
+  }
+
+  async function playSelected(scope) {
+    if (player.playing) { player.stop(); return; }
+    if (!state.progression || state.selectedBar == null) return;
+    if (scope === 'event' && state.selectedEvent == null) scope = 'bar';
+    playScope = scope;
+    const list = buildPlaybackList(trialProgression(), state.selectedBar, { scope, eventIndex: state.selectedEvent, includeMelody: state.includeMelody });
+    for (const w of list.warnings) console.warn(`[voicings playback] ${w}`);
+    const schedule = toSchedule(list);
+    // Follow: staff and keyboard show every note sounding now. Nothing lights
+    // before beat 0 (the player gates lead-in notes to the bar start; a
+    // carried note lights its in-bar noteheads from beat 0). Selection,
+    // detail and Tonnetz are untouched. On end or Stop both restore the
+    // selected event's normal state.
+    const ROLE_PRIORITY = { bass: 3, melody: 2, voicing: 1 };
+    const soundingKeys = new Map();     // midi → { midi, role, count }
+    const soundingPieces = new Set();   // staff notehead ids
+    const result = await player.play(schedule, {
+      onNote: (note, phase) => {
+        const cur = soundingKeys.get(note.midi) || { midi: note.midi, role: note.role, count: 0 };
+        cur.count += phase === 'on' ? 1 : -1;
+        if (phase === 'on' && ROLE_PRIORITY[note.role] > ROLE_PRIORITY[cur.role]) cur.role = note.role;   // one pitch in two roles: bass > melody > voicing
+        if (cur.count <= 0) soundingKeys.delete(note.midi); else soundingKeys.set(note.midi, cur);
+        keyboard.setPlaying([...soundingKeys.values()]);
+      },
+      onPiece: (piece, phase) => {
+        if (phase === 'on') soundingPieces.add(piece.staffId); else soundingPieces.delete(piece.staffId);
+        staff.setPlaying(soundingPieces);
+      },
+      onEnd: () => {
+        soundingKeys.clear(); soundingPieces.clear();
+        keyboard.setPlaying(null);
+        staff.setPlaying(null);
+        renderPlayButton();
+        if (playingRank != null) { playingRank = null; renderExplore(); }
+      },
+    });
+    if (!result.played && result.reason === 'muted') {
+      els.playHint.textContent = 'sound is muted — unmute in the nav to hear playback';
+      els.playHint.classList.add('vp-play__hint--warn');
+    }
+    if (!result.played && result.reason === 'empty') {
+      els.playHint.textContent = 'nothing to play in this selection';
+    }
+  }
+
+  els.play.addEventListener('click', e => { playSelected(e.shiftKey ? 'event' : 'bar'); });
+
+  // P plays the bar, Shift+P the event, Esc stops (or clears a preview).
+  // [ ] step the Explore preview, K keeps it, - = nudge the target.
+  // Space and Enter are the chart's own keys (select a focused bar); arrows
+  // step bars and events. The handler is skipped while an input has focus.
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key === 'p' || e.key === 'P') { e.preventDefault(); playSelected(e.shiftKey ? 'event' : 'bar'); }
+    else if (e.key === '[' || e.key === ']') { if (!els.explore.hidden) { e.preventDefault(); stepPreview(e.key === ']' ? 1 : -1); } }
+    else if (e.key === 'k' || e.key === 'K') { if (state.preview) { e.preventDefault(); keepPreview(); } }
+    else if (e.key === '-' || e.key === '_') { if (!els.explore.hidden) { e.preventDefault(); nudgeTarget(-TARGET_STEP); } }
+    else if (e.key === '=' || e.key === '+') { if (!els.explore.hidden) { e.preventDefault(); nudgeTarget(TARGET_STEP); } }
+    else if (e.key === 'Escape') {
+      if (player.playing) { e.preventDefault(); player.stop(); }
+      else if (state.preview) { e.preventDefault(); clearPreview(); }
+    }
+  });
+
+  // ── Explainer pills ─────────────────────────────────────────────
+  // One ⓘ per panel header, content from the explainer registry by panel id
+  // (data-explain). data-explain-pos="after" puts the trigger beside a
+  // control instead of inside it. The pill owns Escape only while open; all
+  // other keys fall through to the handler above.
+  for (const el of document.querySelectorAll('[data-explain]')) {
+    const [slug] = topicsForPanel(el.dataset.explain);
+    if (slug) InfoPill.mount(el, { slug, position: el.dataset.explainPos || 'append' });
+  }
+
+  // ── Explore ─────────────────────────────────────────────────────
+  // Candidates for the selected event from voicing-explore.js, scored under
+  // the melody toggle (the melody RULE is toggle-blind: generation always
+  // keeps voicings below the tune). A previewed candidate is applied to a
+  // trial progression that every panel renders from; Keep moves it into
+  // state.overrides. "Original" is the pristine piece's voicing and total.
+  // EXPLORE_ROWS (12) comes from voicing-explore.js so the explainer content can quote it.
+  let exploreRows = [];   // the ranked rows currently shown
+  let exploreRanked = []; // every ranked candidate of that computation (a preview may sit beyond the rows shown)
+  let exploreMeta = null; // { target, total, originalTotal } of that computation, for the Theory card's "why it ranked here"
+
+  /** The effective progression, plus the previewed candidate when there is one. */
+  function trialProgression() {
+    if (!state.preview) return state.effective;
+    return applyOverrides(state.effective, { [state.preview.key]: state.preview.voicing });
+  }
+
+  function exploreKey() {
+    return state.selectedBar != null && state.selectedEvent != null ? overrideKey(state.selectedBar, state.selectedEvent) : null;
+  }
+
+  function originalEvent() {
+    const bar = state.baseAnalysis && state.baseAnalysis.bars.find(b => b.bar === state.selectedBar);
+    return bar && state.selectedEvent != null ? bar.events[state.selectedEvent] || null : null;
+  }
+
+  const sameNotes = (a, b) => a.length === b.length && a.every((n, i) => parseNote(n)?.midi === parseNote(b[i])?.midi);
+  const fmtDelta = d => (Math.abs(d) < 0.0005 ? '±0' : (d > 0 ? '+' : '−') + Math.abs(Math.round(d * 1000) / 1000));
+  const srcLabel = s => (s === 'symbol' ? 'symbol' : s.startsWith('shape:') ? s.slice(6).replace(/@.*$/, m => '') : s);
+
+  /** Generate, score and rank for the selected event. Null when nothing is selected. */
+  function computeExplore() {
+    const key = exploreKey();
+    if (!key || !state.effective) return null;
+    const ctx = eventContext(state.effective, state.selectedBar, state.selectedEvent);
+    if (!ctx) return null;
+    const gen = generateCandidates(ctx, { countRange: state.explore.countRange });
+    const orig = originalEvent();
+    const originalVoicing = (state.progression.bars.find(b => b.bar === state.selectedBar)?.comp[state.selectedEvent]?.voicing) || [];
+    const originalTotal = orig ? orig.total : 0;
+    const target = state.explore.target ?? originalTotal;
+    const scored = gen.candidates.map(c => scoreCandidate(c, ctx, { includeMelody: state.includeMelody }));
+    const ranked = rankCandidates(scored, { target });
+    const filtered = ranked.filter(r => state.explore.sourceFilter === 'all'
+      || (state.explore.sourceFilter === 'symbol' ? r.sources.includes('symbol') : r.sources.some(s => s.startsWith('shape:'))));
+    return { key, ctx, gen, ranked, rows: filtered.slice(0, EXPLORE_ROWS), originalVoicing, originalTotal, target, kept: state.overrides[key] || null };
+  }
+
+  function renderExplore() {
+    const ex = computeExplore();
+    if (!ex) { els.explore.hidden = true; exploreRows = []; exploreRanked = []; exploreMeta = null; return; }
+    els.explore.hidden = false;
+    const label = `Explore — bar ${state.selectedBar}, event ${state.selectedEvent + 1} (${ex.ctx.symbol || 'no symbol'}): ${ex.ranked.length} candidates, ${ex.rows.length} shown · click a row to preview, ▶ to hear it, Keep to swap it in · [ ] step · K keep · − = target`;
+    document.getElementById('vp-explore-label-text').textContent = label;   // the span, not the <p>: the ⓘ pill lives in the <p>
+    els.exploreTarget.value = String(ex.target);
+    els.exploreCount.value = String(state.explore.countRange);
+    els.exploreSource.value = state.explore.sourceFilter;
+    els.exploreFlag.hidden = !(ex.gen.range && ex.gen.range.fallback);
+    const nOver = Object.keys(state.overrides).length;
+    els.exploreHint.textContent = (nOver ? `${nOver} override${nOver === 1 ? '' : 's'} kept` : 'no overrides')
+      + (state.preview ? ` · previewing #${state.preview.rank}` : '');
+    const removed = ex.gen.removed || [];
+    if (removed.length) {   // one line, the rule name linked to its Learn page
+      const hit = glossaryLookup('dominant rule');
+      const a = document.createElement('a'); a.className = 'learn-link'; a.textContent = 'dominant rule'; a.href = hit ? hit.url : '/learn'; a.target = '_blank'; a.rel = 'noopener';
+      els.exploreHint.append(` · ${removed.length} candidate${removed.length === 1 ? '' : 's'} removed by the `, a, ` (${[...new Set(removed.map(r => r.reason))].join('; ')})`);
+    }
+    els.exploreKeep.disabled = !state.preview;
+    els.exploreRevert.disabled = !Object.keys(state.overrides).some(k => k.startsWith(`${state.selectedBar}:`));
+    els.exploreReset.disabled = !nOver;
+    els.exploreCopy.disabled = !nOver;
+    exploreRows = ex.rows;
+    exploreRanked = ex.ranked;
+    exploreMeta = { target: ex.target, total: ex.ranked.length, originalTotal: ex.originalTotal, removed: ex.gen.removed || [] };
+
+    const root = els.exploreRows;
+    root.textContent = '';
+    if (!ex.rows.length) {
+      const p = document.createElement('p'); p.className = 'vp-explore__empty';
+      p.textContent = ex.gen.warnings.length ? ex.gen.warnings.join('; ') : 'No candidates under the current filter.';
+      root.appendChild(p); return;
+    }
+    const table = document.createElement('table'); table.className = 'vp-explore__table';
+    table.innerHTML = '<thead><tr><th>#</th><th></th><th>voicing</th><th>tension</th><th>motion in · out</th><th>omitted / added</th><th>source</th><th></th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    for (const r of ex.rows) {
+      const tr = h('tr', 'vp-explore__row' + (state.preview && state.preview.rank === r.rank && sameNotes(state.preview.voicing, r.voicing) ? ' vp-explore__row--preview' : ''));
+      tr.dataset.rank = r.rank;
+      tr.appendChild(h('td', 'vp-explore__num', String(r.rank)));
+      // ▶ previews the row and plays the event; Shift+▶ the whole bar; ▶ on the playing row stops.
+      const isPlaying = playingRank === r.rank && player.playing;
+      const playTd = h('td');
+      const playBtn = h('button', 'vp-explore__play' + (isPlaying ? ' vp-explore__play--playing' : ''), isPlaying ? '■' : '▶');
+      playBtn.type = 'button';
+      playBtn.title = isPlaying ? 'Stop' : 'Preview and play the event · Shift: the whole bar';
+      playBtn.addEventListener('click', e => { e.stopPropagation(); playRow(r, e.shiftKey ? 'bar' : 'event'); });
+      playTd.appendChild(playBtn);
+      tr.appendChild(playTd);
+      const notes = h('td');
+      notes.appendChild(h('span', 'vp-explore__note vp-explore__note--bass', ex.ctx.bass));
+      for (const n of r.voicing) notes.appendChild(h('span', 'vp-explore__note', n));
+      tr.appendChild(notes);
+      const t = h('td', 'vp-explore__num', String(r.tension.total));
+      const d = r.tension.total - ex.originalTotal;
+      t.appendChild(h('span', 'vp-explore__delta' + (d > 0.0005 ? ' vp-explore__delta--up' : d < -0.0005 ? ' vp-explore__delta--down' : ''), fmtDelta(d)));
+      tr.appendChild(t);
+      tr.appendChild(h('td', 'vp-explore__num', `${r.motion.in ? r.motion.in.total : '–'} · ${r.motion.out ? r.motion.out.total : '–'}`));
+      const nv = h('td');
+      if (r.namedVsPlayed) {
+        for (const o of r.namedVsPlayed.omitted) nv.appendChild(h('span', 'vp-explore__omit', `${o.name}·${o.degree}`));
+        for (const a of r.namedVsPlayed.added) nv.appendChild(h('span', 'vp-explore__add', `${a.name}·${a.degree}`));
+        if (!r.namedVsPlayed.omitted.length && !r.namedVsPlayed.added.length) nv.appendChild(h('span', 'vp-explore__mark', 'complete'));
+      }
+      tr.appendChild(nv);
+      const src = h('td');
+      r.sources.forEach((s, i) => { if (i) src.appendChild(document.createTextNode(', ')); src.appendChild(h('span', 'vp-explore__src' + (s.startsWith('shape:') ? ' vp-explore__src--shape' : ''), srcLabel(s))); });
+      tr.appendChild(src);
+      const marks = [];
+      if (sameNotes(r.voicing, ex.originalVoicing)) marks.push(['● original', '']);
+      if (ex.kept && sameNotes(r.voicing, ex.kept)) marks.push(['◆ kept', ' vp-explore__mark--kept']);
+      const mk = h('td');
+      for (const [text, cls] of marks) mk.appendChild(h('span', 'vp-explore__mark' + cls, text + ' '));
+      tr.appendChild(mk);
+      tr.addEventListener('click', () => toggleRow(r));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    root.appendChild(table);
+  }
+
+  let playingRank = null;   // rank of the row whose ▶ started the current playback
+
+  /** ▶ on a row: preview it and play (event scope; 'bar' for the whole bar with lead-in). On the playing row: stop. */
+  async function playRow(row, scope = 'event') {
+    if (typeof row === 'number') row = exploreRows.find(r => r.rank === row);
+    if (!row) return;
+    if (player.playing && playingRank === row.rank) { player.stop(); return; }
+    previewCandidate(row);          // stops any playback and re-renders every panel
+    playingRank = row.rank;
+    await playSelected(scope);
+    if (!player.playing) playingRank = null;
+    renderExplore();                // ■ on the playing row (onEnd re-renders it back to ▶)
+  }
+
+  /** [ / ]: preview the previous / next row (none previewed: the last / the first). */
+  function stepPreview(delta) {
+    if (!exploreRows.length) return;
+    const i = state.preview ? exploreRows.findIndex(r => r.rank === state.preview.rank) : -1;
+    const next = i < 0 ? (delta > 0 ? 0 : exploreRows.length - 1) : Math.min(Math.max(i + delta, 0), exploreRows.length - 1);
+    if (next !== i) previewCandidate(exploreRows[next]);
+  }
+
+  function nudgeTarget(delta) {
+    if (els.explore.hidden) return;
+    setTarget((Number(els.exploreTarget.value) || 0) + delta);
+  }
+
+  /** Click a row: preview it, or restore if it is already the preview. */
+  function toggleRow(row) {
+    if (state.preview && state.preview.rank === row.rank && sameNotes(state.preview.voicing, row.voicing)) clearPreview();
+    else previewCandidate(row);
+  }
+
+  /** Show a candidate in every panel (detail, staff, keyboard, Tonnetz) without selecting or keeping it. */
+  function previewCandidate(row) {
+    const key = exploreKey();
+    if (!key || !row) return;
+    if (typeof row === 'number') row = exploreRows.find(r => r.rank === row) || exploreRows[row - 1];
+    if (!row) return;
+    player.stop();
+    showPreview(key, row);
+  }
+
+  /** Render a candidate as the preview (no stop: setTarget re-shows the current preview at its new rank mid-playback). */
+  function showPreview(key, row) {
+    state.preview = { key, voicing: row.voicing.slice(), rank: row.rank };
+    const trial = trialProgression();
+    const analysis = analyzeProgression(trial, { includeMelody: state.includeMelody });
+    const bar = analysis.bars.find(b => b.bar === state.selectedBar);
+    if (bar) bar.source = 'preview';   // the detail tag reads "preview" until Keep makes it "user"
+    renderPanels(trial, analysis);
+    renderExplore();
+  }
+
+  function clearPreview() {
+    if (!state.preview) return;
+    player.stop();
+    state.preview = null;
+    renderPanels(state.effective, state.analysis);
+    renderExplore();
+  }
+
+  /** Commit the previewed candidate as an override (tie propagation happens in applyOverrides). */
+  function keepPreview() {
+    if (!state.preview) return;
+    state.overrides[state.preview.key] = state.preview.voicing.slice();
+    state.preview = null;
+    afterOverridesChanged();
+  }
+
+  function revertBar() {
+    if (state.selectedBar == null) return;
+    for (const k of Object.keys(state.overrides)) if (k.startsWith(`${state.selectedBar}:`)) delete state.overrides[k];
+    state.preview = null;
+    afterOverridesChanged();
+  }
+
+  function resetOverrides() {
+    state.overrides = {};
+    state.preview = null;
+    afterOverridesChanged();
+  }
+
+  function afterOverridesChanged() {
+    recompute();
+    chart.render(state.effective, state.analysis, state.selectedBar);
+    const bar = state.analysis.bars.find(b => b.bar === state.selectedBar);
+    select(state.selectedBar, bar && state.selectedEvent != null && state.selectedEvent < bar.events.length ? state.selectedEvent : null);
+  }
+
+  /** The overrides, tie propagation included, as JSON: to the clipboard, and into the textarea when that fails. */
+  function overridesJSON() {
+    return JSON.stringify({ piece: state.piece, overrides: expandOverrides(state.progression, state.overrides) }, null, 2);
+  }
+  async function copyOverrides() {
+    const json = overridesJSON();
+    els.exploreJson.value = json;
+    try {
+      await navigator.clipboard.writeText(json);
+      els.exploreHint.textContent = 'overrides copied to the clipboard';
+      els.exploreJson.hidden = true;
+    } catch (_) {
+      els.exploreHint.textContent = 'clipboard unavailable — JSON shown below';
+      els.exploreJson.hidden = false;
+    }
+    return json;
+  }
+
+  function setTarget(value) {
+    const v = Number(value);
+    if (!Number.isFinite(v)) return;
+    state.explore.target = Math.max(0, Math.round(v / TARGET_STEP) * TARGET_STEP);
+    renderExplore();
+    // A previewed candidate keeps its voicing but may have a new rank: re-show
+    // it so the Theory card's "why it ranked here", the hint and the row
+    // highlight all follow (renderExplore runs once more inside showPreview).
+    if (state.preview) {
+      const row = exploreRanked.find(r => sameNotes(r.voicing, state.preview.voicing));
+      if (row) showPreview(state.preview.key, row);
+    }
+  }
+  function setCountRange(v) { state.explore.countRange = Number(v) ? 1 : 0; renderExplore(); }
+  function setSourceFilter(v) { state.explore.sourceFilter = ['all', 'symbol', 'shape'].includes(v) ? v : 'all'; renderExplore(); }
+
+  els.exploreTarget.addEventListener('change', () => setTarget(els.exploreTarget.value));
+  // The target steps in TARGET_STEP (the ranking's bucket size) everywhere: buttons, keys, the input.
+  els.exploreTarget.step = String(TARGET_STEP);
+  els.exploreTargetDec.title = `target − ${TARGET_STEP}`;
+  els.exploreTargetInc.title = `target + ${TARGET_STEP}`;
+  els.exploreTargetDec.addEventListener('click', () => setTarget((Number(els.exploreTarget.value) || 0) - TARGET_STEP));
+  els.exploreTargetInc.addEventListener('click', () => setTarget((Number(els.exploreTarget.value) || 0) + TARGET_STEP));
+  els.exploreCount.addEventListener('change', () => setCountRange(els.exploreCount.value));
+  els.exploreSource.addEventListener('change', () => setSourceFilter(els.exploreSource.value));
+  els.exploreKeep.addEventListener('click', keepPreview);
+  els.exploreRevert.addEventListener('click', revertBar);
+  els.exploreReset.addEventListener('click', resetOverrides);
+  els.exploreCopy.addEventListener('click', copyOverrides);
+
+  // ── Loading ─────────────────────────────────────────────────────
+  function showBanner(text, isError) {
+    els.banner.innerHTML = text;
+    els.banner.classList.toggle('vp-banner--error', !!isError);
+    els.banner.hidden = false;
+  }
+  function hideBanner() { els.banner.hidden = true; }
+
+  function renderEmpty(name) {
+    state.piece = name; state.progression = null; state.effective = null; state.analysis = null; state.baseAnalysis = null;
+    state.selectedBar = null; state.selectedEvent = null; state.overrides = {}; state.preview = null;
+    els.explore.hidden = true;
+    els.title.textContent = name;
+    els.meta.textContent = '';
+    els.page.classList.add('vp-empty');
+    document.getElementById('vp-chart').querySelectorAll('.vc-wrap').forEach(w => (w.textContent = ''));
+    detail.clear();
+    keyboard.clear();
+    staff.clear();
+    HarmonyState.update({ activeNotes: [], activeTriads: [], activeChord: null, activeTransform: null, activeInterval: null });
+    renderPlayButton();
+  }
+
+  /** [low, high] midi: the piece's extreme written notes rounded out to whole octaves (C..B). */
+  function pieceRange(progression) {
+    const midis = [];
+    for (const b of progression.bars || []) {
+      for (const e of b.comp || []) for (const n of [e.bass, ...(e.voicing || [])]) midis.push(parseNote(n)?.midi);
+      for (const e of b.bassLine || []) midis.push(parseNote(e.note)?.midi);
+      for (const e of b.melody || []) midis.push(parseNote(e.note)?.midi);
+    }
+    const valid = midis.filter(m => m != null);
+    if (!valid.length) return [36, 83];
+    const lo = Math.floor(Math.min(...valid) / 12) * 12, hi = Math.floor(Math.max(...valid) / 12) * 12 + 11;
+    return [lo, hi];
+  }
+
+  async function fetchPiece(name) {
+    const res = await fetch(`/voicings/data/${encodeURIComponent(name)}`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    return res.json();
+  }
+
+  async function load(name, { explicit }) {
+    hideBanner();
+    let progression = await fetchPiece(name);
+    let loadedName = name;
+
+    if (!progression && !explicit && name === DEFAULT_PIECE) {
+      progression = await fetchPiece(FIXTURE_PIECE);
+      loadedName = FIXTURE_PIECE;
+      if (progression) {
+        showBanner('Showing the test fixture; private pieces live in <code>static/private/</code>.', false);
+      }
+    }
+
+    if (!progression) {
+      renderEmpty(name);
+      showBanner(`No data for <code>${name}</code>. Private pieces live in <code>static/private/&lt;name&gt;.json</code>; try <code>?piece=fixture</code>.`, true);
+      return;
+    }
+
+    state.piece = loadedName;
+    state.progression = progression;
+    state.overrides = {}; state.preview = null; state.explore.target = null;
+    keyboard.setRange(...pieceRange(progression));
+    recompute();
+    els.page.classList.remove('vp-empty');
+    els.title.textContent = progression.title || loadedName;
+    els.meta.innerHTML = [
+      progression.key ? `${progression.key} major` : null,
+      progression.timeSignature,
+      progression.tempo ? `♩ = ${progression.tempo}` : null,
+      `${progression.bars.length} bars`,
+      // Provenance of the chord symbols, from the piece JSON (schema: chordSymbols "derived" = added by analysis).
+      progression.chordSymbols === 'derived' ? '<span class="vp-meta__note" title="The chord symbols were added by analysis; the source edition carries none.">symbols added by analysis — not in the original edition</span>' : null,
+      // Source credit, from the piece JSON's attribution (public fixtures carry one; private pieces need none).
+      progression.attribution && progression.attribution.source
+        ? `<span class="vp-meta__credit">source: ${progression.attribution.url ? `<a href="${progression.attribution.url}" target="_blank" rel="noopener">${progression.attribution.source}</a>` : progression.attribution.source}${progression.attribution.edition ? ` — ${progression.attribution.edition}` : ''}${progression.attribution.license ? ` (${progression.attribution.license})` : ''}</span>`
+        : null,
+    ].filter(Boolean).map(s => `<span>${s}</span>`).join('');
+    els.input.value = loadedName;
+    syncPicker(loadedName);
+
+    // Anchor the shared Tonnetz on the piece's key, depth 3 so all twelve
+    // pitch classes are on the grid for Note Mode's compact cluster.
+    HarmonyState.update({
+      tonnetzCenter: { root: progression.key || 'C', quality: 'major' },
+      tonnetzDepth: 3,
+    });
+
+    chart.render(state.effective, state.analysis, null);
+    const firstWithComp = progression.bars.find(b => b.comp && b.comp.length) || progression.bars[0];
+    if (firstWithComp) select(firstWithComp.bar);
+    renderPlayButton();
+  }
+
+  /** Switch piece from the header: the URL keeps the choice (same param as a deep link), then load() as an explicit request. */
+  function switchPiece(name) {
+    if (!/^[a-z0-9-]+$/.test(name)) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('piece', name);
+    history.replaceState(null, '', url);
+    load(name, { explicit: true });
+  }
+
+  els.form.addEventListener('submit', e => { e.preventDefault(); switchPiece(els.input.value.trim()); });
+  els.select.addEventListener('change', () => { if (els.select.value) switchPiece(els.select.value); });
+
+  // ── Piece picker ────────────────────────────────────────────────
+  // /voicings/pieces lists what the data route can serve, private pieces
+  // first. The select replaces the text box once the list arrives; if the
+  // fetch fails the text box stays, so the page still works.
+  let pieceList = [];
+  function syncPicker(name) {
+    if (!pieceList.length) return;
+    const has = [...els.select.options].some(o => o.value === name);
+    if (has) els.select.value = name; else els.select.selectedIndex = -1;   // unknown name: nothing selected, the banner explains
+  }
+  async function loadPieceList() {
+    try {
+      const res = await fetch('/voicings/pieces', { headers: { Accept: 'application/json' } });
+      if (!res.ok) return;
+      const list = await res.json();
+      if (!Array.isArray(list) || !list.length) return;
+      pieceList = list;
+      els.select.textContent = '';
+      for (const source of ['private', 'public']) {
+        const group = list.filter(p => p.source === source);
+        if (!group.length) continue;
+        const og = document.createElement('optgroup');
+        og.label = source === 'private' ? 'local (private)' : 'public';
+        for (const p of group) { const o = document.createElement('option'); o.value = p.name; o.textContent = source === 'private' ? `${p.title} (local)` : p.title; og.appendChild(o); }
+        els.select.appendChild(og);
+      }
+      els.form.classList.add('vp-piece-form--list');
+      syncPicker(state.piece);
+    } catch (_) { /* list unavailable: the text box stays */ }
+  }
+  loadPieceList();
+
+  const params = new URLSearchParams(window.location.search);
+  state.includeMelody = params.get('melody') === '1';
+  renderMelodyToggle();
+  const requested = params.get('piece');
+  load(requested || DEFAULT_PIECE, { explicit: !!requested });
+
+  // Debug handle for the browser console (no behaviour depends on it).
+  window.__voicings = {
+    state, select, selectEvent, stepEvent, chart, keyboard, detail, bubble, staff, player, playSelected, setIncludeMelody,
+    switchPiece, pieces: () => pieceList,
+    explore: {
+      compute: computeExplore, rows: () => exploreRows, preview: previewCandidate, clear: clearPreview, keep: keepPreview, playRow, stepPreview, nudgeTarget,
+      revert: revertBar, reset: resetOverrides, copy: copyOverrides, json: overridesJSON,
+      setTarget, setCountRange, setSourceFilter, trialProgression,
+    },
+  };
+</script>
+{% endblock %}

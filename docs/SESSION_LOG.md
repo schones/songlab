@@ -3,7 +3,992 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
-## ## 2026-05-18 — Documentation cleanup + Session 1 of cantor presentational arc
+## 2026-10-17 → 19 — Voicing Explorer Session 6.5: explainer layer, Theory card, dominant rule, piece picker, rag fixes, P6 close-out
+
+Nine build-then-STOP prompts plus read-only checks (P1–P2 on 10-17,
+`db3d6b5`; the rest on 10-19: `a4b19a4` P3, `cf6d5ff` P4–P5,
+`5d46699` P5 follow-ups, `e04bb53` dominant rule, `fbc59d0` layout,
+`690ead8` piece picker, `47d8b24` bass provenance, then the rag symbol
+correction and P6). Each prompt ran its suites and a headless-Chrome
+check over CDP; nothing private landed in a committed file.
+
+### Landed
+- Explainer layer: registry (`voicing-explainer-content.js`, 25
+  topics, constants interpolated), `mini-markdown.js`, `info-pill.js`,
+  `/learn` pages, panel pills on /voicings.
+- `voicing-describe.js`: `describeVoicing` → shape (catalogue of
+  shells and rootless A/B forms incl. dominant versions), guide tones,
+  colour tones (rubs, "unusual label" heuristics), omissions
+  (routine vs notable), motion vs the voiced neighbour, why-ranked by
+  the first differing `rankKey` component; inferred basses worded
+  "the lowest note".
+- Theory card beside the Explore table (sticky, scrolls inside, stacks
+  under 1200px); deduped Read more row; quiet stub links; target
+  nudges re-rank an open preview; keyboard scales to its panel; page
+  max-width 1800.
+- Dominant rule (`DOMINANT_RULE`): every candidate keeps the ♭7, ♯11
+  also needs the 3rd; bass counts as sounding; original exempt;
+  removals reported in the hint and card. Rag 12.2 keeps 6 of 31.
+- Piece picker: `/voicings/pieces` route (disk scan, private first)
+  and a header select; deep links and fallback text box kept.
+- Rag `SYMBOLS` corrected (15 of 27): slash only when the lowest
+  sounding note is not the root; Bdim7 left unslashed. No analysis
+  number or ranking moved. Provenance stated in `ly_to_src.py`, the
+  JSON notes and a header note on the page; source credit (Mutopia
+  edition of the 1899 Stark original) in the header meta.
+- Exporter `bassSource` (`voice` / `carried` / `inferred`) in the
+  schema and all three JSONs; Selected bar tags an inferred bass.
+- P6: "Voicings" nav link (base + explorer); Salamander CC BY 3.0
+  credit app-wide (base footer, explorer status bar, playback topic).
+
+### Diagnosed / decided
+- Sections carry one `kind`; omissions are a separate heuristic
+  section, and item-level `kind` marks a heuristic remark inside a
+  fact section.
+- By ear on rag 12.2: 9+3 without the ♭7 is not dominant, 9+♭7
+  without the 3rd is — hence "every candidate keeps the ♭7" rather
+  than "needs both guide tones". Decided on one bar; RADAR.
+- The rag's symbols were a hand-entered table derived by Claude, not
+  computed; the slash slip was systematic (top note of the cluster).
+- Bars 9–17 have no left-hand bass voice in the reduction: the
+  "bass" there is the lowest chord note (now `bassSource:
+  "inferred"`); bars 16–17's real bass dyad on beat 1.5 reaches
+  `bassLine` only.
+- Playback follow never calls `renderPanels`, so the card does not
+  re-render per note; no throttling needed.
+- Sticky rarely engages: the card is capped at viewport height and is
+  usually the taller column; its internal scroll does the work.
+
+### Setup for next session
+- Branch `voicing-explorer`, 29 commits ahead of `dev`; `dev` has not
+  moved since the branch point (`57afaa9`). Session 7 = merge.
+- `static/private/dont-be-sad.json` regenerated (adds `bassSource`
+  only; backup kept outside the repo during the session). The dev
+  server on 5001 runs with `FLASK_DEBUG=true` and reloads itself.
+
+### Calibration notes
+- Headless Chrome over the DevTools protocol (Node's built-in
+  WebSocket, no extra dependencies) made every UI change checkable
+  without a browser tool; keep the scripts' shape for Session 7.
+- "Build, then STOP" with a before/after list per prompt kept the
+  rag symbol fix and the bass-provenance change honest: both changed
+  no number, and the comparison scripts proved it.
+
+### Flagged for later
+- Private piece data under `static/` answers HTTP 200 directly; move
+  before any shared deploy (RADAR).
+- Two-voice dominants over a root bass can never carry ♯11 under the
+  rule; more listening needed (RADAR).
+- Tonnetz and staff do not scale on wide screens; tablet layout;
+  favicon 404 (RADAR).
+
+### Out of scope / deferred
+- Merging or rebasing (Dustin's). Moving private data out of
+  `static/`. Explore register-by-degree factor, 0.5 ranking cliffs,
+  piece ceiling (all still open in RADAR).
+
+## 2026-10-16 — Voicing Explorer Session 6: Explore first slice (candidates, shapes, ranking, panel), event-scope bass onset
+
+One read-and-report, then three build parts (core, harvested shapes,
+page) with one follow-up round and one playback amendment, each
+build-then-STOP. Three commits (`ad44437` parts 1–2, `7ccd8fb` part 3
++ follow-ups, `ea7d7ff` event-scope bass). For a selected event the
+page now generates alternative comp voicings, ranks them against a
+tension target, previews and auditions them, and swaps one in.
+
+### Landed
+- `static/shared/voicing-explore.js` (new, pure, Node-testable):
+  `chordTones`, `voicedNeighbours` (nearest events WITH a voicing,
+  before and after, on the engine's `barNeighbours`), `eventContext`,
+  `generateCandidates` (symbol source + harvested shapes, constraints
+  below, `range.fallback`, `skipped` with reasons), `scoreCandidate`
+  (reuses `intervalTension`, `melodyTension`, `voiceMotion`,
+  `namedVsPlayed`; motion in and out), `rankCandidates`,
+  `harvestShapes` / `mergeShapes` / `applyShape`, `pieceCeiling`,
+  `expandOverrides` / `applyOverrides` (non-mutating, bar source
+  `user`, tie propagation). `selfTest()` 76/76 — every event of the
+  fixture, the rag and the private piece scored as itself reproduces
+  the engine's total and named-vs-played with melody on and off.
+- `static/shared/voicing-analysis.js`: `barNeighbours(progression)`
+  exported (predecessor and successor by first occurrence in
+  `playOrder`); `_predecessors` delegates to it. 64/64 unchanged.
+- `templates/voicings.html`: Explore panel between the detail row and
+  the keyboard — target (− / + by 0.5, default the original event's
+  total), voices original / ±1, source all / symbol / shapes, ranked
+  table of 12 (bass + voicing chips, tension with delta, motion
+  in · out, omitted / added, source tags, ● original / ◆ kept), ▶ per
+  row (preview + play the event; Shift = the bar; ▶ on the playing row
+  stops), Keep / Revert bar / Reset all / Copy JSON (textarea fallback
+  when the clipboard is unavailable). Preview renders detail, staff,
+  keyboard and Tonnetz from a trial progression without touching the
+  selection; Esc, a second click on the row, or any new selection
+  restores. Everything reads `state.effective`
+  (`applyOverrides(progression, overrides)`); the loaded piece is never
+  written. Keys `[` `]` step the preview, `K` keeps, `-` `=` nudge the
+  target (skipped in inputs). Detail tag reads `preview` while
+  previewing, `user` after Keep. `window.__voicings.explore`.
+- `static/shared/voicing-chart.js`: `vc-bar--user` (green 1.5 px
+  segment stroke + green bar number; gold when selected), legend entry
+  "re-voiced (green outline)". Heights unchanged.
+- `static/shared/voicing-playback-model.js`: event scope starts at the
+  bass's real onset when the bass was struck earlier in the same bar
+  (see below). 95/95.
+- Verified in headless Chrome over CDP after each part: preview changes
+  all four panels while the selection and chip stay; Play / Shift+Play
+  carry the previewed voicing; Keep drops the arranged fade and
+  updates the aria tension; Esc and re-click restore; selecting another
+  bar clears the preview; bar 43 kept carries into 44 with source
+  `user` and the tie drawn; Copy JSON lists 44:0 as propagated; Revert
+  43 removes 43 and 44; Reset re-fades 23; ▶ / Shift+▶ / stop; keys
+  incl. the in-input skip; rag bar 9's motion reference is bar 4.
+  Console clean throughout.
+
+### Diagnosed / decided
+- **Explore never re-classifies**: it writes `comp[i].voicing` only,
+  never `bass`, `bassLine` or `melody` (module header). Role inference
+  is a transcription task (RADAR).
+- **Tone pool**: the symbol's named tones (slash bass included) + the
+  9th; dominant types (major 3rd + minor 7th, so not 7sus4) also get
+  the 13th and ♯11; the natural 9th is skipped when the symbol names an
+  altered 9th. Bass pitch class excluded unless `allowBassDouble`.
+- **Voice count**: the original's by default, ±1 as an option, bounded
+  2–4; an empty original gets 3.
+- **Melody rule**: every voicing note below the lowest melody note
+  sounding in the event, no unison, seconds allowed and scored. Applies
+  with the melody toggle OFF too (generation is toggle-blind; scoring
+  follows the toggle). Fallback when no candidate of the wanted count
+  fits because the melody dips inside the event: the bound becomes the
+  melody note at the event onset, flagged `range.fallback`. Fired 0
+  times in bars 21–44 (25 events).
+- **Register**: bass + 2 at the bottom (bar 1 has A3 over G3); span
+  lowest→highest ≤ 12 (every shape in both pieces fits).
+- **Piece ceiling** replaces the fixed C5 for melody-less events: the
+  highest comp voicing note in the loaded piece (private G4, rag D♭5).
+  Self-limiting by design — Explore never goes above the piece's
+  existing comp top there; watch it (RADAR).
+- **Harvested shapes**: every comp voicing as degree labels from
+  `namedVsPlayed` (written spelling decides) plus its layout above the
+  bass, grouped by both. R/3/5/7 drop their accidental at harvest and
+  take the target type's version on apply (♭3, ♭5/♯5, ♭7/♭♭7); 9/11/13
+  keep theirs and refuse a target that names a different version (a
+  9th against ♭9). A degree the target cannot supply (3rd on sus4, 7th
+  on a triad) skips the shape with a reason, never substitutes. Shapes
+  are exempt from the tone pool and the bass-double rule (the player's
+  vocabulary) but not from the melody rule, window, span or voice
+  count. Library per piece (private 19 shapes, rag 7), `opts.shapes`
+  for a merged one. The three named shapes: "2-3-5 cluster" (9-3-5 over
+  2.4.7; bars 1, 5, 9, 13, 14, 33), "pair over slash bass" (7-♯11 over
+  6.14; bar 16), "bass–5th–10th shell" (5-3 over 7.16; bar 15). Bar 1's
+  cluster applied to Gm7/F reproduces bar 2, to Amaj7 bar 14. Bars
+  19–20 (added 11 on Cmaj7, outside the pool) return via their own
+  shape. Identical voicings from both sources dedupe into one candidate
+  with every tag — bar 1's cluster carries three.
+- **Ranking**: target in chart units, default = the pristine event's
+  total under the current toggle; distance from target rounded to 0.5,
+  then total motion (in + out, to the nearest voiced events — rag bar 9
+  looks back past the bare basses of 5–8 to bar 4), then fewer omitted
+  named tones. Both numbers shown per row.
+- **Persistence**: none this session. Revert (bar), Reset (all), Copy
+  JSON (expanded overrides incl. propagated ones, for `score_src.py`).
+- **Preview** updates all panels incl. the Tonnetz without changing
+  `selectedBar` / `selectedEvent`; Play auditions the preview (bar
+  scope by default, with the real lead-in).
+- **Tie propagation**: an override on a tied event also applies to the
+  next bar's beat-0 event carrying the same original voicing, on down
+  the chain (43 → 44); explicit overrides win.
+- **`barNeighbours` exported** from the engine rather than duplicated;
+  tested from the explore suite so the engine stays at 64. Numbers
+  unchanged.
+- **Amendment to Session 5 decision 2 (event scope)**: when the
+  event's bass was struck earlier in the same bar, playback starts at
+  the bass's onset and the chord enters at the event's beat (bar 21:
+  F2 on beat 1, chord on beat 2); the pre-event span lights from its
+  onset, not as a lead-in. Bass attacking with the chord, and bass
+  carried from the previous bar, unchanged. Consequence: in event
+  scope a rolled downbeat bass (bar 17) no longer leads the chord's
+  roll, matching bar scope.
+- Chart `user` bars had no style (they simply lost the arranged fade);
+  the green outline was added in the follow-up round.
+
+### Listening — bar 21 (F7 in G major)
+- The target dial tracks the ear. Liked: G-D-E♭ (9 13 ♭7), A2-E♭3-F3
+  (3 ♭7 R shell), C-A-B♭ (the piece's own 5-3-11). Disliked: A-B-D and
+  D-A-B (♯11 without ♭7 — drifts to F Lydian / the home key), E♭-B-D
+  (♯11 without the 3rd), B2-G-A (low ♯11 against the root).
+- The original ranked #3 at its own target and #12 at target 3.
+  Hypotheses recorded in RADAR, to test on other dominant bars before
+  encoding.
+
+### Setup for next session
+- Tree clean at `ea7d7ff` on `voicing-explorer`, 19 commits ahead of
+  dev. Suites: explore 76/76, analysis 64/64, staff 70/70, playback
+  95/95, `check_export.py` 25/25, `check_midi.py` 0 mismatches.
+- B section (bars 21–44, 25 events) after merging: 1008 candidates,
+  90 shape-only, 6 / 29 / 123 per event (min / median / max), 39 shape
+  applications skipped with a reason, 15 events with a minor-2nd
+  candidate available.
+- Next: Session 6.5 explainer layer, then Explore tuning (structured
+  listening across bars and pieces), then Session 7 (merge to dev with
+  the clean-clone check).
+
+### Calibration notes
+- Two expectation slips in part 2 were my guesses, not the data: the
+  rag's top comp note is D♭5 (bar 12's second event), not C5; the pair
+  shape's key is `7-♯11` because 7ths drop their accidental by design.
+  Print the data first.
+- A third tag on bar 1's cluster looked like a bug and was the rule
+  working: bar 2's minor variant re-voiced on Gmaj7 lands on the same
+  notes.
+- The ▶ icon never turned to ■ because the table re-rendered before
+  playback started and not after; a state-driven re-render needs to
+  run after the awaited transition.
+- A Python patch script that asserts every anchor before writing
+  anything is the right shape; one wrong indentation aborted the
+  whole patch and nothing was half-applied.
+
+### Flagged for later
+- See RADAR additions dated 2026-10-16 (Explore tuning hypotheses,
+  ranking cliffs, piece ceiling, explainer layer).
+
+### Out of scope / deferred
+- Persistence of overrides beyond the session.
+- Melody instrument on the schema (the melody rule is a piano-solo
+  heuristic; RADAR).
+
+## 2026-10-16 — Voicing Explorer Session 5: playback (Tone.js + vendored Salamander), melody toggle, follow highlighting
+
+One read-and-report, then four build parts and three fixes, each in
+the build-then-STOP shape. Five commits (`9b548f2`, `cafc6d3`,
+`3e9e415`, `8ce3620`, `26be03c`). The page now plays the selected bar
+or event on a piano, with the staff and keyboard following.
+
+### Landed
+- `static/shared/voicing-playback-model.js` (new, pure, Node-testable):
+  `buildPlaybackList(progression, bar, { scope, eventIndex,
+  includeMelody })` → `{ tempo, beatsPerBar, scope, bar, predecessor,
+  leadInStart, notes, warnings }`, notes `{ midi, name, start,
+  duration, role, event, staffId, pieces, leadIn, roll }` in quarters
+  from the bar's beat 0. Bar scope is the staff model's voices with
+  tied pieces merged (`buildBarModel` supplies the bass merge rule and
+  the performance predecessor as `model.prev`; nothing re-implemented),
+  tie tails not re-attacked, lead-in from the predecessor. Event scope
+  is comp.bass + voicing for the window plus the overlapping melody,
+  clipped — what the analysis scores. `toSchedule(playback, {
+  arpStepMs })` → seconds with `barStart`, roll offsets, pieces.
+  `selfTest()` 89/89: a nine-bar synthetic progression, the fixture,
+  the rag, the private piece.
+- `static/shared/voicing-player.js` (new): Tone 14.8.49 lazy from the
+  app's cdnjs URL (UMD global; shared promise reset on failure, the
+  Verovio loader pattern); Salamander sampler lazy from
+  `static/vendor/salamander/`; `play(schedule, { onNote, onPiece,
+  onEnd })` on `Tone.Transport` + `Tone.Part`, callbacks through
+  `Tone.Draw`; `stop()` releases everything. States idle / loading /
+  ready / playing / blocked / error; `AudioToggle.isMuted()` respected;
+  `Tone.start()` raced against 1.5 s → `blocked` when the activation
+  expired during a slow first load.
+- `static/vendor/salamander/`: 29 mp3s (2.0 MB) + `README.md` (source,
+  commit, author, license quoted verbatim) — `cafc6d3`.
+- `templates/voicings.html`: Play button in the chart panel header
+  (click = bar, Shift+click = event; "■ Stop" while playing; loading /
+  blocked / error / muted hints), `P` / `Shift+P` / `Esc`, any
+  selection change stops playback, no auto-play. Melody toggle beside
+  it (default off, `&melody=1` in the URL, re-analysis + re-select
+  keeping the current event, keyboard melody role, playback). Follow:
+  `onNote` → keyboard, `onPiece` → staff, `onEnd` → restore. Keyboard
+  sized once per piece (`pieceRange`). `window.__voicings` gains
+  `player`, `playSelected`, `setIncludeMelody`.
+- `static/shared/voicing-staff.js`: `setPlaying(ids)` lights a set of
+  noteheads over the event dim state; `null` restores.
+- `static/shared/voicing-keyboard.js`: `setRange(low, high)`,
+  `setHighlight` takes one midi or a set, `setPlaying(sounding)` lights
+  exactly the sounding keys by role and restores the last `render()`.
+- Verified in headless Chrome over CDP after each part: player state
+  machine and button text, note counts with melody on / off (bar 16:
+  8 / 3), stop on selection change and on toggle, `P` / `Esc`, bar 4
+  lights nothing before beat 0 and the carried chord + bass at beat 0,
+  bar 17 roll order at ~35 ms, rag bar 2's tied E♭5 lighting each
+  notehead in its span, Stop mid-bar restoring the event's colors and
+  dim state, keyboard C2–B5 (48 keys) private vs C1–B6 (72) rag and
+  back. Console clean throughout. Scripts lived in the session
+  scratchpad, not committed.
+
+### Diagnosed / decided
+- **Scope (c):** Play = whole bar, Shift+Play / Shift+P = selected
+  event; `P` plays, `Esc` stops (Space and Enter belong to the chart's
+  focused bars).
+- **Lead-in from sounding voices only, capped at one beat
+  (`LEAD_IN_MAX_BEATS = 1`).** First cut played from the earliest tied
+  onset in the predecessor: bar 4 played all of bar 3. The cap starts
+  at `max(earliest tied/held onset, −1 beat)`; predecessor notes still
+  sounding there are struck at the lead-in level and held through.
+  With melody off, melody ties neither trigger nor extend a lead-in.
+  Lead-ins: private 32 of 44 bars with melody on vs 5 off (4, 8, 12,
+  20, 44 — the comp/bass tie-ins); rag 5 vs 0 (sixteenth-note melody
+  ties, all −0.25).
+- **Carried notes light from beat 0, nothing lights before it.** A
+  lead-in note sounding into the bar takes the in-bar noteheads of the
+  tail it replaces; a carried bass with no notehead in the bar lights
+  on the keyboard only; a lead-in note ending before beat 0 never
+  lights.
+- **Rolls:** bottom to top at `ARP_STEP_MS = 35`, total spread capped
+  at 1/3 of the event, every note held to the event end. The bass
+  joins the roll only when the bassLine note is flagged arp AND
+  attacks with the chord — private bars 17–18 are rolled bass octaves
+  on beat 1 under a chord on beat 2, so the bass sounds alone and the
+  chord rolls three notes; in event scope the bass is re-struck with
+  the chord and leads.
+- **Follow:** staff and keyboard show all sounding notes (a voicing
+  lights as a chord); selection, detail and Tonnetz untouched;
+  selected-event highlight restored on end / Stop.
+- **Keyboard range per piece:** extreme written notes rounded out to
+  C..B octaves, computed once at load (private C2–B5, rag C1–B6).
+- **Melody toggle:** default OFF; OFF removes melody from analysis and
+  mutes it in playback, one control; visible "melody on/off" label and
+  the Play hint say which; state in the URL, not localStorage. The
+  staff always draws melody. The Tonnetz stays comp-only.
+- **Salamander, vendored.** Decision 4 was jsDelivr pinned at
+  `869b6f8d9cdd`; full GETs of all 29 files returned a 403 "Package
+  size exceeded the configured limit of 50 MB" (Tonejs/audio is
+  229 MB) plus 404s and truncated bodies on cold paths — my earlier
+  HEAD probes had hit cached files. `raw.githubusercontent.com` at the
+  full sha served all 29 with CORS and `audio/mpeg` as an interim;
+  then vendored (mp3 is already compressed, so the "static files
+  served uncompressed" argument against self-hosting Verovio does not
+  apply). License from the repo's own `salamander/README` (the
+  repository has no license file): "CC-by
+  http://creativecommons.org/licenses/by/3.0/ … Author: Alexander
+  Holm". The three existing Salamander URL maps are untouched.
+- **The page had never passed `includeMelody`** — every number shown
+  before today was comp-only. With melody on, totals change in 21 of
+  44 private bars (largest: 37 1 → 2.815, 16 2 → 3.556, 28 4.333 →
+  5.555) and 4 of 17 rag bars (9 and 13 4 → 4.222, 11 and 15 0 →
+  0.292); `maxEvent` changes only in private bar 26 (1 → 0, a tie
+  broken toward the earlier event).
+- **Correction to the part-1 brief:** the held-bass bars 25–27 are in
+  the private piece and write the bass inside each bar; nothing
+  carries from a predecessor. No bar in either piece resolves its
+  first comp bass through the predecessor; that path is covered by a
+  synthetic test only.
+- **Node:** 25.8.1 would not launch at session start (Homebrew
+  `llhttp` dylib mismatch); Dustin installed v26.12.0.
+
+### Setup for next session
+- Tree clean at `26be03c` on `voicing-explorer` apart from this
+  close-out's doc edits. Suites: playback 89/89, analysis 64/64, staff
+  70/70, `check_export.py` 25/25, `check_midi.py` 0 mismatches.
+- Next: Session 6 (Explore, first slice), then Session 7 (merge to dev
+  with the clean-clone check).
+
+### Calibration notes
+- HEAD requests against a CDN are not evidence of availability; one
+  loop of full GETs found what three HEAD probes missed.
+- Three test re-runs today came from expectations typed from memory
+  (rag tie lengths, same-onset note order, a `const` referenced before
+  its line). Print the data first, then write the assertion.
+- Monkeypatching `setPlaying` in a CDP session and logging timestamps
+  made follow timing checkable without listening.
+
+### Flagged for later
+- See RADAR additions dated 2026-10-16.
+
+### Out of scope / deferred
+- Scoring melody over a held bass with no chord sounding: computed for
+  both pieces, no number would move today (every uncovered pair is a
+  non-weighted class). Engine change with re-baselining; deferred.
+- CC BY attribution for Salamander app-wide; consolidating the three
+  other Salamander copies onto the vendored set.
+
+## 2026-10-15 (evening) — Voicing Explorer Session 4.5 complete: bassLine, bass lookback, staff bass from bassLine, Maple Leaf Rag fixture, engine and page per comp event
+
+Read-and-report for the whole 4.5 session (five goals), then four
+commits: steps 1+2 (bass rhythm), step 3 (the public rag fixture
+with its converter and MIDI check), step 4a (engine per comp event),
+step 4b (the page's selected event). Dustin deleted the staff spike
+between 4a and 4b. Session 5 (melody toggle + audio) is next.
+
+### Landed (step 4b — the page's selected event)
+- `templates/voicings.html`: `select(bar, eventIndex?)` with
+  `state.selectedEvent` (default `maxEvent`), `selectEvent(index)`,
+  `stepEvent(delta)` (Shift+←/→, crossing bar boundaries in chart
+  order); keyboard and Tonnetz publish the selected event's pitches;
+  the staff re-renders only on a bar change and otherwise just
+  re-dims.
+- `voicing-detail.js` rewritten around `render(bar, eventIndex)`:
+  event chips (consecutive identical events collapsed with a count;
+  click selects), symbol / bass / voicing / tension of the event,
+  motion "into" vs "step" with free voices by written name, rubs
+  (comp + melody when present), named-vs-played of the event.
+- `voicing-chart.js`: `onStepEvent` option, fired on Shift+←/→.
+- `voicing-staff-model.js`: every comp-derived piece carries its
+  comp event index (`event`); `voicing-staff.js`: hits carry it,
+  `setEvent(index)` dims the other events' comp notes,
+  `render(…, { event })`.
+- `voicing-analysis.js`: `unmatched[].name` (spelled as written) so
+  the page can say "free: B♭3" rather than a sharp-spelled midi.
+- Headless at 1400 / 390: private 25–27, rag 9 / 12 / 16; chip,
+  staff-note and Shift+arrow selection incl. across 26→27 and 9→10;
+  console clean. Self-tests 64/64, 70/70, 25/25, MIDI 0 mismatches.
+
+### Diagnosed / decided (step 4b)
+- **Default event = maxEvent** so the chart's stack, the rubs list,
+  the keyboard and the Tonnetz agree on arrival; the first-event
+  default would have kept bar 26 inconsistent.
+- **Dimming scope:** only comp notes of other events dim; `bassLine`
+  and melody notes are not per-event and stay bright. Clicking a
+  bassLine or melody note rings its key without changing the event.
+- **Chips collapse identical runs** (same symbol, bass, voicing) so
+  the rag's chord-on-every-eighth bars show one chip ("Bdim7 ×4");
+  selecting such a chip selects the run's first event, and
+  Shift+arrows still walk the individual events.
+- **"n/a (no previous voicing)"** appears where the predecessor's
+  last event has an empty voicing (rag bar 8's bare octave basses →
+  bar 9), which is correct for the data.
+
+### Landed (step 4a — engine per comp event)
+- `voicing-analysis.js`: `analyzeProgression` scores every comp
+  event — `events[]` per bar with tension, rubs, melody by time
+  overlap, named-vs-played and within-bar motion per event;
+  `maxEvent`, `predecessor`, `motionWithin`; each event carries the
+  chord `symbol` in effect at its onset and is named-vs-played
+  against it (bar 26's second chord against B♭7/F, not the bar's
+  first symbol). Per-bar fields kept for
+  the page: `total`/`byInterval`/`comp`/`melody` from the max event
+  (chart stack = max event), `namedVsPlayed` from the first event,
+  `motion` = last event of the performance predecessor → first event
+  of this bar. `melodyTension` takes an optional `{beat, dur}`
+  window; `_predecessors()` reads `form.playOrder`.
+- `voiceMotion`: optimal assignment on mismatched counts (brute
+  force over injective pairings, ≤ 5 voices); unmatched voices of
+  the larger voicing are free and reported (`unmatched: [{side,
+  midi}]`, `matched`).
+- `selfTest()` 64/64 with the agreed checks (bar 26 per event and
+  with melody, 8 / 1 / 1 motion, fixture bar 5, rag bars 9 and 12,
+  single-event regression across all three pieces).
+
+### Diagnosed / decided (step 4a)
+- **Max event owns the bar's tension fields; first event owns
+  named-vs-played.** The chart stack and the rubs list follow the
+  max event; the keyboard and Tonnetz (unchanged until 4b) show the
+  first event, so bar 26 is briefly inconsistent on the page (chart
+  2 from the B♭7/F chord, detail from the B♭maj9♯5/F chord). 4b's
+  selected event resolves it.
+- **Melody over a comp rest is unscored.** Overlap scoring stops
+  charging melody that sounds before the first comp onset against
+  that chord: with-melody bars 17 (5.0 → 4.333), 18 (4.0 → 3.667),
+  26 (3.333 → 2.0) and six more B-section bars moved; comp-only
+  totals changed only in bar 26 (1.333 → 2, the max rule). A melody
+  note over a held `bassLine` note still gets nothing — flagged.
+- **Motion by performance predecessor + assignment:** 11 private
+  bars gain a motion number that was n/a (counts differed), bar 27
+  drops from 10 to 1 (B♭7/F → E♭maj7 is a half-step resolution; the
+  old first-to-first pairing compared the wrong chord), bar 37 takes
+  bar 28 as predecessor. Unmatched voices are free — the number
+  measures how far the voices that continue have to move.
+- **Rag bars 9–12 on the engine:** bar 9 four identical dim7 events
+  (4 each, within-bar motion 0), bar 10 nothing to rub, bar 11 one
+  step of 1 at beat 1 (F♭/C♭ → A♭/C), bar 12 max 2 on the E♭7/D♭
+  eighth with within-bar motion 3. Chords every eighth read as
+  expected: repeated events, zero motion, one spike where the
+  harmony changes.
+
+### Landed (step 3 — Maple Leaf Rag fixture)
+- `tests/fixtures/maple-leaf-rag.ly` — Mutopia's source, Public
+  Domain, kept so the fixture regenerates.
+- `tools/voicings/ly_to_src.py` — limited-subset LilyPond reader
+  (relative pitch incl. the chord-first-note rule, Dutch names,
+  durations/dots, ties incl. the space-separated `~`, rests, chords,
+  `\partial`, volta repeat + alternatives, bar checks; strips
+  dynamics, markup, articulations, slurs, clef/stem/change/bar
+  commands). Reduces to the score_src grammar: melody = top RH note;
+  bass voice = LH single notes and octave dyads; chord voice = the
+  rest. Chord symbols are a hand table in the script (ours).
+- `tests/fixtures/maple-leaf-rag.src.py` (generated) and
+  `tests/fixtures/voicing-maple-leaf-rag.json` (exporter), 17 bars.
+- `tools/voicings/export_json.py` — `META` hook: a source module may
+  carry title, key, timeSignature, tempo, arrangedFrom, chordSymbols,
+  attribution; they override the CLI defaults.
+- `tools/voicings/check_midi.py` — stdlib SMF reader + the fixture
+  checks (melody/bass onsets and pitches, top/bottom at each onset,
+  comp voicing sounding, comp.bass started at or before the chord).
+  Downloads Mutopia's MIDI on demand or takes `--midi`. 0 mismatches.
+- `tools/voicings/export_json.py` — `build_doc()` entry point,
+  `predecessors()` from the play order, octave-doubling exclusion;
+  `check_export.py` 25/25 (endings case, four octave cases).
+- `tools/voicings/schema.md` — "Public fixture" section with the
+  reduction rules; staff-model `selfTest()` rag block (65/65).
+- `docs/STATUS.md` updated.
+
+### Diagnosed / decided (step 3)
+- **The converter is right where my hand trace was wrong:** the
+  pickup chord moves LilyPond's relative reference, so bar 1's LH
+  octave is A♭2–A♭3, not A♭1–A♭2. The MIDI settled it in one
+  look — exactly what the ground-truth check is for.
+- **Two check-design fixes, not fixture fixes:** (1) a looked-back
+  `comp.bass` has often stopped sounding by the chord onset (oom-pah),
+  so the check now asks whether that bass STARTED at or before the
+  chord within the bar, or is sounding; (2) melody ties across bar
+  lines (bars 9→10, 10→11, 12→13, 13→14, 14→15) have no MIDI note-on
+  at the next downbeat, so the continuation test now carries the
+  previous bar's last event.
+- **One real artifact, then fixed (Dustin):** bar 17 (second ending)
+  took its `comp.bass` E♭2 from written bar 16's last bass, but is
+  played after bar 15, where there is no bass voice; the MIDI had no
+  E♭2 there (3 mismatches). Rule now: "previous bar" is the
+  performance predecessor from `playOrder` everywhere — exporter bass
+  lookback (`predecessors()`), staff tie matching
+  (`performanceNeighbours()`), and step 4's motion when it lands.
+  Rag bar 17's bass is the lowest chord note; MIDI check clean.
+- **Octave doublings (Dustin):** an exact octave doubling of the bass
+  from the bass voice never joins the comp voicing; non-octave dyads
+  still do. Rag bars 5–6 drop F♭3/E♭3 from the voicing; private bar
+  17 drops its D4 doubling (tension stays 4, the staff arpeggio spans
+  four notes, motion 17→18 becomes computable at three voices). The
+  staff self-test re-baselined that one count.
+- **Fallback bass vanished from the staff:** with a `bassLine`, the
+  model drew the bass voice from it and ignored `comp.bass` — right
+  when the bass came from the bass voice, wrong when it was the
+  exporter's lowest-chord-note fallback (rag bars 9–15, 17). Fixed:
+  a `comp.bass` not matched by the bassLine lookback is drawn as a
+  chord note (`bassFromLine()`). The rag crops caught it; the private
+  piece never hits the fallback. 70/70.
+- **Derived chord symbols (ours, for the PDF check):** 1 A♭ · 2 E♭7/B♭
+  · 3 A♭ · 4 E♭7/B♭ · 5 F♭ · 6 F♭, E♭7 at beat 1 · 7–8 A♭ · 9 Bdim7
+  · 10 A♭/C · 11 F♭/C♭, A♭/C at 1 · 12 A♭/C, E♭7/D♭ at 0.5, A♭/C at 1
+  · 13 Bdim7 · 14 A♭/C · 15 F♭/C♭, A♭/C at 1 · 16 A♭/C, E♭7/D♭ at
+  0.5, A♭/C at 1, E♭ at 1.5 · 17 A♭/C, E♭7/D♭ at 0.5, A♭/C at 1.
+- **Mutopia's MIDI unfolds the repeat** (`unfold-repeats` in its
+  MIDI score block; 144 bars of 2/4), so the check maps each written
+  bar to its first occurrence in the fixture's `playOrder` plus the
+  half-beat pickup.
+
+### Landed (steps 1–2)
+- `tools/voicings/schema.md` — optional per-bar `bassLine[]` (bass
+  voice as written: `beat`, `dur`, `note`, optional `tie`/`arp`, one
+  note per event); `comp[].bass` redefined by three-way lookback;
+  `voicing` definition clarified (chord notes plus any further
+  bass-voice notes sounding at the onset); optional document fields
+  `chordSymbols: "derived"` and `attribution` for public fixtures.
+- `tools/voicings/export_json.py` — `bass_line()` emits the bass
+  voice per bar; `bass_for_onset()` implements the lookback (most
+  recent bass onset at or before the chord onset in this bar,
+  sounding or not; else the previous bar's last bass note when tied
+  or reaching the bar line; else the lowest chord note);
+  `comp_events` / `convert_bar` / `main` thread the previous bar's
+  bass events and beats-per-bar through. Re-export of the private
+  piece: comp, melody and symbols byte-identical in all 44 bars;
+  only `bassLine` added.
+- `tools/voicings/check_export.py` (new) — exporter self-test, 19/19:
+  the three lookback branches plus the two no-bass cases, octave
+  dyad, chord voice silent, held bass, walk with grace dropped, dyad
+  + tie, arp, silent bass; private acceptance for bars 4, 20, 25–27
+  and a comp-unchanged diff against the exported JSON.
+- `static/shared/voicing-staff-model.js` — bass voice from
+  `bassLine` when present (comp events as fallback); bass ties
+  matched through the neighbours' `bassLine` (or a neighbour's comp
+  bass); arpeggio spans the voicing plus the bass note sounding at
+  or most recently before the chord onset; model reports
+  `bassFrom`. `selfTest()` 58/58 (eight new cases; one re-baselined:
+  bar 26 has 6 comp notes on the staff, not 7, since the bass is one
+  held note).
+- Verified in headless Chrome on bars 4, 20, 25, 26, 27: walks of
+  quarter, quarter, eighth, eighth under the tied-in chord (4, 20);
+  dotted-half bass on the downbeat under chords from beat 1 (25–27);
+  bar 26 one held F2 under both chords. No tie warnings.
+- `docs/STATUS.md` updated.
+
+### Diagnosed / decided
+- **"Still sounding from the previous bar"** is implemented as: the
+  previous bar's last bass note either carries a tie flag or lasts to
+  the bar line. A bass that stopped before the bar line does not
+  carry over; the chord's lowest note becomes the bass. The private
+  piece never exercises the second or third branch (every chord
+  onset has a bass onset at or before it in its own bar), so those
+  branches are covered by synthetic cases only.
+- **Reductions in `bassLine`, documented not fixed:** grace notes in
+  bass walks are dropped (bars 4 and 20 have a grace before the
+  eighth-note pair); a bass-voice dyad keeps only its lower note
+  (bar 20's opening dyad) while the upper note still reaches the comp
+  event's voicing. Both are consequences of the one-note event shape
+  shared with `melody`.
+- **Rag source decided:** Maple Leaf Rag, Mutopia-2011/11/13-23,
+  Public Domain (CC public-domain mark), LilyPond 2.14.2 from a
+  reproduction of the 1899 edition, typeset by Chris Sawer. A strain
+  (16 bars, written as 17 with the two endings; pickup dropped).
+  Conversion through a limited-subset LilyPond reader into the
+  score_src grammar so the rag tests the exporter too; the fixture is
+  a reduction (melody = top RH note, bass = lower note of octaves, RH
+  inner tones dropped), to be stated in `attribution.notes` and the
+  schema doc; a mandatory MIDI check against Mutopia's MIDI (every
+  fixture note at the same onset and pitch; top and bottom MIDI notes
+  at each onset match melody and bass).
+- **Analysis per event (step 4) decided:** bar total = max over comp
+  events, chart stack from the max event; melody scored per event by
+  time overlap (bar 26 with melody becomes 2.0, not 3.333); motion
+  last-to-first across bars plus within-bar steps, with optimal
+  assignment (brute force over pairings, ≤ 5 voices) when voice
+  counts differ instead of n/a.
+
+### Setup for next session
+- Tree: Session 4 + tension option B + 4.5 steps 1–2 uncommitted.
+  Spike files present, awaiting deletion. Private JSON regenerated
+  (gitignored).
+- Next: step 3 (rag fixture + `ly_to_src.py` + MIDI check), stop;
+  step 4 (analysis per event + page event selection), stop; then
+  Session 5.
+- Self-tests: `voicing-analysis.js` 64/64, `voicing-staff-model.js`
+  70/70, `check_export.py` 25/25, `check_midi.py` 0 mismatches.
+- Next: Session 5 — melody toggle and audio.
+
+### Flagged for later
+- Keyboard, detail and Tonnetz still show the first comp event; the
+  selected-event notion comes with step 4.
+- Bass dyads and grace notes in `bassLine` if a piece ever needs
+  them (would need `notes[]` or a grace flag on bass events).
+
+## 2026-10-15 — Voicing Explorer Session 4: staff renderer spike, staff panel, two read-only traces
+
+One day, four Claude Code prompts in the read-report-stop-build
+shape: a throwaway Verovio-vs-VexFlow spike, the staff panel built
+on its findings, then two read-only traces (bars 25–27 through the
+pipeline; the zero tension in the same bars) that reshaped the
+next sessions. Session 4 is uncommitted in the tree.
+
+### Landed
+- Spike at `/voicings/spike-staff` (dev-only route in the
+  `if app.debug:` block, `templates/spikes/staff-spike.html`,
+  `static/spikes/staff/{spike-staff,to-mei,to-vexflow}.js`):
+  Verovio 6.3.0 vs VexFlow 5.0.0 side by side on bars 2, 17, 19,
+  one shared bar model, role colors from `ROLE_COLORS`, two voices
+  per staff, ties, chord symbols, arpeggio, measured bytes,
+  clickable notes, `?split=` and `?tie=` params. Kept for Dustin to
+  delete.
+- `static/shared/voicing-staff-model.js` — pure bar model + MEI
+  converter (`buildBarModel`, `toMEI`, `splitDur`, `SPLIT_MIDI` = 64,
+  `selfTest` 46/46). Beyond the spike: triplets as MEI tuplets (bar
+  10), all comp events in a bar (bar 26), tie matching against the
+  neighbouring bars, accidentals per letter+octave per staff.
+- `static/shared/voicing-staff.js` — `VoicingStaff` view: lazy
+  `import()` of Verovio's ESM build from jsDelivr (pinned), loading
+  / unavailable states, render token so the latest selection wins,
+  click → note highlight + `onNoteClick`, tie warnings to console.
+- `templates/voicings.html` — Staff panel under "Selected bar";
+  `select()` renders the staff; `window.__voicings.staff`.
+- `static/shared/voicing-keyboard.js` — `setHighlight(midi)` ring,
+  cleared by `render()`. Nine lines.
+- `docs/STATUS.md` updated (this entry's companion).
+- **Tension option B** in `voicing-analysis.js` (evening, two
+  passes): spans reduced mod 12 to a class, `TENSION_WEIGHTS = {1: 3,
+  2: 1, 6: 2, 11: 1}` × a per-class octave discount via
+  `tensionWeight(span)`; the 13-semitone special case is gone (m9 =
+  3 × 2/3 = 2). First pass used one `OCTAVE_DISCOUNT = 2/3` for every
+  class, which made major 9ths and 14ths score 0.667 and moved seven
+  acceptance numbers. Second pass (Dustin's refinement):
+  `OCTAVE_DISCOUNTS = {1: 2/3, 2: 0, 6: 2/3, 11: 0}` — minor 2nds and
+  tritones keep rubbing across octaves, major 2nds and 7ths are
+  extensions beyond the first octave. Rub labels name compounds (m9,
+  m16, TT+8); `voicing-detail.js` spells them out; the chart keeps
+  its five buckets (class-1 compounds → `m9`). Documented in
+  `tools/voicings/schema.md` "Tension scoring". Self-test 51/51. Under the per-class table only two acceptance
+  numbers move from the original exact-span values, both because a
+  compound minor 2nd or tritone now counts: private with-melody bar
+  16 (2.67 → 3.556, G4 over C♯3 is a tritone + octave) and bar 26
+  (2.0 → 3.333, F2–F♯4 is a minor 16th). Fixture bars 1 and 6 and
+  private bars 17 and 18 are back at their original values.
+
+### Diagnosed / decided
+- **Verovio over VexFlow.** MEI converter 60 lines vs 103 for
+  VexFlow's manual staves/formatter/modifiers; per-note color,
+  cross-staff arpeggio (`<arpeg plist>`), chord symbols as plain
+  `<harm>` text and short tie stubs all come for free. VexFlow's
+  partial ties span the whole stave; its cross-staff Stroke needs
+  one shared modifier context, which makes VexFlow hide "duplicate"
+  rests across staves (bar 2 lost its bass-staff rest, bar 17 its
+  treble rest). Cost: 2.15 MB gzipped vs 0.39 MB, loaded lazily on
+  the first staff render only. Render time 4–6 ms per bar either way.
+- **CDN, not self-hosting.** Flask / gunicorn serve static files
+  uncompressed, so self-hosting would ship 7.3 MB instead of 2.1 MB;
+  a 7 MB generated file in a public repo runs against the
+  binary-artifact rule; Tone.js already loads from a CDN. One
+  constant switches it later.
+- **Verovio gotchas.** A dangling `@tie` is dropped with a warning;
+  `<tie startid tstamp2="0m+4">` and `<tie tstamp="0" endid>` draw
+  stubs at the bar lines. The ESM build's factory promise removes
+  the classic script's `onRuntimeInitialized` race. SVG fills
+  default to black and strokes use `currentColor`, so a dark panel
+  needs explicit `color` + `fill: currentColor` on the svg.
+- **Tie rule (Dustin).** Outgoing ties draw only when the next bar
+  has the same pitch at beat 0; an unmatched flag warns instead of
+  drawing; only the last bar draws unmatched. Incoming ties use the
+  same matching. Zero warnings across all 44 private bars.
+- **Split pitch 64 (E4), not 60.** At 60 bars 2 and 17 left a single
+  orphan voicing note on the treble with the arpeggio spanning
+  staves; at 64 whole comp chords stay together far more often.
+- **Bars 25–27 trace (exporter gap).** Source: bass a dotted half on
+  beat 0, chords from beat 1 (bar 26: beats 1 and 2, second symbol
+  at 2). JSON: comp events exist only at chord-voice onsets, each
+  carrying whatever the bass is sounding, so the bass onset moves
+  to beat 1 and takes the chord's duration; bar 26 shows the bass
+  as two re-struck quarters. Staff draws the JSON faithfully (rest
+  under the downbeat). Same root cause as the dropped walks in bars
+  4 and 20: the bass voice has no onsets of its own. Schema v1
+  cannot represent a held bass under later chord attacks. Decided:
+  Session 4.5 adds an optional per-bar `bassLine[]` (melody-shaped
+  events) emitted verbatim from the bass voice; `comp.bass` becomes
+  the most recent bass onset at or before the chord onset, sounding
+  or not; the staff draws its bass voice from `bassLine`.
+- **Tension trace (weight table gap).** `TENSION_WEIGHTS` matches
+  exact spans {1, 2, 6, 11, 13} only, so bars 25–27 score 0: bar 25
+  (G2 F3 B♭3: m7, m10, P4) genuinely has no weighted class; bar 26's
+  F2–F♯4 (25) and bar 27's E♭2–D4 (23) are compound rubs the table
+  cannot see; bar 26's second chord (A♭3–D4 tritone) is ignored
+  because the analysis reads the first comp event only. Decided:
+  option B — reduce the span mod 12 to a class, weights unchanged,
+  times an octave discount per extra octave. My claim that one
+  2/3 discount "reproduces every acceptance number" was wrong for
+  with-melody bars (major 9ths started scoring); the per-class table
+  fixed that by design, not by tuning. m9 = 3 × 2/3 = 2 either way;
+  bar 26 comp → 1.333, bar 27 stays 0 (E♭2–D4 is a M14, now an
+  extension), bar 25 stays 0; bars 6 and 17 comp unchanged.
+
+### Setup for next session
+- Tree: Session 4 files uncommitted (two new shared modules, the
+  template, the keyboard hook, STATUS, this log). Spike files
+  present and untouched, awaiting deletion.
+- Order: tension option B (small, separate step) → Session 4.5
+  (Joplin rag fixture from an IMSLP edition as public ground truth;
+  `bassLine` in schema + exporter; `comp.bass` redefinition;
+  analysis over every comp event; staff bass from `bassLine`) →
+  Session 5 (melody toggle + audio) → 6 → 7.
+- Self-tests: `voicing-analysis.js` 41/41, `voicing-staff-model.js`
+  46/46 (both include the private acceptance block when present).
+
+### Calibration notes
+- The spike's "cross-staff arpeggio works in VexFlow" was a
+  side-effect trap: the screenshot looked right while two rests had
+  silently vanished. Probing each event's SVG element caught it.
+  Check the DOM, not just the picture.
+- Clipped per-bar screenshots over CDP (7 bars × 2 widths in one
+  run each) made the visual check cheap enough to repeat after
+  every fix.
+- Read-only traces after a build are worth their own prompts: two
+  short ones today found an exporter gap and a scoring gap that no
+  amount of staff polish would have surfaced.
+
+### Flagged for later
+- Analysis scores only the first comp event per bar (bar 26's
+  second chord never reaches the scorer). Until 4.5 lands.
+- Block-chord limit: neither the schema nor `score_src.py` can
+  express a held note over a moving inner voice; every comp event
+  attacks all its notes together.
+- Voice motion is n/a when the voice counts differ between bars
+  (`voiceMotion` returns null); a cost-based assignment would fill
+  those gaps on the chart's motion row.
+- Staff polish: keep each comp chord on one staff instead of
+  splitting it by pitch at `SPLIT_MIDI`; beam melody eighths (MEI
+  `<beam>`); the "(hold)" marker on carried symbols is plain text.
+- `tools/voicings/staff.py` uses print-on-white role colors; the
+  page uses the dark-theme tokens. Two palettes for one concept.
+- A low-register factor for tension (both notes below ~C3) is a
+  separate question from compound intervals; none of bars 6, 17,
+  25–27 would be affected.
+
+### Out of scope / deferred
+- Self-hosting Verovio: deferred until static files are served
+  compressed.
+- Audio on note click: Session 5.
+- Reverse highlight (keyboard click → staff note): not built.
+
+## 2026-10-14 — Mac mini setup, MIDI multi-port fix, Voicing Explorer Sessions 1–3
+
+Long day, three arcs. Morning: new machine online and two MIDI
+fixes. Then a new feature arc, the Voicing Explorer analysis view,
+run as three Claude Code sessions in the read-report-stop-build
+shape, each gated by a go-ahead. Ended with a working `/voicings`
+page verified in a browser, Session 3 uncommitted in the tree.
+
+### Landed
+
+**Setup (Mac mini).** Project venv (Python 3.12, Flask 3.1), Node
+25.8, Google Chrome present, no Playwright. macOS AirPlay Receiver
+holds port 5000, so `.env` carries `PORT=5001` and `app.py` reads
+it; CLAUDE.md's run instruction updated accordingly.
+
+**MIDI (`57afaa9`, on dev).** `midi-input.js` auto-attaches
+multi-port devices on init: the Launchkey MK4 enumerates as
+separate "MIDI Out" and "DAW Out" ports, and the old
+single-input-only branch never attached. Now prefers the port
+whose name doesn't contain "DAW".
+
+**Cantor ≤ C4 MIDI regression resolved.** The 2026-05-18 evening
+finding (keys at/below MIDI 60 silent on `/cantor`) is cleared;
+chromatic check below C4 passes. Not reproducible on a fresh Chrome
+profile; probable cause a stale persisted
+`localStorage['songlab.cantor.splitPoint']`. Unconfirmed.
+
+**Voicing Explorer Session 1 — read-and-report** (no code).
+Grounded the plan in the actual modules:
+- `chord-resolver.js` spells sharps-only and requires an exact
+  PC-set size, so it cannot name rootless or incomplete voicings
+  (Gmaj7 played as G | A–B–D falls to the interval string). Degree
+  labels exist only in `keyboard-view.js`'s extension table.
+- `keyboard-view.js` places exact octaves only for `source:'user'`
+  and never applies `an.color`; role coloring would need a DOM
+  overlay keyed on `data-note`.
+- HarmonyState has no bass/slash concept; the only octave-faithful
+  path is `activeNotes` with `source:'user'`. `toggleNote` clears
+  a loaded progression and `setProgression` wipes `activeNotes`,
+  so the analysis page must not use `progressionState`.
+- Explorer's stage views are a hardcoded switch inside a
+  4,263-line template; the reusable contract is the module shape
+  (`init`/subscribe/`destroy`), not the template.
+- `static/private/` and `tools/voicings/` already existed from
+  the morning commit (`1541bff`); the plan's Session 2 housekeeping
+  was done.
+Build plan updated with a Decisions section (commit `1541bff` for
+the plan draft; the Session 1 edits are in the tree).
+
+**Voicing Explorer Session 2 — data model + engine (`0bc91a7`).**
+- `tools/voicings/schema.md` (v1). Spelled note names are the
+  source of truth; comp is a list of events per bar; the analysis
+  uses the first event.
+- `tools/voicings/export_json.py`: `score_src.py` → JSON without
+  music21. Comp events keyed to chord-voice onsets, including
+  bass-voice notes sounding at that moment; bass-voice onsets as
+  fallback when the chord voice is silent all bar. Play order
+  derived from repeats + endings (matches `build.py`'s 72-bar
+  order). `build.py` import path fixed for the moved source.
+- `static/shared/voicing-analysis.js`: `parseNote`, `parseSymbol`,
+  `intervalTension`, `melodyTension`, `namedVsPlayed`,
+  `voiceMotion`, `analyzeProgression`, `toHarmonyNotes`, exported
+  `selfTest()`. Intervals from `transforms.js` `CHORD_TYPES`
+  (`m9` already exists there as `min9`); seven local types.
+  Runner: `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
+  — sidesteps the piped-stdin relative-import problem in RADAR
+  because the module resolves imports from its own location.
+- `tests/fixtures/voicing-fixture.json`: 12 bars isolating m2,
+  M7-vs-m9 by register, slash bass, tritone, duration-weighted
+  melody, A7♯11/C♯ → D♯, written B♭ over G → ♭3, motion 6 / null /
+  0, hold bar, two-event comp.
+- `docs/registry-inventory.md` §9 + coverage-table row.
+- 41/41 self-tests; acceptance against the private JSON: bar 2 = 3,
+  bar 3 = 1, bar 17 = 4 comp / 5.0 with melody, bar 1 omitted F♯·7
+  added A·9.
+
+**Voicing Explorer Session 3 — `/voicings` page (uncommitted).**
+- `app.py`: `/voicings` and `/voicings/data/<name>` (name regex
+  `^[a-z0-9-]+$`, `static/private/<name>.json` then
+  `tests/fixtures/voicing-<name>.json`, `send_from_directory`,
+  JSON 404).
+- `templates/voicings.html` on the dark tokens, extends base. One
+  state object, one `select(bar)` that fans out to chart, detail,
+  keyboard, and `HarmonyState.update` with `toHarmonyNotes(...)`.
+  No `?piece=` → Don't Be Sad, falling back to the fixture with a
+  banner; explicit unknown piece → not-found state.
+- `static/shared/voicing-chart.js` (stacked SVG in the five
+  interval colors, section brackets, arranged bars faded, motion
+  row, `role="button"` bars with aria-labels, roving tabindex,
+  ← → stepping scoped to chart focus, horizontal scroll with
+  scroll-into-view on phones), `voicing-keyboard.js` (page-owned
+  C2–B5, gold/blue/green roles, written spellings as labels),
+  `voicing-detail.js` (symbol + tags, bass/voicing chips, rubs
+  list, named-vs-played).
+- Verified in headless Chrome driven over the DevTools protocol
+  (Node's built-in WebSocket + Chrome's `--remote-debugging-port`,
+  no Playwright needed). All requested checks passed, plus
+  screenshots at 1400px and 390px.
+
+### Diagnosed / decided
+
+- **Placement:** standalone `/voicings` page mounting the shared
+  Tonnetz and glow-worm modules. A seventh Explorer stage view
+  would hide the Tonnetz while the chart is visible, and Explorer's
+  chord-mode machinery (auto-play subscriber, `_suppressAutoPlay`)
+  conflicts with bar-by-bar analysis. Departs from the spec's
+  "mode within the Explorer"; the composable-panel principle is
+  honored at the module level.
+- **Spelled names are the source of truth**, midi derived. Degree
+  labels come from the written letter (B♭ over G is ♭3, not ♯9);
+  strict chord-relative spelling applies only to omitted tones,
+  which have no written form.
+- **Prototype-vs-engine differences are intentional**, found by a
+  44-bar comparison against `dont-be-sad.analysis.json`: motion
+  uses sorted upper voices (the prototype compared music21
+  chord-voice notes only, so its bar 18→19 = 14 is an artifact;
+  engine gives 11); a slash bass counts as a named tone even when
+  outside the chord type (B♭maj9♯5/F lists F·5 as present);
+  melody-vs-melody intervals are not scored; 0.01 rounding noise
+  where the prototype rounded per rub.
+- **Tension scoring is exact semitone distance** — only 1, 2, 6,
+  11, 13 score. Confirmed from the prototype: 14 and 18 occur in
+  the data and were never scored.
+- **Keyboard for `/voicings` is page-owned**, not `keyboard-view.js`
+  — exact-octave role coloring without a do-not-touch lift.
+- **Phone chart squash** was a global stylesheet `max-width` rule
+  on SVGs, not a scroll bug; fixed by pinning the chart's width
+  inline.
+
+### Setup for next session
+
+- Branch `voicing-explorer`. Committed: `57afaa9` (dev + branch),
+  `1541bff`, `0bc91a7`. Uncommitted in the tree: Session 3
+  (`app.py`, `templates/voicings.html`, three `voicing-*.js`
+  modules), the Session 1 build-plan edits, STATUS, SESSION_LOG,
+  CLAUDE.md.
+- Private data: `static/private/score_src.py`,
+  `dont-be-sad.json` (regenerate with
+  `python3 tools/voicings/export_json.py`),
+  `dont-be-sad.analysis.json` (the Python prototype's output,
+  reference only). None of it is tracked.
+- Run: venv active, `python3 app.py`, http://127.0.0.1:5001/voicings.
+- Session 4 opens with the Verovio-vs-VexFlow decision for staff
+  rendering.
+
+### Calibration notes
+
+- **Reverse-engineer the prototype before building the engine.**
+  Reading `dont-be-sad.analysis.json` row by row produced the exact
+  scoring rules in an hour and surfaced the chord-voice motion
+  artifact before it could be enshrined as "correct".
+- **Propose-then-STOP worked three times in a row.** Each session's
+  proposal drew one or two corrections (spelled names, comp as
+  events, the data route, keyboard navigation) that would have been
+  rework after code.
+- **"Verify in the browser" means drive it, not curl it.** The SVG
+  squash and the scroll-into-view miss were invisible to the
+  engine self-test and to route smoke tests; a headless Chrome
+  session over CDP caught both in minutes.
+- **Spot machine assumptions early.** `python3 app.py` on port 5000
+  silently talks to AirPlay on this machine; the 403s looked like a
+  Flask problem for one round.
+
+### Flagged for later
+
+- `/voicings` has no nav entry. Decide alongside the
+  `/harmonograph` front-door question.
+- Exporter v1 drops bass-voice motion under a silent chord voice
+  (bars 4 and 20 pickup walks). Session 5 playback will want it —
+  a `bassLine` field or per-onset events.
+- Base nav stacks tall at phone width on every dark page
+  (pre-existing, visible in the 390px screenshot).
+- `registry-inventory.md` says `transforms.js` has 18 entries; it
+  has 17.
+- `SESSION_LOG.md`'s 2026-05-18 heading reads `## ##`.
+- Nunito renders ♯ nearly as `#` at heading sizes; cosmetic.
+- STATUS "Cantor" block still carries the 2026-05-19 Session 2
+  diversion note; untouched today beyond the C4 line.
+
+### Out of scope / deferred
+
+- Melody toggle, staff, audio (Sessions 4–5); Explore mode
+  (Session 6); merge to dev and clean-clone check (Session 7).
+- Multi-event comp analysis (the schema keeps all events; the
+  engine uses the first).
+- Folding the engine's suffix table and local chord types into the
+  canonical registry — waits for `chord-types.json`.
+- `keyboard-view.js` lift for role-aware octave placement and
+  `an.color` — not needed now that the page owns its keyboard.
+
+## 2026-05-18 — Documentation cleanup + Session 1 of cantor presentational arc
 
 Two halves: documentation backlog from last week's pivot (five
 tasks, four commits across two branches), then Session 1 of the

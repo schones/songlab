@@ -78,6 +78,15 @@
       border-bottom: 1px solid var(--border-subtle);
     }
 
+    .sl-footer {
+      padding: var(--space-sm) var(--space-2xl);
+      font-size: var(--font-size-xs);
+      color: var(--text-muted);
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .sl-footer a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
     .sl-brand {
       display: flex;
       align-items: center;
@@ -269,6 +278,7 @@
     </a>
     <div class="sl-nav__links">
       <a href="/explorer" class="sl-nav__link">Explorer</a>
+      <a href="/voicings" class="sl-nav__link">Voicings</a>
       <a href="/skratchlab" class="sl-nav__link">SkratchLab</a>
 
       <div class="sl-nav-dropdown">
@@ -320,6 +330,10 @@
   </nav>
 
   {% block content %}{% endblock %}
+
+  <footer class="sl-footer">
+    <span>Piano samples: <a href="https://github.com/Tonejs/audio" target="_blank" rel="noopener">Salamander Grand Piano</a> by Alexander Holm, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>.</span>
+  </footer>
 
   {% block scripts %}{% endblock %}
 

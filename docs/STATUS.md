@@ -1,16 +1,18 @@
 # SongLab Project Status
 
-**Last updated:** 2026-06-11
-**Branch:** `dev` (Cantor v1 shipped through 6B; Phase 2
-presentational arc in progress on `cantor`) · `cantor` (active —
-Session 1 landed; Session 2 opened 2026-05-19 but diverted into
-experimental polyphonic chord-detection wiring, commit `66bb368`;
-polish pass not yet done) · `cantor-presentational-spike`
-(validated spike, retained as known-good reference) ·
+**Last updated:** 2026-10-16
+**Branch:** `voicing-explorer` (active — Voicing Explorer analysis
+arc, Sessions 1–6 landed 2026-10-14 → 16, 19 commits ahead of dev)
+· `dev` (Cantor v1 through 6B; MIDI multi-port fix `57afaa9`) ·
+`cantor` (presentational arc, Session 2 polish not resumed since
+2026-05-19) · on origin only: `archive/cantor-presentational-spike`
+(validated spike, known-good reference), `archive/skratch-integration`,
 `chord-melody-research` (classifier arc, paused) · `main` (prod —
-~20 commits behind dev, last deployed pre-pivot)
+84 commits behind dev, last deployed pre-pivot)
 **Deploy:** Railway from `main`
-**Active roadmap:** `docs/songlab-build-plan.md` (v4) + `docs/cantor-design.md` + `docs/audio-architecture.md`
+**Local run:** `python3 app.py` with the venv active, port from `.env`
+(`PORT=5001` on the Mac mini — AirPlay Receiver holds 5000)
+**Active roadmap:** `docs/songlab-build-plan.md` (v4) + `docs/active-plans/voicing-explorer-build-plan.md` + `docs/cantor-design.md` + `docs/audio-architecture.md`
 **Platform name:** SongLab · SkratchLab (rebrand complete)
 
 
@@ -94,15 +96,13 @@ polish pass not yet done) · `cantor-presentational-spike`
   extreme registers) has not started. No SESSION_LOG entry exists
   for 2026-05-19 — the closeout protocol was skipped; commit
   message `66bb368` is the only record of that session.
-- ⚠ MIDI ≤ C4 regression (discovered evening 2026-05-18, see
-  SESSION_LOG addendum `f397287`): keys at/below MIDI 60 produced
-  no events; threshold matched v1 cantor's `_splitPoint`. No fix
-  commit exists. `66bb368`'s commit message reports "MIDI input:
-  no regression" in play-testing the next day, so it may have
-  been environmental (v1's persisted
-  `localStorage['songlab.cantor.splitPoint']` is a candidate
-  mechanism — unconfirmed). Status: UNVERIFIED. First action of
-  the next cantor session is a chromatic-scale check below C4.
+- MIDI ≤ C4 regression (discovered evening 2026-05-18, SESSION_LOG
+  addendum `f397287`): **resolved 2026-10-14** during Mac mini
+  setup — chromatic check below C4 passes on the Launchkey. Not
+  reproducible on a fresh Chrome profile; probable cause a stale
+  persisted `localStorage['songlab.cantor.splitPoint']`; unconfirmed.
+  Related: multi-port MIDI devices now
+  auto-attach on init, preferring the non-DAW port (`57afaa9`).
 
 **Open / deferred:**
 - Constellation z-fade vs hard occlusion on torus back side.
@@ -161,7 +161,72 @@ Capability inventory of what's currently shipping on dev:
 
 ## Current Focus
 
-The active workstream on `dev` is **Cantor v1**. Through April 27–28, prompts 1–6B landed and are verified end-to-end on dev: 3D torus surface, per-frame rotY drift + torusMajorR breathing, chord-detection Hardware-state gating, and constellation snap to wash vertices. A deterministic test-track generator (`tests/generate_cantor_test_track.py`) and section-by-section diagnostic doc were also landed for ongoing audio-pipeline validation.
+**Voicing Explorer analysis arc (2026-10-14, branch `voicing-explorer`)**
+is the active workstream. Motivated by a voiced practice score of
+Brad Mehldau's "Don't Be Sad" (private, gitignored), the arc adds an
+Analyze view that loads a voiced progression and shows per-bar
+interval tension, intervals that rub, named-vs-played chord tones,
+and upper-voice motion, with the shared Tonnetz and a page-owned
+keyboard following the selected bar. Sessions 1–3 of the 7-session
+plan landed in one day: read-and-report (placement decided as a
+standalone `/voicings` page, not an Explorer stage view), the pure
+analysis engine + JSON schema + exporter + fixture (41/41
+self-tests, acceptance numbers match the Python prototype), and the
+page itself (verified in headless Chrome). Session 4 (2026-10-15)
+chose Verovio over VexFlow in a side-by-side spike and landed the
+staff panel: engraved grand staff for the selected bar, colored by
+role, melody always drawn, notes clickable through to the keyboard.
+Tracing bars 25–27 through source → JSON → staff exposed an exporter
+gap (events only at chord-voice onsets, so held basses are displaced
+and bass walks dropped) and a tension gap (weights match exact spans
+up to 13 semitones only). The tension step landed the same evening
+(option B: compound intervals reduced mod 12, per-class octave
+discounts — m2 and tritone 2/3, M2 and M7 0). Session 4.5 began
+the same day: steps 1–2 landed (optional per-bar `bassLine` in the
+schema and exporter, `comp.bass` by three-way lookback, the staff's
+bass voice drawn from `bassLine`, `check_export.py`), then step 3
+(Maple Leaf Rag A strain as a public, committed fixture: Mutopia's
+public-domain LilyPond → `ly_to_src.py` → score_src grammar →
+exporter, verified against Mutopia's MIDI by `check_midi.py`), and
+step 4a (engine: analysis over every comp event — max aggregate,
+melody by time overlap, motion last-to-first by performance
+predecessor plus within-bar, optimal assignment on mismatched voice
+counts), and step 4b (the page: a selected comp event within the
+selected bar, defaulting to the max-tension event; event chips;
+chip / staff-note / Shift+arrow selection; detail, keyboard, Tonnetz
+and the staff's bright notes all read from that event). Session 5
+(2026-10-16) added playback and the melody toggle: a pure playback
+model (bar or event scope, one-beat lead-in from sounding voices,
+rolls), a Tone.js player on a vendored Salamander piano, Play /
+Shift+Play / Stop with `P` / `Shift+P` / `Esc`, a melody toggle
+(default off, couples analysis and playback, `&melody=1`), and
+follow highlighting on the staff and a per-piece-sized keyboard.
+Session 6 (2026-10-16) landed the first Explore slice: for the
+selected event, candidate voicings from the chord symbol (named
+tones + 9th, dominants also 13 / ♯11) and from shapes harvested
+from the piece as degree labels, constrained below the melody and
+within a span, scored with the engine's own functions and ranked by
+distance from a tension target then motion in + out; an Explore
+panel with preview in every panel, per-row audition through the
+player, Keep / Revert / Reset / Copy JSON over a non-destructive
+override layer with tie propagation; kept bars outlined green. First
+listening on bar 21 recorded in SESSION_LOG. Next: Session 6.5
+explainer layer (info pills per panel with the relevant reasoning and
+links out to fuller pages; content written once, numbers pulled from
+code constants), then Explore tuning (structured listening across
+bars and pieces), then Session 7 (merge to dev). Plan:
+`docs/active-plans/voicing-explorer-build-plan.md`. Schema:
+`tools/voicings/schema.md`.
+
+Dev environment (since 2026-10-14): development runs on the Mac
+mini (venv Python 3.12, Node 26.12, port 5001 via `.env`); the old
+clone is set aside. Local-only branches were pushed as
+`archive/cantor-presentational-spike` and
+`archive/skratch-integration`. Also on 2026-10-14: the MIDI
+multi-port auto-attach fix landed on dev (`57afaa9`) and the Cantor
+≤ C4 MIDI regression was resolved (see the Cantor block).
+
+The previous active workstream on `dev` is **Cantor v1**. Through April 27–28, prompts 1–6B landed and are verified end-to-end on dev: 3D torus surface, per-frame rotY drift + torusMajorR breathing, chord-detection Hardware-state gating, and constellation snap to wash vertices. A deterministic test-track generator (`tests/generate_cantor_test_track.py`) and section-by-section diagnostic doc were also landed for ongoing audio-pipeline validation.
 
 Cantor surfaced a foundational limitation in `chord-detection.js`: chroma-template matching cannot distinguish a single sustained note's overtone series from a real chord, producing false-positive chord washes on solo melody. The initial response was to fork off a new branch `audio-onset-analysis` that was subsequently renamed as `chord-melody-research` and rebuild on onset-driven chord/melody classification. That arc ran through 2026-05-13, when the framing was reconsidered: the deeper question was whether Cantor needs to *classify* at all, or whether a *presentational* view (lit triangles + glyphs, no classification step) better serves the philosophy. A one-hour spike on `cantor-presentational-spike` answered that question affirmatively — the presentational approach reads cleanly with real music and removes the classification problem at the root rather than solving it. The classifier arc is paused; presentational is the new Phase 2 path forward. See `docs/cantor-presentational-design.md` for the design and `docs/active-plans/cantor-presentational-build-plan.md` for the 5-session build plan.
 
@@ -171,20 +236,11 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 
 **Next priorities (active):**
-1. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
-2. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
+1. ~~**Voicing Explorer — tension option B**~~ — landed 2026-10-15 (`af3034b`): spans reduced mod 12, `OCTAVE_DISCOUNTS = {m2: 2/3, M2: 0, TT: 2/3, M7: 0}`; comp-only numbers inside one octave unchanged; compound minor 2nds and tritones now score (bar 26 0 → 1.333, bar 28 3 → 4.333), major 9ths/14ths do not (see SESSION_LOG).
+2. **Voicing Explorer Session 6.5 — explainer layer**: info pills per panel with the relevant reasoning and links out to fuller pages; content written once, numbers pulled from code constants. Then Explore tuning (structured listening across bars and pieces; hypotheses in RADAR), then Session 7 (merge to dev with a clean-clone check). ~~Session 6 (Explore first slice)~~ landed 2026-10-16 (`ad44437`, `7ccd8fb`, `ea7d7ff`). ~~Session 5 (playback + melody toggle)~~ landed 2026-10-16. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+3. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
+4. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
 
-- Item "Polyrhythm Trainer not yet in nav dropdown or landing
-  page" (currently ~line 317): **remove — completed.** Route at
-  `app.py:220`, nav link at `templates/base.html:297`, landing
-  card at `templates/index.html:551` (landed 2026-04-10,
-  `115d990`).
-- `_suppressAutoPlay` site count (currently "17 sites", ~line
-  308): **update to 19** occurrences in `templates/explorer.html`
-  (1 declaration, 6 set-true, 6 set-false, a 3-line save/restore
-  pair, 2 reads). Replacement design (source-tagged
-  `HarmonyState.update(state, { source })`) remains sketched in
-  `docs/code-review-opus47.md` (~line 386) and unimplemented.
 - SkratchLab "Clear All" (~lines 117, 316): **still open** —
   `loopPedal.clearAll()` wired at `studio.js:988` clears
   blocks/layers but never calls `drawCanvasGrid()` (the separate
@@ -202,10 +258,9 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   `mΔ7`/`mM7`; power chord and sus2≡sus4 analysis stranded on
   `chord-melody-research`). Full inventory + canonical JSON spec
   drafted in `docs/registry-inventory.md` (2026-06-11 audit).
-- **Branch hygiene:** tag `pre-rebase-backup` (`c87329b`)
-  duplicates `84e6587` after the 5/19 rebase — delete when
-  comfortable. Old branches `feature/skratch-integration` and
-  `redesign/landing-page` still exist; confirm merged/abandoned.
+- **Branch hygiene:** done 2026-10-16 — tag `pre-rebase-backup`
+  removed; `feature/skratch-integration` archived as
+  `archive/skratch-integration`; `redesign/landing-page` gone.
 - **Doc-branch skew:** STATUS.md and SESSION_LOG.md on the
   `cantor` checkout are stale (the branch forked before the
   5/18–5/19 doc commits on dev). Reading project docs from a
@@ -326,6 +381,343 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - ChordResolver with interval-content fallback
 - Full three-panel bidirectional sync via HarmonyState
 
+### Voicing Explorer — Analyze + Explore — current state (updated 2026-10-19)
+
+**Landed on `voicing-explorer` (Sessions 1–3, 2026-10-14):**
+- `static/shared/voicing-analysis.js` — pure engine: `parseSymbol`,
+  `intervalTension` (interval class = span mod 12; m2 3, M2 1, TT 2,
+  M7 1, × per-class `OCTAVE_DISCOUNTS` per extra octave — m2 and TT
+  2/3 so m9 = 2, M2 and M7 0 so M9 = M14 = 0; all bass+voicing
+  pairs; option B landed 2026-10-15), `melodyTension` (per-pitch
+  duration × weight / beatsPerBar), `namedVsPlayed` (present /
+  omitted / added with degree labels; written spellings drive
+  labels, omitted tones spelled chord-relatively; slash bass counts
+  as named), `voiceMotion` (sorted upper voices, null when counts
+  differ), `analyzeProgression`, `toHarmonyNotes`. Takes intervals
+  from `transforms.js` `CHORD_TYPES`; seven local types
+  (`registry-inventory.md` §9). `selfTest()` — 41/41, incl. the
+  private Don't Be Sad acceptance block when present.
+- Data model `tools/voicings/schema.md` (v1): spelled note names are
+  the source of truth; per bar `symbols[]`, `comp[]` events
+  (bass + voicing, analysis uses the first), `melody[]` events.
+- `tools/voicings/export_json.py` — score source → JSON, no music21;
+  `tests/fixtures/voicing-fixture.json` — 12 bars, one scoring case
+  each; `build.py` import path fixed.
+- `/voicings` page (`templates/voicings.html`, routes in `app.py`
+  incl. `/voicings/data/<name>` — private folder first, then
+  fixture, JSON 404). Modules: `voicing-chart.js` (stacked SVG,
+  section labels, arranged bars faded, motion row, focusable bars
+  with arrow-key stepping), `voicing-keyboard.js` (page-owned
+  sized per piece, bass gold / voicing blue / melody green),
+  `voicing-detail.js`. Shared `TonnetzNeighborhood` +
+  `ChordBubbleRenderer` mounted; selection published as
+  `source:'user'` notes — no `progressionState`, no auto-play.
+- Verified in headless Chrome: bar 2 / 17 / 1 acceptance values on
+  screen, keyboard roles, glow worm updates, `?piece=fixture`,
+  `?piece=nope` not-found state, phone-width scroll.
+
+**Landed on `voicing-explorer` (Session 4, 2026-10-15, `f28943c`):**
+- Staff panel on `/voicings`, under "Selected bar":
+  `static/shared/voicing-staff-model.js` (pure bar model + MEI
+  converter — `buildBarModel`, `toMEI`, `SPLIT_MIDI` = 64 (E4):
+  voicing notes at or above it go to the treble; triplets as MEI
+  tuplets; all comp events in a bar; key-aware accidentals per
+  letter+octave per staff; outgoing ties drawn only when the next
+  bar's beat 0 has the same pitch, unmatched flags warn, last bar
+  draws unmatched; incoming ties matched the same way; `selfTest()`
+  46/46 incl. the private acceptance block, 0 tie warnings across
+  44 bars) and `static/shared/voicing-staff.js` (`VoicingStaff`:
+  Verovio 6.3.0 as lazy ESM from jsDelivr on first render, loading /
+  unavailable states, latest selection wins, note click → highlight
+  + `VoicingKeyboard.setHighlight(midi)` ring). Melody always drawn;
+  the Session 5 toggle will not touch the staff.
+- Renderer chosen by a throwaway spike (`/voicings/spike-staff`,
+  dev-only): Verovio over VexFlow — see SESSION_LOG 2026-10-15.
+- Verified in headless Chrome at 1400 / 390 px: bars 1, 2, 10, 17,
+  19, 26, 44; click → keyboard ring; ← → stepping; rapid stepping.
+
+**Landed on `voicing-explorer` (Session 4.5 steps 1–2, 2026-10-15, `71d1d16`):**
+- Schema v1 gains an optional per-bar `bassLine[]` (bass voice as
+  written: `beat`, `dur`, `note`, optional `tie`/`arp`; one note per
+  event, the lower note of a dyad) and optional document fields
+  `chordSymbols: "derived"` and `attribution` for public fixtures.
+  `comp[].bass` is now defined by lookback: the most recent
+  bass-voice onset at or before the chord onset in the bar, sounding
+  or not; else a bass tied or still sounding (reaching the bar line)
+  from the previous bar; else the lowest chord note.
+- `tools/voicings/export_json.py` emits `bassLine` for every bar and
+  applies the lookback (`bass_for_onset`); comp events otherwise
+  unchanged (re-export diff: comp/melody/symbols identical in all 44
+  bars). Known reductions: grace notes in bass walks are dropped
+  (bars 4, 20); bar 20's opening bass dyad keeps only its lower note
+  in `bassLine` (the upper note survives in the comp voicing).
+- `tools/voicings/check_export.py` — exporter self-test, 19/19:
+  all three lookback branches, dyads, ties, arps, silent voices, and
+  the private shapes for bars 4, 20, 25–27 plus a comp-unchanged
+  diff against the exported JSON.
+- `voicing-staff-model.js` draws the bass voice from `bassLine` when
+  present (held basses on the downbeat, walks under a held chord),
+  matches bass ties through the neighbours' `bassLine`, and includes
+  the sounding bass in arpeggios; falls back to comp events when a
+  bar has no `bassLine` (the public fixture). `selfTest()` 58/58.
+  Verified in headless Chrome on bars 4, 20, 25, 26, 27.
+
+**Landed on `voicing-explorer` (Session 4.5 step 3, 2026-10-15, `bea4ad6`):**
+- Public ground-truth fixture: Maple Leaf Rag, A strain (Scott
+  Joplin, c. 1899; Mutopia-2011/11/13-23, Public Domain, LilyPond
+  2.14.2 typeset by Chris Sawer from a reproduction of the 1899
+  edition). Files: `tests/fixtures/maple-leaf-rag.ly` (the source),
+  `tools/voicings/ly_to_src.py` (limited-subset LilyPond reader →
+  score_src grammar; the reduction rules live in its docstring and
+  in the fixture's `attribution.notes`), the generated
+  `tests/fixtures/maple-leaf-rag.src.py` (17 bars: 1–15 + the two
+  endings as 16 and 17; pickup dropped; chord symbols ours, marked
+  `chordSymbols: "derived"`), and `tests/fixtures/voicing-maple-leaf-rag.json`
+  via the exporter (`META` in a source module now carries title, key,
+  time, tempo, `chordSymbols`, `attribution`). Served as
+  `/voicings?piece=maple-leaf-rag`.
+- `tools/voicings/check_midi.py` — verifies the fixture against
+  Mutopia's MIDI of the same source (downloaded on demand, not
+  committed): every melody / bassLine note starts at its onset and
+  pitch (ties across bar lines excepted), comp voicing notes sound
+  at the chord onset, comp.bass started at or before the chord in
+  the bar, and the MIDI's top / bottom note at each onset is the
+  melody / bass. 260 notes, 107 onsets, 0 mismatches.
+- Two rules fixed after the first MIDI run (2026-10-15): "previous
+  bar" is the **performance predecessor** (the bar before the bar's
+  first occurrence in `form.playOrder`), so a second ending follows
+  the bar before the first ending — applied in the exporter's bass
+  lookback (`predecessors()`, `build_doc()`) and in the staff's tie
+  matching (`performanceNeighbours()`); and an **exact octave
+  doubling of the bass** from the bass voice never joins the comp
+  voicing (non-octave dyads still do). Effects: rag bar 17's bass is
+  the lowest chord note, rag bars 5–6 lose the octave's upper note
+  from the voicing, and private bar 17 loses its D4 doubling (tension
+  unchanged at 4; the arpeggio now spans four notes; motion 17→18 is
+  now computable at three voices). `check_export.py` 25/25 with an
+  endings case and four octave cases.
+- Staff fix found by the rag crops: with a `bassLine` present, a
+  `comp.bass` that did not come from the bass voice (the exporter's
+  lowest-chord-note fallback, as in the rag's chord-only bars 9–15
+  and 17) is now drawn with its chord instead of vanishing
+  (`bassFromLine()` in the model). Bar 9's dim7 chords show four
+  notes again; D4 lands on the bass staff because it sits below the
+  E4 split — the "keep each chord on one staff" polish item.
+- Staff-model `selfTest()` gains a rag block (70/70): every voice of
+  every bar sums to 2 beats; oom-pah bass from `bassLine`; octave
+  reduced to its lower note; chords-only bars have an empty
+  `bassLine`; endings linked by performance order (16 → 1, 15 → 17);
+  no tie warnings. Verified in headless Chrome on bars 1, 5, 9, 16,
+  17.
+
+**Landed on `voicing-explorer` (Session 4.5 step 4a, 2026-10-15, `b0b8e80`):**
+- `voicing-analysis.js` scores every comp event. Each `BarResult`
+  gains `events[]` (per event: `index`, `beat`, `dur`, `symbol` —
+  the chord symbol in effect at the event's onset, which its
+  `namedVsPlayed` is scored against — `bass`, `voicing`, `comp`,
+  `melody`, `total`, `byInterval`, `namedVsPlayed`, `motion` = step
+  from the previous event in the bar), `maxEvent`,
+  `predecessor`, and `motionWithin` (`{ total, steps }`). The
+  existing per-bar fields stay for current consumers: `comp`,
+  `melody`, `total`, `byInterval` are the max-tension event's (ties →
+  the earlier), `namedVsPlayed` is the first event's (what the page
+  shows until 4b), `motion` is the last event of the **performance
+  predecessor** → this bar's first event.
+- Melody is scored per event by time overlap (`melodyTension` takes
+  an optional window); melody sounding while no comp event sounds
+  is not scored.
+- `voiceMotion` uses the optimal assignment when voice counts differ
+  (all pairings tried, ≤ 5 voices): unmatched voices of the larger
+  voicing are free (cost 0) and listed in `unmatched` with their
+  side; `matched` counts the paired voices. Equal counts = the
+  low-to-high pairing as before.
+- `selfTest()` 64/64: bar 26 per event (1.333, 2 → max 2; with
+  melody 2.0 / 2.0; event 2 named-vs-played against B♭7/F), motion 8 in / 1 within / 1 into bar 27 with the
+  free voices named, bar 37's predecessor 28, fixture bar 5's two
+  events, rag bar 9 (four dim7 events, 4 each, within 0) and bar 12,
+  and a regression that every single-event bar across the three
+  pieces keeps its comp total. Re-baselined: with-melody bars 17
+  (5.0 → 4.333), 18 (4.0 → 3.667), 26 (3.333 → 2.0) — melody before
+  the comp's first onset is no longer charged against it — and the
+  fixture's count-mismatch motion (null → 3). 
+
+**Landed on `voicing-explorer` (Session 4.5 step 4b, 2026-10-15, `f354e4b`):**
+- `/voicings` has a selected comp event within the selected bar
+  (`state.selectedEvent`, default the bar's `maxEvent`, so every
+  panel agrees with the chart's stack on arrival). Selection: event
+  chips in the Selected bar panel (one per group of consecutive
+  identical events, e.g. "Bdim7 ×4", showing beat, symbol, tension),
+  a click on a comp note of another event on the staff, or
+  Shift+←/→ while the chart has focus (steps events, crossing into
+  the neighbouring bar; plain ←/→ still steps bars).
+- Detail (`voicing-detail.js`, `render(bar, eventIndex)`), keyboard,
+  Tonnetz and the staff's bright notes read from the selected event:
+  its symbol, bass, voicing, tension, rubs (comp, plus melody rubs
+  when the analysis carries them), named-vs-played, and motion —
+  "into" from the performance predecessor for the first event, the
+  within-bar "step" for later ones, with free voices listed by their
+  written names (the engine now puts `name` on `unmatched`). The
+  staff dims the comp notes of the other events
+  (`VoicingStaff.setEvent`, `vs-note--dim`); bassLine and melody
+  notes stay bright. The per-bar `namedVsPlayed` field is no longer
+  read by the page.
+- Verified in headless Chrome at 1400 / 390 px: private bars 25–27
+  and rag bars 9, 12, 16; chip click, staff-note click, Shift+→
+  across the 26→27 and 9→10 bar boundaries and back; console clean.
+
+**Landed on `voicing-explorer` (Session 5, 2026-10-16, `9b548f2` … `26be03c`):**
+- Playback: `static/shared/voicing-playback-model.js` (pure —
+  `buildPlaybackList` bar / event scope, lead-in from sounding voices
+  capped at one beat, tie tails not re-attacked, rolls at
+  `ARP_STEP_MS` 35 ms with spread ≤ 1/3 event, per-notehead `pieces`;
+  `toSchedule` → seconds; `selfTest()` 89/89) and
+  `static/shared/voicing-player.js` (lazy Tone 14.8.49 + lazy
+  Salamander from `static/vendor/salamander/`, `Tone.Part` on the
+  Transport, `Tone.Draw` callbacks, mute respected, `blocked` state
+  when the gesture expired). Page: Play (bar) / Shift+Play (event) /
+  Stop, `P` / `Shift+P` / `Esc`; selection or toggle change stops; no
+  auto-play.
+- Melody toggle (default off, `&melody=1`): off removes melody from the
+  analysis and mutes it in playback; on scores it by overlap per event
+  and lights it green on the keyboard. The staff always draws it; the
+  Tonnetz is comp-only either way. Melody on changes totals in 21/44
+  private and 4/17 rag bars, `maxEvent` only in private bar 26.
+- Follow: staff `setPlaying(ids)` and keyboard `setPlaying(sounding)`
+  show all sounding notes (tied noteheads piece by piece; carried
+  notes from beat 0, nothing before it); restored on end / Stop.
+  Keyboard range per piece (extreme notes rounded to C..B; private
+  C2–B5, rag C1–B6).
+- `static/vendor/salamander/`: 29 mp3s, 2.0 MB, Tonejs/audio @
+  `869b6f8d9cdd`, CC BY 3.0 Alexander Holm (README quotes the
+  license; jsDelivr refuses the 229 MB repo).
+
+**Landed on `voicing-explorer` (Session 6, 2026-10-16, `ad44437`, `7ccd8fb`, `ea7d7ff`):**
+- Explore core: `static/shared/voicing-explore.js` (pure — writes
+  `comp[i].voicing` only, never bass / bassLine / melody).
+  `generateCandidates` from the symbol (named tones + 9th; dominants
+  also 13 / ♯11; voice count original ±1 within 2–4; every note in
+  [bass + 2, lowest melody note in the event − 1], ceiling =
+  `pieceCeiling` when no melody sounds; span ≤ 12; no doubled pc; no
+  unison with the melody; onset fallback when the melody dips) and
+  from `harvestShapes` (degree labels via `namedVsPlayed`, R/3/5/7
+  take the target's version, 9/11/13 keep their accidental, unsupplied
+  degrees skip with a reason; exempt from the pool, not from the
+  melody rule / window / span; library per piece — private 19, rag 7;
+  the three named shapes). `scoreCandidate` reuses the engine;
+  `rankCandidates`: target distance (0.5 buckets), motion in + out to
+  the nearest voiced events (`voicedNeighbours`), fewer omissions.
+  `applyOverrides` non-mutating, source `user`, tie propagation.
+  `selfTest()` 76/76. Engine: `barNeighbours` exported (64/64
+  unchanged).
+- Page: Explore panel (target − / +, voices, source filter, ranked
+  table of 12 with ● original / ◆ kept, per-row ▶ event / Shift bar,
+  Keep / Revert bar / Reset all / Copy JSON); preview re-renders
+  detail, staff, keyboard and Tonnetz from a trial progression without
+  changing the selection (tag `preview`; `user` after Keep); every
+  consumer reads `state.effective`; keys `[` `]` `K` `-` `=`. Chart:
+  `vc-bar--user` green outline + legend. No persistence this session.
+- Playback amendment: event scope starts at the bass's real onset when
+  it was struck earlier in the same bar (bar 21); a rolled downbeat
+  bass no longer leads the roll in event scope. `selfTest()` 95/95.
+- Listening, bar 21: see SESSION_LOG 2026-10-16 Session 6; tuning
+  hypotheses in RADAR.
+
+**Landed on `voicing-explorer` (Session 6.5 + extras, 2026-10-17 → 19, `db3d6b5` … `47d8b24` and P6):**
+- Explainer layer: `voicing-explainer-content.js` (25 topics, claude-draft
+  or stub, constants interpolated), `mini-markdown.js`, `info-pill.js`
+  (one ⓘ per /voicings panel), `/learn` + `/learn/<slug>`, `learn.css`.
+- `voicing-describe.js` — `describeVoicing(event, context)` → sections
+  (shape via `SHAPE_CATALOGUE`, guide tones, colour tones with rubs and
+  unusual-label heuristics, omissions, motion vs the voiced neighbour,
+  why-ranked via `rankKey`); inferred basses worded "the lowest note".
+- Theory card on /voicings beside the Explore table (sticky, scrolls
+  inside, stacks under 1200px); page max-width 1800; keyboard scales to
+  its panel (`voicing-keyboard.js` ResizeObserver).
+- Dominant rule in `generateCandidates` (`DOMINANT_RULE`: every
+  candidate keeps the ♭7, ♯11 also needs the 3rd; bass counts; original
+  exempt; `removed[]` with reasons shown in the hint and card).
+- Piece picker: `/voicings/pieces` (private then public, from disk) and
+  a header `<select>`; deep links unchanged; text-box fallback.
+- Rag: `SYMBOLS` corrected (slash only when the lowest sounding note is
+  not the root; Bdim7 unslashed); provenance comment and header note
+  ("symbols added by analysis", from `chordSymbols: "derived"`); source
+  credit in the header meta from `attribution`.
+- Exporter: `comp[].bassSource` (`voice` / `carried` / `inferred`);
+  Selected bar tags an inferred bass. check_export 25/25, check_midi 0.
+- Nav: "Voicings" after Explorer in `base.html` and `explorer.html`;
+  Salamander CC BY 3.0 credit in the base footer, the explorer status
+  bar and the playback topic.
+- Suites: analysis 64, staff 70, playback 95, explore 89, mini-markdown
+  28, content 34, describe 61. Verified in headless Chrome at 2560 /
+  1440 / 1100 / 390.
+
+**In progress:**
+- Session 7: merge `voicing-explorer` to `dev` (Dustin), clean-clone
+  check. dev has not moved since the branch point (`57afaa9`).
+
+**Open / deferred:**
+- Explore tuning still open: register factor by degree; 0.5 ranking
+  buckets create cliffs; piece ceiling self-limiting (RADAR). The
+  dominant rule's "needs the ♭7" was decided by ear on one bar —
+  revisit with more examples (RADAR).
+- Private piece data under `static/private/` is directly fetchable
+  via Flask's static route; move to a non-static folder before any
+  shared deploy (RADAR).
+- Rag bars 16–17: the real bass dyad on beat 1.5 goes to `bassLine`
+  only; Explore never voices against it (RADAR).
+- Tonnetz and staff do not scale to their panels on wide screens;
+  tablet layout untuned (RADAR). 390px: the Explore column scrolls
+  sideways for the right-hand table columns.
+- Explore overrides are not persisted (Revert / Reset / Copy JSON
+  only); the melody rule is a piano-solo heuristic (RADAR); the piece
+  ceiling is self-limiting in melody-less events (RADAR).
+- Melody over a comp rest is unscored even when a `bassLine` note is
+  still sounding (bar 25's beat-0 melody over the held G2). Checked
+  2026-10-16: scoring it would move no number in either piece (all
+  such pairs are non-weighted classes). Engine change with
+  re-baselining. Promoted 2026-10-16 (Habanera needs it; see RADAR).
+- `bassLine` reductions (grace notes dropped, dyads reduced to the
+  lower note) are documented, not fixed; revisit if a piece needs
+  them.
+- Rag staff: sixteenths are unbeamed (beaming is a known polish
+  item), so the rag's melody reads busier than the PDF.
+- Verovio self-hosting under `static/vendor/` deferred: the 7.3 MB
+  module would be served uncompressed (2.1 MB gzip from the CDN).
+  Salamander is vendored because mp3 is already compressed. The
+  Verovio URL is one constant in `voicing-staff.js`.
+- Staff polish: keep each comp chord on one staff instead of
+  splitting by pitch at `SPLIT_MIDI`; beam melody eighths.
+- Not-found state shows the default C-major Tonnetz (no key to anchor
+  on).
+- Chord-symbol suffix table lives in the engine
+  (`SUFFIX_TO_TYPE`); fold into the canonical registry when
+  `chord-types.json` lands.
+- Salamander: three other URL maps (audio-bridge, keyboard-view,
+  intro-audio) still point at the unpinned GitHub Pages copy (RADAR).
+
+**Public surfaces (debugging):**
+- `window.__voicings` on `/voicings`: `{ state, select, selectEvent,
+  stepEvent, chart, keyboard, detail, bubble, staff, player,
+  playSelected, setIncludeMelody, explore }`; `select(bar, eventIndex?)`,
+  `playSelected('bar' | 'event')`, `state.includeMelody`,
+  `state.overrides` / `state.effective` / `state.preview`;
+  `explore: { compute, rows, preview, clear, keep, playRow,
+  stepPreview, nudgeTarget, revert, reset, copy, json, setTarget,
+  setCountRange, setSourceFilter, trialProgression }`, plus
+  `switchPiece(name)` and `pieces()`. `/voicings/pieces` lists what
+  `/voicings/data/<name>` can serve.
+- Self-tests:
+  `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/voicing-staff-model.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/voicing-playback-model.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/voicing-explore.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/mini-markdown.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/voicing-explainer-content.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/voicing-describe.js').then(m => m.selfTest())"`
+  `python3 tools/voicings/check_export.py`
+  `python3 tools/voicings/check_midi.py --fixture tests/fixtures/voicing-maple-leaf-rag.json`
+- Regenerate the rag: `python3 tools/voicings/ly_to_src.py --ly tests/fixtures/maple-leaf-rag.ly --out tests/fixtures/maple-leaf-rag.src.py && python3 tools/voicings/export_json.py --src tests/fixtures/maple-leaf-rag.src.py --out tests/fixtures/voicing-maple-leaf-rag.json`
+
 ### Chord Progression Engine
 - Multi-path glow worm visualization (animated playthrough with fading trails)
 - Fixed Tonnetz center during progression playback
@@ -341,6 +733,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - `harmony-state.js` — pub/sub state model, **setChord/highlightChord** for extended chord types
 - `tonnetz-neighborhood.js` — SVG renderer with chord-quality coloring, **extension node rendering**
 - `keyboard-view.js` — real piano proportions, highlight layer, click interaction, **extension ring highlights**, shared `Tone.Analyser` owner
+- `voicing-analysis.js` — voiced-progression analysis engine (pure; see Voicing Explorer — Analyze + Explore). `voicing-explore.js` — Explore core (candidates, harvested shapes, ranking, overrides; pure). `voicing-playback-model.js` / `voicing-player.js` — playback model and Tone.js player. `voicing-chart.js`, `voicing-keyboard.js`, `voicing-detail.js`, `voicing-staff.js` — page-owned views for `/voicings`; the keyboard is deliberately independent of `keyboard-view.js` (exact-octave role coloring without a do-not-touch lift)
 - `resonance-view.js` — radial FFT Tonnetz visualization, HarmonyState-gated, chord-function coloring, Spectrum-matched particle dynamics. **April 20:** refactored to instance-based `DEFAULT_PARAMS` for live tuning; sparkler defaults; perpendicular wiggle; new tunables (`blobFillAlpha`, `peakMagThreshold`, `particleDeceleration`)
 - `harmonograph-view.js` — verbatim fork of `resonance-view.js` for the `/harmonograph` sandbox (formerly `/art`, renamed 2026-04-24). Class `HarmonographView`. Adds grid motion (rotation + circular sway, lattice as rigid body), chord-triangle highlights (gold fill on Tonnetz triangles whose vertex PCs are all active), and a 3D mode (`mode3D` flag) with a 12×4 toroidal lattice on a torus-to-sphere morphable surface, manual world-axis rotation, and 96 always-visible triads tinted warm/cool with continuous back-face alpha. Will diverge freely from the canonical Explorer version.
 - `chord-wheel.js` — dual-ring circle of fifths
@@ -400,9 +793,11 @@ See `docs/songlab-build-plan.md` (v4) for the full phased roadmap:
 - **`pitch-detection.js` uses deprecated `ScriptProcessorNode`** — Chrome logs a deprecation warning. Functional for now. AudioWorklet migration tracked in `docs/audio-architecture.md` Open Question 1.
 - **Swing Trainer 500 on production** — could not reproduce locally (April 17). Template extends base.html correctly. Likely Railway deploy state issue. Need fresh deploy + production stack trace capture. See `docs/KNOWN-ISSUES.md`.
 - **Railway cold start** — ~15s first load after inactivity (hobby tier), warn testers
+- **Port 5000 unavailable on the Mac mini** — macOS AirPlay Receiver (Control Center) listens on 5000 and answers 403. `.env` sets `PORT=5001`; `app.py` reads it. Scripts or prompts that assume 5000 will hit AirPlay, not Flask.
+- **Global SVG `max-width` rule** squashes wide inline SVGs on narrow screens; `voicing-chart.js` pins its width inline. Any future scrollable SVG panel needs the same.
 - **Rhythm Lab + Strum Patterns mic paths disabled** — dead route calls commented out, TODO points to onset-detection.js migration. Keyboard/spacebar input still works.
 - **Harmony Trainer still uses server-side pitch detection** — `/process_audio_chunk` → librosa. Migration guide in `templates/harmony.html` comment block.
-- **`_suppressAutoPlay` load-bearing** — 17 sites in explorer.html. Code review recommends source-tagged HarmonyState.update(). Deferred.
+- **`_suppressAutoPlay` load-bearing** — 19 sites in explorer.html (1 declaration, 6 set-true, 6 set-false, a save/restore pair, 2 reads). Code review recommends source-tagged HarmonyState.update() (`docs/code-review-opus47.md`). Deferred.
 - **Triplicated chord-type registries** — transforms.js, chord-resolver.js, chord-detection.js. Consolidation into transforms.js recommended.
 - **`/api/chat` proxy hardening** — model allowlist and server-side system prompt recommended. Not a blocker.
 - Swing Trainer: dial slightly finicky past midpoint
@@ -411,7 +806,6 @@ See `docs/songlab-build-plan.md` (v4) for the full phased roadmap:
 - Sustain pedal bug: Organ/Synth in SkratchLab — `triggerAttackRelease` bypasses sustain state
 - Mobile/responsive not tested — deferred to post-MVP
 - SkratchLab: "Clear All" button clears blocks but not canvas — needs canvas reset
-- Polyrhythm Trainer not yet in nav dropdown or landing page
 - Full list: `docs/KNOWN-ISSUES.md`
 - **Backlog:** Enharmonic sharp/flat toggle for Fundamentals keyboards (deferred)
 
@@ -430,6 +824,9 @@ See `docs/songlab-build-plan.md` (v4) for the full phased roadmap:
 | `docs/visual-engine-spec.md` | Generative art engine spec (Tonnetz-driven, post-launch) |
 | `docs/explorer-spec.md` | Explorer design, panel specs, canonical orientation |
 | `docs/voicing-explorer-spec.md` | Voicing Explorer — chord shapes, glow worm paths, projections |
+| `docs/active-plans/voicing-explorer-build-plan.md` | **Voicing Explorer analysis arc** — 7-session plan, Decisions, open questions |
+| `tools/voicings/schema.md` | Voiced-progression JSON schema (v1) consumed by `voicing-analysis.js` |
+| `docs/registry-inventory.md` | Chord-type registry audit + canonical JSON spec (§9: voicing-analysis local types) |
 | `docs/content-architecture.md` | Content model, topic schema, lens system |
 | `docs/game-flow-pattern.md` | Learn → Practice → Test pattern (to be updated with audit findings) |
 | `docs/auth-architecture.md` | Supabase auth, profile migration, security checklist |

@@ -15,7 +15,9 @@ Routes:
 
 from datetime import datetime
 import io
+import json
 import os
+import re
 import struct
 import time
 
@@ -25,7 +27,7 @@ load_dotenv()  # loads .env in local dev; no-op in production
 import numpy as np
 import librosa
 import requests as http_requests
-from flask import Flask, jsonify, redirect, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
 
 from chord_detector import ChordDetector
 from game_engine import (
@@ -290,6 +292,71 @@ def cantor():
     return render_template("cantor.html")
 
 
+@app.route("/voicings")
+def voicings():
+    # Voicing Explorer — Analyze view. Loads a voiced progression by name
+    # (?piece=) through /voicings/data/<name>. See
+    # docs/active-plans/voicing-explorer-build-plan.md and
+    # tools/voicings/schema.md.
+    return render_template("voicings.html")
+
+
+_VOICING_PIECE_RE = re.compile(r"^[a-z0-9-]+$")
+
+
+@app.route("/voicings/pieces")
+def voicings_pieces():
+    """List the pieces /voicings/data/<name> can serve: [{ name, title, source }],
+    source 'private' (static/private/<name>.json, gitignored) or 'public'
+    (tests/fixtures/voicing-<name>.json). Same folders and precedence as the
+    data route; a name present in both is listed once, as private. Title from
+    the JSON's "title", else the name. Scanned from disk: nothing hardcoded."""
+    base = os.path.dirname(os.path.abspath(__file__))
+    folders = (
+        ("private", os.path.join(base, "static", "private"), r"^([a-z0-9-]+)\.json$"),
+        ("public", os.path.join(base, "tests", "fixtures"), r"^voicing-([a-z0-9-]+)\.json$"),
+    )
+    pieces, seen = [], set()
+    for source, directory, pattern in folders:
+        if not os.path.isdir(directory):
+            continue
+        for filename in sorted(os.listdir(directory)):
+            m = re.match(pattern, filename)
+            if not m or m.group(1) in seen:
+                continue
+            path = os.path.join(directory, filename)
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    data = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(data, dict) or not isinstance(data.get("bars"), list):
+                continue
+            name = m.group(1)
+            seen.add(name)
+            title = data.get("title")
+            pieces.append({"name": name, "title": title if isinstance(title, str) and title.strip() else name, "source": source})
+    pieces.sort(key=lambda p: (p["source"] != "private", p["title"].lower()))
+    return jsonify(pieces)
+
+
+@app.route("/voicings/data/<name>")
+def voicings_data(name):
+    """Serve a voiced-progression JSON: static/private/<name>.json first
+    (gitignored, local only), then tests/fixtures/voicing-<name>.json."""
+    if not _VOICING_PIECE_RE.match(name):
+        return jsonify(error="invalid piece name", piece=name), 404
+    base = os.path.dirname(os.path.abspath(__file__))
+    candidates = (
+        (os.path.join(base, "static", "private"), f"{name}.json"),
+        (os.path.join(base, "tests", "fixtures"), f"voicing-{name}.json"),
+    )
+    for directory, filename in candidates:
+        if os.path.isfile(os.path.join(directory, filename)):
+            return send_from_directory(directory, filename, mimetype="application/json")
+    return jsonify(error="not found", piece=name), 404
+
+
 @app.route("/tutorial")
 def tutorial():
     return render_template("tutorial.html")
@@ -313,6 +380,26 @@ def theory_chord_progressions():
 @app.route("/theory/modes")
 def theory_modes():
     return render_template("theory/modes.html")
+
+
+_LEARN_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+@app.route("/learn")
+def learn_index():
+    # Explainer layer (Voicing Explorer Session 6.5): every topic in
+    # static/shared/voicing-explainer-content.js, rendered client-side from
+    # that registry so pills and pages share one source.
+    return render_template("learn/index.html")
+
+
+@app.route("/learn/<slug>")
+def learn_topic(slug):
+    # The registry lives in JS, so an unknown slug renders the template's
+    # not-found state (HTTP 200); a malformed one goes back to the index.
+    if not _LEARN_SLUG_RE.match(slug):
+        return redirect("/learn")
+    return render_template("learn/topic.html", slug=slug)
 
 
 @app.route("/intro")

@@ -17,6 +17,171 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-19] Private piece data under `static/` is directly fetchable.**
+  `static/private/dont-be-sad.json` answers HTTP 200 at
+  `/static/private/dont-be-sad.json` through Flask's static route, not
+  only via `/voicings/data/<name>`. It is gitignored, so Railway never has
+  it today, but any shared deploy with the file present would expose it.
+  Move private pieces to a non-static folder (and point `voicings_data` and
+  `voicings_pieces` there) before any shared deploy.
+  See: `app.py` `voicings_data`, `voicings_pieces`; `.gitignore`.
+
+- **[2026-10-19] Late-bar bass notes never become comp events.** Rag bars 16
+  and 17: the real left-hand octave on beat 1.5 (E♭2, A2) lands in
+  `bassLine` only, because comp events are keyed to chord-voice onsets and
+  the chord voice rests there. So the analysis, the Theory card and Explore
+  never voice against it, and the three chord events carry an inferred bass
+  (`bassSource: "inferred"`, now tagged on the page). Revisit how bass-voice
+  onsets after the last chord onset should become comp events (or extend
+  the previous event) in `tools/voicings/export_json.py`.
+  See: `bass_for_onset`, the "keyed to chord-voice onsets" rule in the exporter docstring.
+
+- **[2026-10-19] /voicings layout on wide screens and tablets.** The Tonnetz
+  (fixed 380px height) and the staff (Verovio at its own scale) do not grow
+  with their panels, so at 1800px+ the middle of the page is mostly empty
+  surface; the keyboard now scales to its panel and the Theory card sits
+  beside Explore. Tablet widths (700–1200px) get the two-column detail grid
+  and the stacked Explore, both untuned. Future layout session.
+  See: `templates/voicings.html` `.vp-detail`, `.vp-tonnetz`; `static/shared/voicing-staff.js`.
+
+- **[2026-10-19] Dominant rule: "needs the ♭7" decided by ear on one bar.**
+  Rag bar 12, event 2 (E♭7 over E♭4) after the first version of the rule:
+  #3 F4 G4 (9, 3, no ♭7) does not sound dominant; #5 F4 D♭5 (9, ♭7, no 3)
+  does; #2 D♭5 G5 (♭7, 3) does. So the rule now requires the ♭7 of every
+  candidate (which subsumes "13 needs ♭7"), and ♯11 still needs the 3rd.
+  "Needs the ♭7" versus "needs both guide tones" was settled on this one
+  bar; revisit with more dominant bars (fixture 4, 6, 11; private 21)
+  before treating it as more than a hint.
+  See: `static/shared/voicing-explore.js` `DOMINANT_RULE`; explore-ranking topic.
+
+- **[2026-10-19] /voicings scrolls horizontally at 390px.** Pre-existing:
+  chart or keyboard SVG lines and rects reach ~411px on a 390px viewport
+  (document scrollWidth ~700). Not the Theory card (342px, no overflow).
+  See: `static/shared/voicing-chart.js`, `voicing-keyboard.js`.
+
+- **[2026-10-19] favicon 404** on every page load (`/favicon.ico`). The only
+  console error on /voicings. Add an icon or a route.
+
+- **[2026-10-16] Explore tuning hypotheses (from bar 21, F7 in G).**
+  Test on other dominant bars before encoding: on dominants, ♯11 needs
+  both the 3rd and ♭7 (A-B-D and D-A-B drift to F Lydian / the home
+  key; E♭-B-D lacks the 3rd); 13 needs the ♭7; the 3rd is optional
+  otherwise. Register: a low tritone is not bad per se — the 3–♭7
+  shell (A2-E♭3-F3) is good, root–♯11 low (B2-G-A) is muddy — so the
+  deferred register factor should consider degrees, not just the
+  interval. Liked: G-D-E♭ (9 13 ♭7), the shell, the piece's own
+  C-A-B♭ (5-3-11).
+  See: SESSION_LOG 2026-10-16 Session 6 "Listening"; `static/shared/voicing-explore.js` `chordTones`.
+  **Update 2026-10-19:** the dominant clauses are built as `DOMINANT_RULE`
+  (every candidate keeps the ♭7; ♯11 also needs the 3rd), so every
+  dominant candidate now keeps at least one guide tone — resolved by the
+  ♭7 rule. The register-by-degree factor is still open.
+
+- **[2026-10-16] Explore ranking: 0.5 buckets create cliffs.** Bar 21's
+  original fell from #3 at its own target to #12 at target 3. Consider
+  finer buckets or a blended cost (distance + λ · motion). The
+  motion-first tiebreak may favour blander voicings. Still open
+  2026-10-19 (the Theory card now explains each rank by `rankKey`).
+  See: `static/shared/voicing-explore.js` `rankCandidates`, `rankKey`, `targetDistance`.
+
+- **[2026-10-16] Piece ceiling is self-limiting.** In melody-less
+  events Explore never goes above the piece's existing comp top
+  (`pieceCeiling`: private G4, rag D♭5). Fine for re-voicing within a
+  piece's register; wrong for a piece whose comp is uniformly low.
+  Still open 2026-10-19.
+  See: `static/shared/voicing-explore.js` `pieceCeiling`.
+
+- **[2026-10-16] Explainer layer planned as Session 6.5.** Info pills
+  per panel with the relevant reasoning and links out to fuller pages;
+  content written once, numbers pulled from code constants
+  (`TENSION_WEIGHTS`, `OCTAVE_DISCOUNTS`, `ARP_STEP_MS`,
+  `LEAD_IN_MAX_BEATS`, `DEFAULT_MAX_SPAN`, …).
+  See: `docs/STATUS.md` Next priorities.
+
+- **[2026-10-16] Explore melody rule is a heuristic.** "Voicing below
+  the melody" is a piano-solo rule (chord-melody, comping under your own
+  right hand). With a separate melody instrument — Summertime's vocal —
+  piano voicings routinely sit at or above the tune, and inner-voice
+  melodies break it too. Eventual fix: the melody carries its
+  instrument (piano vs voice/other); piano melody keeps the
+  below-melody constraint, a separate melody allows crossing and scores
+  closeness as tension. Small schema addition.
+  See: `static/shared/voicing-explore.js` header (candidate rules);
+  `tools/voicings/schema.md`.
+
+- **[2026-10-16] Role inference is a transcription task, separate from
+  Explore.** Pieces like Summertime, Linus and Lucy and Habanera put
+  the interesting voicings in the melody / right hand. Decision: keep
+  the current role-labeled schema (`comp` / `bassLine` / `melody`) as
+  the interface. A future transcription aid proposes role labels from
+  raw notes using (1) the chord symbol (chord tones sounding together
+  = voicing, lowest chord tone = bass, non-chord / moving tones =
+  line) and (2) repetition (what repeats with the progression =
+  accompaniment; what varies over a repeating progression = melody; a
+  broken texture template signals a role change, e.g. chord-melody).
+  Human confirms; labels are stored. Explore never re-classifies: it
+  re-voices comp with melody and bass pinned. Chord-melody and
+  two-handed voicings already fit the schema (roles, not hands). Test
+  pieces: Habanera (public domain, public fixture), Summertime
+  (private, gitignored).
+  See: `tools/voicings/schema.md`; `docs/voicing-explorer-spec.md`.
+
+- **[2026-10-16] Melody-over-bass scoring promoted from deferred.**
+  Melody sounding against bass with no comp is unscored. It moved no
+  numbers in the rag or the private piece, but Habanera (melody over
+  ostinato, mostly no comp) depends on it. Schedule before or with the
+  Habanera fixture.
+  See: `docs/STATUS.md` Voicing Explorer "Open / deferred";
+  `static/shared/voicing-analysis.js`.
+
+- **[2026-10-16] Multi-bar playback (range).** Two modes: study (one
+  bar, display holds still, as now) and follow (a range plays; Tonnetz
+  and keyboard track the song). Staff needs a scrolling or page-turn
+  window. Playback model is close: a range is a sequence of bars with
+  the lead-in only at the start. Natural fit with or after Session 6
+  (auditioning a re-voiced passage in context).
+  See: `static/shared/voicing-playback-model.js`;
+  `docs/active-plans/voicing-explorer-build-plan.md` Session 6.
+
+- **[2026-10-16] Three unpinned Salamander URL maps.**
+  `audio-bridge.js`, `keyboard-view.js`, `intro-audio.js` each carry
+  the same sample map against the unversioned GitHub Pages URL;
+  `/voicings` uses the vendored, commit-pinned copy in
+  `static/vendor/salamander/`. Consolidate the three onto it when
+  `keyboard-view.js` opens up (do-not-touch).
+  See: `static/vendor/salamander/README.md`; `static/shared/voicing-player.js`.
+
+- **[2026-10-16] Tonnetz: melody as separate dots, not lit triangles.**
+  The Tonnetz on `/voicings` is comp-only by decision; when Explore
+  (Session 6) lands, consider melody pitches as distinct markers on
+  the lattice rather than feeding `activeNotes`.
+  See: `docs/active-plans/voicing-explorer-build-plan.md` Session 6.
+
+- **[2026-10-16] Lead-in notes possibly softer.** The player plays
+  lead-in notes at 0.85 of the role velocity; if the one-beat lead-in
+  still reads as part of the bar, drop it further so it reads as
+  "from before".
+  See: `static/shared/voicing-player.js` `LEAD_IN_GAIN`.
+
+- **[2026-10-15] Block-chord limit.** Neither the schema nor
+  `score_src.py` can express a held note over a moving inner voice;
+  every comp event attacks all its notes together. Revisit when a
+  piece needs it.
+  See: `tools/voicings/schema.md`; SESSION_LOG 2026-10-15 "Flagged for later".
+
+- **[2026-10-15] Staff polish.** Keep each comp chord on one staff
+  instead of splitting at `SPLIT_MIDI`; beam melody eighths and
+  sixteenths (MEI `<beam>`); grace notes are dropped by the exporter
+  (bars 4, 20) and cannot be drawn or played.
+  See: `docs/STATUS.md` Voicing Explorer "Open / deferred".
+
+- **[2026-10-15] Tension register factor.** A low-register factor
+  (both notes below ~C3) is separate from the compound-interval
+  discounts; no current bar would move. Bar 21 listening
+  (2026-10-16) suggests it should weigh degrees, not just the
+  interval: a low 3–♭7 shell reads fine, a low root–♯11 does not.
+  See: `docs/active-plans/voicing-explorer-build-plan.md` "Tension weights".
+
 - **[2026-05-14] Chord/melody classification — research-active.**
   *Priority: low (research, not production).* The classification
   problem is intrinsically interesting — musically, mathematically,
@@ -129,5 +294,29 @@ out of awareness.
 ---
 
 ## Retired
-(empty — items move here when resolved, for short-term reference, then
-get cleared periodically.)
+(items move here when resolved, for short-term reference, then get
+cleared periodically.)
+
+- **[2026-10-19] Rag derived symbols: slash bass is the top note** —
+  resolved 2026-10-19. The symbols were a hand-entered table
+  (`SYMBOLS` in `tools/voicings/ly_to_src.py`, derived by Claude), not
+  computed; 15 of 27 corrected so a slash appears only when the lowest
+  sounding note is not the root (A♭/C → A♭/E♭, F♭/C♭ → F♭, E♭7/D♭ → E♭7;
+  Bdim7 bars left unslashed by decision). No analysis number or Explore
+  ranking moved. The page now notes "symbols added by analysis" from
+  `chordSymbols: "derived"`.
+
+- **[2026-10-16] `/voicings` link in the top nav** — resolved
+  2026-10-19: flat "Voicings" link after Explorer in `base.html` and
+  `explorer.html`.
+
+- **[2026-10-16] Salamander CC BY attribution owed app-wide** — resolved
+  2026-10-19: footer line in `base.html`, credit in `explorer.html`'s
+  status bar, licence link in the playback topic. The three unpinned URL
+  maps remain a separate open item.
+
+- **[2026-10-16] Explore: motion from the most recent bar WITH a
+  voicing** — resolved 2026-10-16 by `voicedNeighbours` in
+  `voicing-explore.js` on the engine's exported `barNeighbours` (rag
+  bar 9 looks back past 5–8 to bar 4). The Analyze view's own `motion`
+  still uses the raw predecessor, by design.
