@@ -123,11 +123,11 @@
 
   <section class="vp-panel" aria-label="Tension per bar">
     <div class="vp-panel__head">
-      <p class="vp-panel__label">Tension per bar — click or use ← → to select a bar, Shift+← → to step comp events</p>
-      <label class="vp-melody" id="vp-melody" title="Include the melody in the analysis and in playback. The staff always shows it; the Tonnetz never does.">
+      <p class="vp-panel__label" data-explain="chart">Tension per bar — click or use ← → to select a bar, Shift+← → to step comp events</p>
+      <label class="vp-melody" id="vp-melody" data-explain="melody" data-explain-pos="after" title="Include the melody in the analysis and in playback. The staff always shows it; the Tonnetz never does.">
         <input type="checkbox" id="vp-melody-input"> melody <span class="vp-melody__state" id="vp-melody-state">off</span>
       </label>
-      <button type="button" class="vp-play" id="vp-play" title="Play the selected bar (P). Shift+click or Shift+P plays the selected event. Esc stops." disabled>▶ Play bar</button>
+      <button type="button" class="vp-play" id="vp-play" data-explain="play" data-explain-pos="after" title="Play the selected bar (P). Shift+click or Shift+P plays the selected event. Esc stops." disabled>▶ Play bar</button>
       <span class="vp-play__hint" id="vp-play-hint">Shift+click: event</span>
     </div>
     <div id="vp-chart"></div>
@@ -136,25 +136,25 @@
   <section class="vp-detail" aria-label="Selected bar">
     <div class="vp-side">
       <div class="vp-panel">
-        <p class="vp-panel__label">Selected bar</p>
+        <p class="vp-panel__label" data-explain="selected">Selected bar</p>
         <div id="vp-info"></div>
       </div>
       <div class="vp-panel">
-        <p class="vp-panel__label">Staff — click a note to find it on the keyboard</p>
+        <p class="vp-panel__label" data-explain="staff">Staff — click a note to find it on the keyboard</p>
         <div id="vp-staff"></div>
       </div>
     </div>
     <div class="vp-panel vp-panel--tonnetz">
-      <p class="vp-panel__label">Tonnetz</p>
+      <p class="vp-panel__label" data-explain="tonnetz">Tonnetz</p>
       <div class="vp-tonnetz" id="vp-tonnetz"></div>
     </div>
     <div class="vp-side">
       <div class="vp-panel">
-        <p class="vp-panel__label">Intervals that rub</p>
+        <p class="vp-panel__label" data-explain="rubs">Intervals that rub</p>
         <div id="vp-rubs"></div>
       </div>
       <div class="vp-panel">
-        <p class="vp-panel__label">Named vs played</p>
+        <p class="vp-panel__label" data-explain="nvp">Named vs played</p>
         <div id="vp-nvp"></div>
       </div>
     </div>
@@ -162,7 +162,7 @@
 
   <section class="vp-panel vp-explore" id="vp-explore" aria-label="Explore" hidden>
     <div class="vp-explore__head">
-      <p class="vp-panel__label" id="vp-explore-label">Explore — candidate voicings for the selected event; click a row to preview, Keep to swap it in</p>
+      <p class="vp-panel__label" id="vp-explore-label" data-explain="explore"><span id="vp-explore-label-text">Explore — candidate voicings for the selected event; click a row to preview, Keep to swap it in</span></p>
       <label class="vp-explore__ctl">target
         <button type="button" class="vp-explore__btn" id="vp-explore-target-dec">−</button>
         <input type="number" id="vp-explore-target" min="0">
@@ -188,7 +188,7 @@
   </section>
 
   <section class="vp-panel vp-keyboard-panel" aria-label="Keyboard">
-    <p class="vp-panel__label">Keyboard — <span style="color:var(--accent-gold)">bass</span>, <span style="color:var(--accent-blue-bright)">voicing</span></p>
+    <p class="vp-panel__label" data-explain="keyboard">Keyboard — <span style="color:var(--accent-gold)">bass</span>, <span style="color:var(--accent-blue-bright)">voicing</span></p>
     <div id="vp-keyboard"></div>
   </section>
 </main>
@@ -208,6 +208,8 @@
   import { VoicingPlayer }         from "{{ url_for('static', filename='shared/voicing-player.js') }}";
   import { eventContext, generateCandidates, scoreCandidate, rankCandidates, applyOverrides, expandOverrides, overrideKey, TARGET_STEP, EXPLORE_ROWS }
                                    from "{{ url_for('static', filename='shared/voicing-explore.js') }}";
+  import { InfoPill }              from "{{ url_for('static', filename='shared/info-pill.js') }}";
+  import { topicsForPanel }        from "{{ url_for('static', filename='shared/voicing-explainer-content.js') }}";
 
   const DEFAULT_PIECE = 'dont-be-sad';
   const FIXTURE_PIECE = 'fixture';
@@ -476,6 +478,16 @@
     }
   });
 
+  // ── Explainer pills ─────────────────────────────────────────────
+  // One ⓘ per panel header, content from the explainer registry by panel id
+  // (data-explain). data-explain-pos="after" puts the trigger beside a
+  // control instead of inside it. The pill owns Escape only while open; all
+  // other keys fall through to the handler above.
+  for (const el of document.querySelectorAll('[data-explain]')) {
+    const [slug] = topicsForPanel(el.dataset.explain);
+    if (slug) InfoPill.mount(el, { slug, position: el.dataset.explainPos || 'append' });
+  }
+
   // ── Explore ─────────────────────────────────────────────────────
   // Candidates for the selected event from voicing-explore.js, scored under
   // the melody toggle (the melody RULE is toggle-blind: generation always
@@ -527,7 +539,7 @@
     if (!ex) { els.explore.hidden = true; exploreRows = []; return; }
     els.explore.hidden = false;
     const label = `Explore — bar ${state.selectedBar}, event ${state.selectedEvent + 1} (${ex.ctx.symbol || 'no symbol'}): ${ex.ranked.length} candidates, ${ex.rows.length} shown · click a row to preview, ▶ to hear it, Keep to swap it in · [ ] step · K keep · − = target`;
-    document.getElementById('vp-explore-label').textContent = label;
+    document.getElementById('vp-explore-label-text').textContent = label;   // the span, not the <p>: the ⓘ pill lives in the <p>
     els.exploreTarget.value = String(ex.target);
     els.exploreCount.value = String(state.explore.countRange);
     els.exploreSource.value = state.explore.sourceFilter;
