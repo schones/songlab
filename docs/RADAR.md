@@ -17,6 +17,16 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-19] Dominant rule: "needs the ♭7" decided by ear on one bar.**
+  Rag bar 12, event 2 (E♭7 over E♭4) after the first version of the rule:
+  #3 F4 G4 (9, 3, no ♭7) does not sound dominant; #5 F4 D♭5 (9, ♭7, no 3)
+  does; #2 D♭5 G5 (♭7, 3) does. So the rule now requires the ♭7 of every
+  candidate (which subsumes "13 needs ♭7"), and ♯11 still needs the 3rd.
+  "Needs the ♭7" versus "needs both guide tones" was settled on this one
+  bar; revisit with more dominant bars (fixture 4, 6, 11; private 21)
+  before treating it as more than a hint.
+  See: `static/shared/voicing-explore.js` `DOMINANT_RULE`; explore-ranking topic.
+
 - **[2026-10-19] Rag derived symbols: slash bass is the top note.** Bar 12
   reads A♭/C over E♭4 A♭4 C5 and E♭7/D♭ over E♭4 G4 D♭5: the slash names
   the highest note of the chord cluster, not the lowest. The Theory card

@@ -50,6 +50,7 @@ import {
 import { CHORD_TYPES } from './transforms.js';
 import {
   MIN_ABOVE_BASS, DEFAULT_MAX_SPAN, TARGET_STEP, EXPLORE_ROWS, MIN_COUNT, MAX_COUNT, DEFAULT_COUNT, EXTENSION_SEMIS,
+  DOMINANT_RULE, dominantRuleText,
 } from './voicing-explore.js';
 import { ARP_STEP_MS, ROLL_SPREAD_FRACTION, LEAD_IN_MAX_BEATS, DEFAULT_TEMPO } from './voicing-playback-model.js';
 import { VELOCITY, LEAD_IN_GAIN, START_TIMEOUT_MS, SALAMANDER_VERSION } from './voicing-player.js';
@@ -681,6 +682,20 @@ const TOPICS = {
       blander voicings. Both are known and open to tuning; the ranking is a
       design choice to make the list browsable, not a claim about which
       voicing is better.
+
+      ## The dominant rule
+
+      Before ranking, on dominant chord types (a major 3rd with a ♭7), some
+      candidates are dropped outright: ${DOMINANT_RULE.map(dominantRuleText).join('; ')}.
+      The bass note counts as sounding, so a slash ♭7 or slash 3rd satisfies
+      the clause it supplies. The bar's own voicing is never dropped, and
+      the Explore hint says how many candidates the rule removed and why.
+      This is a rule of thumb from listening, not a rule of music: on a
+      dominant, a voicing of 9 and 3rd with no ♭7 did not sound dominant
+      while 9 and ♭7 with no 3rd did, and a [♯11](sharp-eleven-on-dominants)
+      without its 3rd drifted towards the Lydian sound of the home key.
+      Whether the 3rd should be required too was decided by ear on one bar
+      and is open to revision.
     `,
   },
 
@@ -841,7 +856,7 @@ const TOPICS = {
     ['guide-tones-and-shells', 'named-vs-played', 'explore-ranking'],
     'The 5th goes first; the root can go when the bass has it; dropping a 3rd or 7th changes the chord.'),
   'sharp-eleven-on-dominants': stub('♯11 on dominant chords', 'theory',
-    ['extensions', 'guide-tones-and-shells', 'tritone'],
+    ['extensions', 'guide-tones-and-shells', 'tritone', 'explore-ranking'],
     'The ♯11 as a dominant colour (the Lydian dominant sound), and why it wants the ♭7 under it.'),
   'register-and-low-interval-limits': stub('Why some intervals rub: register and low interval limits', 'theory',
     ['tension-scoring', 'intervals-that-rub', 'intro-intervals-scales'],
@@ -909,6 +924,7 @@ const GLOSSARY = {
   'below the melody':   'melody-rule',
   'piece ceiling':      'explore-panel',
   'tension target':     'explore-ranking',
+  'dominant rule':      'explore-ranking',
   'ranking':            'explore-ranking',
   'tension':            'tension-scoring',
   'interval class':     'tension-scoring',
@@ -1043,6 +1059,7 @@ async function selfTest() {
   check('explore topic quotes DEFAULT_MAX_SPAN', ex.includes(`${DEFAULT_MAX_SPAN} semitones`));
   check('explore topic quotes EXPLORE_ROWS', ex.includes(`${EXPLORE_ROWS} rows`));
   check('ranking topic quotes TARGET_STEP', renderTopic('explore-ranking').html.includes(`nearest ${TARGET_STEP}`));
+  check('ranking topic quotes the dominant rule', DOMINANT_RULE.every(c => renderTopic('explore-ranking').html.includes(dominantRuleText(c))));
   check('playback topic quotes ARP_STEP_MS', renderTopic('playback').html.includes(`${ARP_STEP_MS} ms`));
   check('staff topic quotes SPLIT_MIDI as a note', renderTopic('staff-panel').html.includes(noteName(SPLIT_MIDI)));
   check('chord-symbols table lists every parser type', [...new Set(Object.values(SUFFIX_TO_TYPE))].every(t => renderTopic('chord-symbols').html.includes((CHORD_TYPES[t] || LOCAL_CHORD_TYPES[t] || {}).name || t)));

@@ -25,7 +25,8 @@
  *   harvestShapes(progression, analysis?, opts)    → shape library: [{ key, name, degrees, aboveBass, count, bars }]
  *   mergeShapes(...libraries)                      → one library, identical layouts merged
  *   applyShape(shape, parsed, bass, context?)      → { ok, voicing, midis, degrees, aboveBass } | { ok:false, reason }
- *   generateCandidates(ctx, opts)                  → { candidates, range, pool, skipped, warnings }
+ *   generateCandidates(ctx, opts)                  → { candidates, range, pool, skipped, warnings, removed }
+ *   dominantRuleText(clause) / dominantRuleReason(clause) / dominantRuleViolation(degrees)  → the rule as text / a removal reason / the first clause a candidate breaks
  *   scoreCandidate(candidate, ctx, opts)           → scored candidate
  *   rankKey(candidate, target)                     → [distance, motion.total, omitted]
  *   rankCandidates(scored, { target })             → sorted copy with rank + distance
@@ -66,6 +67,11 @@
  *               later clashes score as tension; range.fallback reports it.
  *   Doubling    no pitch class twice; the bass pitch class is excluded
  *               unless opts.allowBassDouble.
+ *   Dominant    on dominant types only (DOMINANT_RULE): every candidate
+ *   rule        must sound the ♭7, and one with ♯11 must also sound the
+ *               3rd (bass + voicing). Dropped candidates are returned in
+ *               `removed` with a reason; the bar's own voicing is exempt;
+ *               opts.dominantRule false switches it off.
  *   Ranking     distance from the tension target (rounded to TARGET_STEP, 0.5), then
  *               total motion (in + out), then fewer omitted named tones.
  *
@@ -98,6 +104,21 @@ const DEGREE_CLASS = {
   '♭9': '♭9', '9': '9', '♯9': '♯9', '11': '11', '♯11': '♯11', '♭13': '♭13', '13': '13',
 };
 const EXTENSION_SEMIS = { '♭9': 1, '9': 2, '♯9': 3, '11': 5, '♯11': 6, '♭13': 8, '13': 9 };
+/**
+ * Dominant rule (heuristic, from listening: bar 21 of the private piece,
+ * rag bar 12 event 2). On a dominant chord type, by degree class over
+ * bass + voicing, clauses in order: a candidate without `when` must sound
+ * `needs` (every candidate needs the ♭7); one carrying `when` must also
+ * sound `needs` (♯11 also needs the 3rd). The old "13 needs ♭7" is implied
+ * by the first clause. The bar's own voicing is exempt. Exported so the
+ * explainer can quote it: DOMINANT_RULE.map(dominantRuleText) → the rule,
+ * dominantRuleReason(clause) → the reason a removed candidate carries.
+ */
+const DOMINANT_RULE = [
+  { needs: ['7'] },
+  { when: '♯11', needs: ['3'] },
+];
+const DOMINANT_RULE_WORDS = { '3': '3rd', '7': '♭7' };
 const MIN_COUNT = 2, MAX_COUNT = 4;
 const DEFAULT_COUNT = 3;            // when the original voicing is empty
 const TARGET_STEP = 0.5;            // tension-target granularity: ranking buckets, and the page's − / + nudges
@@ -107,6 +128,18 @@ const LETTER_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 // ════════════════════════════════════════════════════════════════════
 // NOTES
 // ════════════════════════════════════════════════════════════════════
+
+const ruleWords = clause => clause.needs.map(d => DOMINANT_RULE_WORDS[d]).join(' and ');
+/** One clause as a rule: "every candidate needs the ♭7", "♯11 also needs the 3rd". */
+function dominantRuleText(clause) { return clause.when ? `${clause.when} also needs the ${ruleWords(clause)}` : `every candidate needs the ${ruleWords(clause)}`; }
+/** One clause as the reason a candidate was removed: "no ♭7", "♯11 without the 3rd". */
+function dominantRuleReason(clause) { return clause.when ? `${clause.when} without the ${ruleWords(clause)}` : `no ${ruleWords(clause)}`; }
+/** The reason for the first clause a set of sounding degree classes breaks, or null. */
+function dominantRuleViolation(degreeClasses) {
+  const has = new Set(degreeClasses.map(d => DEGREE_CLASS[d] ?? d));
+  for (const clause of DOMINANT_RULE) if ((!clause.when || has.has(clause.when)) && !clause.needs.every(d => has.has(d))) return dominantRuleReason(clause);
+  return null;
+}
 
 function midiOf(n) { const p = parseNote(n); return p && p.midi != null ? p.midi : NaN; }
 function near(a, b) { return Math.abs(a - b) < EPS; }
@@ -518,11 +551,24 @@ function generateCandidates(ctx, opts = {}) {
     if (!r.ok) { skipped.push({ shape: shape.name || shape.key, reason: r.reason }); continue; }
     add({ voicing: r.voicing, midis: r.midis, count: r.midis.length, degrees: r.degrees, aboveBass: r.aboveBass }, shapeTag(shape));
   }
-  const candidates = [...byMidis.values()].sort((a, b) => a.midis.join(',').localeCompare(b.midis.join(',')));
+  const all = [...byMidis.values()].sort((a, b) => a.midis.join(',').localeCompare(b.midis.join(',')));
+  // Dominant rule: a hard filter on both sources, dominant types only; the
+  // bass degree counts as sounding; the bar's own voicing is never dropped.
+  const removed = [];
+  let candidates = all;
+  if (tones.dominant && opts.dominantRule !== false) {
+    const bassDegree = (tones.pool.find(t => t.pc === bassPC) || {}).degree;
+    const original = ctx.voicing || [];
+    candidates = [];
+    for (const c of all) {
+      const reason = dominantRuleViolation(bassDegree ? [...c.degrees, bassDegree] : c.degrees);
+      if (reason && !(original.length && sameVoicing(c.voicing, original))) removed.push({ ...c, reason }); else candidates.push(c);
+    }
+  }
   return {
     candidates,
     range: { low, high, ceiling, melodyLow: mel.low, fallback, onsetMelody: mel.atOnset ? mel.atOnset.midi : null, counts },
-    pool, skipped, warnings,
+    pool, skipped, warnings, removed,
   };
 }
 
@@ -673,6 +719,7 @@ export {
   MIN_ABOVE_BASS, DEFAULT_MAX_SPAN, SHAPE_NAMES, selfTest,
   // Explainer layer (Session 6.5): read-only constants for interpolation into content.
   TARGET_STEP, EXPLORE_ROWS, MIN_COUNT, MAX_COUNT, DEFAULT_COUNT, FALLBACK_CEILING, DEGREE_CLASS, EXTENSION_SEMIS, targetDistance,
+  DOMINANT_RULE, dominantRuleText, dominantRuleReason, dominantRuleViolation,
 };
 
 if (typeof window !== 'undefined') {
@@ -682,6 +729,7 @@ if (typeof window !== 'undefined') {
     expandOverrides, applyOverrides, overrideKey, voiceCounts, spellMidi,
     MIN_ABOVE_BASS, DEFAULT_MAX_SPAN, SHAPE_NAMES,
     TARGET_STEP, EXPLORE_ROWS, MIN_COUNT, MAX_COUNT, DEFAULT_COUNT, FALLBACK_CEILING, DEGREE_CLASS, EXTENSION_SEMIS, targetDistance,
+    DOMINANT_RULE, dominantRuleText, dominantRuleReason, dominantRuleViolation,
   };
 }
 
@@ -751,6 +799,32 @@ async function selfTest() {
   assert('no fallback when the dip still leaves room', [gnf.range.fallback, gnf.range.high], [false, 66]);
   const gu = generateCandidates({ symbol: null, parsed: null, bass: 'C3', voicing: [], melody: [], beat: 0, dur: 4, beatsPerBar: 4 });
   assert('no symbol → no candidates, one warning', [gu.candidates.length, gu.warnings.length], [0, 1]);
+
+  // ── Unit: dominant rule ──────────────────────────────────────────
+  const classesOf = c => c.degrees.map(d => DEGREE_CLASS[d] ?? d);
+  const gd = generateCandidates(ev('C7', 'C3', ['E3', 'B♭3'], []), { countRange: 1 });
+  assert('dominant rule: every kept candidate sounds the ♭7, and one with ♯11 sounds the 3rd too',
+    gd.candidates.every(c => { const cl = classesOf(c); return cl.includes('7') && (!cl.includes('♯11') || cl.includes('3')); }), true);
+  assert('…both clauses fire, each removed candidate carries its reason', [...new Set(gd.removed.map(r => r.reason))].sort(), ['no ♭7', '♯11 without the 3rd']);
+  assert('…a candidate without the ♭7 is removed for that reason (E3 G3 on C7)', gd.removed.find(r => sameVoicing(r.voicing, ['E3', 'G3']))?.reason, 'no ♭7');
+  assert('…13 without the ♭7 now falls under the ♭7 clause (E3 A3)', gd.removed.find(r => sameVoicing(r.voicing, ['E3', 'A3']))?.reason, 'no ♭7');
+  assert('…removed candidates really break the rule', gd.removed.every(c => dominantRuleViolation(classesOf(c)) === c.reason), true);
+  const gdOff = generateCandidates(ev('C7', 'C3', ['E3', 'B♭3'], []), { countRange: 1, dominantRule: false });
+  assert('…opts.dominantRule false keeps them all', [gdOff.candidates.length, gdOff.removed.length], [gd.candidates.length + gd.removed.length, 0]);
+  const sharpShape = { key: '♯11-7@6.11', name: null, degrees: ['♯11', '7'], aboveBass: [6, 11], count: 2, bars: ['x'] };
+  const gnd = generateCandidates(ev('Cmaj7', 'C3', ['E3', 'B3'], []), { shapes: [sharpShape] });
+  assert('a ♯11 shape on Cmaj7 (not dominant) is untouched', [has(gnd.candidates, ['F♯3', 'B3']), gnd.removed.length], [true, 0]);
+  const gds = generateCandidates(ev('C7', 'C3', ['E3', 'B♭3'], []), { shapes: [sharpShape] });
+  assert('the same shape on C7 is removed with the ♯11 reason (it has the ♭7, not the 3rd)', [has(gds.candidates, ['F♯3', 'B♭3']), gds.removed.find(r => sameVoicing(r.voicing, ['F♯3', 'B♭3']))?.reason], [false, '♯11 without the 3rd']);
+  const gnd7 = generateCandidates(ev('Cmaj7', 'C3', ['E3', 'G3'], []));
+  assert('non-dominant: candidates without a 7th are untouched (E3 G3 on Cmaj7)', [has(gnd7.candidates, ['E3', 'G3']), gnd7.removed.length], [true, 0]);
+  const gex = generateCandidates(ev('C7', 'C3', ['F♯3', 'B♭3'], []));
+  assert('the bar\'s own voicing is exempt even when it breaks the rule', [has(gex.candidates, ['F♯3', 'B♭3']), gex.removed.some(r => sameVoicing(r.voicing, ['F♯3', 'B♭3']))], [true, false]);
+  const gsl = generateCandidates(ev('C7/E', 'E3', ['G3', 'B♭3'], []));
+  assert('the bass counts as sounding: ♭7 + ♯11 over a slash 3rd is kept', has(gsl.candidates, ['B♭3', 'F♯4']), true);
+  const gs7 = generateCandidates(ev('C7/B♭', 'B♭2', ['E3', 'G3'], []), { countRange: 1 });
+  assert('a slash ♭7 bass satisfies the ♭7 clause (E3 G3 and E3 G3 D4 kept on C7/B♭)', [has(gs7.candidates, ['E3', 'G3']), has(gs7.candidates, ['E3', 'G3', 'D4']), gs7.removed.every(r => r.reason === '♯11 without the 3rd')], [true, true, true]);
+  assert('dominantRuleText / dominantRuleReason quote the constants', [DOMINANT_RULE.map(dominantRuleText), DOMINANT_RULE.map(dominantRuleReason)], [['every candidate needs the ♭7', '♯11 also needs the 3rd'], ['no ♭7', '♯11 without the 3rd']]);
 
   // ── Unit: scoring and ranking ────────────────────────────────────
   const sc = ev('Gm7/F', 'F3', ['A3', 'B♭3', 'D4'], [{ beat: 0, dur: 2, note: 'C5' }, { beat: 2, dur: 2, note: 'B♭4' }]);

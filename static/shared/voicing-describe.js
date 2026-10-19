@@ -25,6 +25,8 @@
  *                           appears only when all three are present.
  *            total          how many candidates were ranked (optional)
  *            originalTotal  the bar's own voicing's tension (optional)
+ *            removed        generateCandidates().removed: candidates the
+ *                           dominant rule dropped, each with a reason (optional)
  *   Section  { id, title, kind: 'fact' | 'heuristic', items: [{ text, term?, kind? }], see_also: string[] }
  *            `term` is a GLOSSARY key (voicing-explainer-content.js) the
  *            renderer resolves with glossaryLookup(); `see_also` are topic
@@ -433,6 +435,10 @@ function whyRankedSection(context) {
     const rel = diff === 0 ? 'the same' : `${Math.abs(diff)} ${diff > 0 ? 'higher' : 'lower'}`;
     items.push({ text: `The bar's own voicing scores ${r3(context.originalTotal)}${target === r3(context.originalTotal) ? ' (the default target)' : ''}; this candidate is ${rel}.`, term: 'tension' });
   }
+  if (Array.isArray(context.removed) && context.removed.length) {
+    const reasons = [...new Set(context.removed.map(r => r.reason))].join('; ');
+    items.push({ text: `${plural(context.removed.length, 'candidate')} removed by the dominant rule (${reasons}) before ranking.`, term: 'dominant rule' });
+  }
   if (items.some(it => it.term === 'motion')) see.push('voice-leading');
   if (items.some(it => it.term === 'omitted')) see.push('omitting-tones');
   return section('why-ranked', 'Why it ranked here', 'heuristic', items, see);
@@ -641,6 +647,7 @@ async function selfTest() {
   }));
   const ties = rows.slice(1).filter((row, i) => rankKey(row, target)[0] === rankKey(rows[i], target)[0]);
   check(`why-ranked: a tie on distance mentions the rounding bucket (${ties.length} ties among the rows)`, ties.length > 0 && ties.every(row => new RegExp(`distances round to the nearest ${TARGET_STEP}`).test(texts([byId(whyFor(row), 'why-ranked')]))));
+  check('why-ranked: removed candidates get one line', /2 candidates removed by the dominant rule \(no ♭7; ♯11 without the 3rd\) before ranking\./.test(texts([byId(describeVoicing(rows[0], { parsed: ctx5.parsed, bass: ctx5.bass, rank: 1, rows, target, removed: [{ reason: 'no ♭7' }, { reason: '♯11 without the 3rd' }] }), 'why-ranked')])));
   check('why-ranked omitted without rank/rows/target', byId(describeVoicing(rows[0], { parsed: ctx5.parsed, bass: ctx5.bass, rank: 1, rows }), 'why-ranked') === null && byId(describeVoicing(rows[0], { parsed: ctx5.parsed, bass: ctx5.bass, rank: 1, target }), 'why-ranked') === null);
 
   console.log(`\n─── ${passed}/${total} passed ───\n`);

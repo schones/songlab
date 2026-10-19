@@ -415,7 +415,7 @@
       prev: ctx ? ctx.neighbours.prev : null, next: ctx ? ctx.neighbours.next : null,
       includeMelody: state.includeMelody,
     };
-    if (preview && exploreMeta) Object.assign(context, { rank: preview.rank, rows: exploreRows, target: exploreMeta.target, total: exploreMeta.total, originalTotal: exploreMeta.originalTotal });
+    if (preview && exploreMeta) Object.assign(context, { rank: preview.rank, rows: exploreRows, target: exploreMeta.target, total: exploreMeta.total, originalTotal: exploreMeta.originalTotal, removed: exploreMeta.removed });
     const sections = describeVoicing(event, context);
     if (!sections.length) { els.theorySections.appendChild(el('p', 'vp-theory__empty', 'Nothing to describe for this event.')); return; }
 
@@ -683,13 +683,19 @@
     const nOver = Object.keys(state.overrides).length;
     els.exploreHint.textContent = (nOver ? `${nOver} override${nOver === 1 ? '' : 's'} kept` : 'no overrides')
       + (state.preview ? ` · previewing #${state.preview.rank}` : '');
+    const removed = ex.gen.removed || [];
+    if (removed.length) {   // one line, the rule name linked to its Learn page
+      const hit = glossaryLookup('dominant rule');
+      const a = document.createElement('a'); a.className = 'learn-link'; a.textContent = 'dominant rule'; a.href = hit ? hit.url : '/learn'; a.target = '_blank'; a.rel = 'noopener';
+      els.exploreHint.append(` · ${removed.length} candidate${removed.length === 1 ? '' : 's'} removed by the `, a, ` (${[...new Set(removed.map(r => r.reason))].join('; ')})`);
+    }
     els.exploreKeep.disabled = !state.preview;
     els.exploreRevert.disabled = !Object.keys(state.overrides).some(k => k.startsWith(`${state.selectedBar}:`));
     els.exploreReset.disabled = !nOver;
     els.exploreCopy.disabled = !nOver;
     exploreRows = ex.rows;
     exploreRanked = ex.ranked;
-    exploreMeta = { target: ex.target, total: ex.ranked.length, originalTotal: ex.originalTotal };
+    exploreMeta = { target: ex.target, total: ex.ranked.length, originalTotal: ex.originalTotal, removed: ex.gen.removed || [] };
 
     const root = els.exploreRows;
     root.textContent = '';
