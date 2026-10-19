@@ -18,14 +18,16 @@
  *
  * Exports:
  *   chordTones(symbolOrParsed)                     → { parsed, named, pool, dominant } | null
- *   voicedNeighbours(progression, bar, eventIndex) → { prev, next }  (nearest events WITH a voicing)
+ *   voicedNeighbours(progression, bar, eventIndex) → { prev, next }  (nearest events WITH a voicing: { bar, event, events, bass, voicing })
  *   eventContext(progression, bar, eventIndex)     → ctx for generate/score, or null
  *   pieceCeiling(progression)                      → highest comp voicing note in the piece (midi)
+ *   shapeKey(voicing, bass, parsed)                → { key, degrees, aboveBass, count } | null  (one voicing's shape)
  *   harvestShapes(progression, analysis?, opts)    → shape library: [{ key, name, degrees, aboveBass, count, bars }]
  *   mergeShapes(...libraries)                      → one library, identical layouts merged
  *   applyShape(shape, parsed, bass, context?)      → { ok, voicing, midis, degrees, aboveBass } | { ok:false, reason }
  *   generateCandidates(ctx, opts)                  → { candidates, range, pool, skipped, warnings }
  *   scoreCandidate(candidate, ctx, opts)           → scored candidate
+ *   rankKey(candidate, target)                     → [distance, motion.total, omitted]
  *   rankCandidates(scored, { target })             → sorted copy with rank + distance
  *   expandOverrides(progression, overrides)        → overrides plus tie propagation
  *   applyOverrides(progression, overrides)         → new progression (input untouched)
@@ -178,13 +180,14 @@ const hasVoicing = ev => !!(ev && Array.isArray(ev.voicing) && ev.voicing.length
  * most recent voicing, not the raw predecessor. Cycles in playOrder stop
  * at the first revisited bar.
  *
- * @returns {{ prev: {bar, event, voicing}|null, next: {bar, event, voicing}|null }}
+ * @returns {{ prev: {bar, event, events, bass, voicing}|null, next: {bar, event, events, bass, voicing}|null }}
+ *   `events` is how many comp events that bar has (the describer says "bar 4" or "bar 4, event 2").
  */
 function voicedNeighbours(progression, barNumber, eventIndex = 0) {
   const bars = progression.bars || [];
   const byNum = new Map(bars.map(b => [b.bar, b]));
   const { prev, next } = barNeighbours(progression);
-  const ref = (bar, i) => ({ bar: bar.bar, event: i, voicing: bar.comp[i].voicing.slice() });
+  const ref = (bar, i) => ({ bar: bar.bar, event: i, events: bar.comp.length, bass: bar.comp[i].bass, voicing: bar.comp[i].voicing.slice() });
   const walk = (dir) => {
     const bar = byNum.get(barNumber);
     if (!bar) return null;
@@ -298,6 +301,30 @@ function resolveDegree(parsed, degree) {
 }
 
 /**
+ * The shape of one voicing on one chord: its degree labels (engine
+ * named-vs-played, by written spelling, collapsed through DEGREE_CLASS so
+ * ♭3 / ♭7 variants match) in ascending order, and its layout in semitones
+ * above the bass. `key` is "degrees@layout" ("3-7@4.10"). Shared by
+ * harvestShapes and voicing-describe.js. null without a parsed symbol, a
+ * bass with a midi value, or any voicing note.
+ *
+ * @param {string[]} voicing
+ * @param {string} bass
+ * @param {object|null} parsed  parseSymbol() result
+ * @returns {{ key:string, degrees:string[], aboveBass:number[], count:number }|null}
+ */
+function shapeKey(voicing, bass, parsed) {
+  const bassMidi = midiOf(bass);
+  if (!parsed || isNaN(bassMidi) || !Array.isArray(voicing) || !voicing.length) return null;
+  const nvp = namedVsPlayed(parsed, [bass, ...voicing]);
+  const byPC = new Map([...nvp.present, ...nvp.added].map(e => [e.pc, e.degree]));
+  const notes = voicing.map(n => ({ midi: midiOf(n), pc: parseNote(n).pc })).sort((a, b) => a.midi - b.midi);
+  const degrees = notes.map(n => DEGREE_CLASS[byPC.get(n.pc)] ?? byPC.get(n.pc) ?? '?');
+  const aboveBass = notes.map(n => n.midi - bassMidi);
+  return { key: `${degrees.join('-')}@${aboveBass.join('.')}`, degrees, aboveBass, count: notes.length };
+}
+
+/**
  * Harvest every comp voicing of a progression as a shape: its degree
  * labels (engine named-vs-played, by written spelling) in ascending order
  * plus its layout above the bass. Identical degrees + layout merge, keeping
@@ -318,16 +345,11 @@ function harvestShapes(progression, analysis = null, opts = {}) {
       if (!hasVoicing(ev)) return;
       const symbol = an && an.events[i] ? an.events[i].symbol : symbolAt(progression, idx, Number(ev.beat) || 0);
       const parsed = symbol ? parseSymbol(symbol) : null;
-      const bassMidi = midiOf(ev.bass);
-      if (!parsed || isNaN(bassMidi)) return;
-      const nvp = namedVsPlayed(parsed, [ev.bass, ...ev.voicing]);
-      const byPC = new Map([...nvp.present, ...nvp.added].map(e => [e.pc, e.degree]));
-      const notes = ev.voicing.map(n => ({ midi: midiOf(n), pc: parseNote(n).pc })).sort((a, b) => a.midi - b.midi);
-      const degrees = notes.map(n => DEGREE_CLASS[byPC.get(n.pc)] ?? byPC.get(n.pc) ?? '?');
-      const aboveBass = notes.map(n => n.midi - bassMidi);
-      const key = `${degrees.join('-')}@${aboveBass.join('.')}`;
+      const sk = shapeKey(ev.voicing, ev.bass, parsed);
+      if (!sk) return;
+      const { key, degrees, aboveBass, count } = sk;
       const label = `${opts.label || ''}${bar.bar}${(bar.comp || []).length > 1 ? '.' + i : ''}`;
-      const cur = shapes.get(key) || { key, name: SHAPE_NAMES[key] || null, degrees, aboveBass, count: notes.length, bars: [] };
+      const cur = shapes.get(key) || { key, name: SHAPE_NAMES[key] || null, degrees, aboveBass, count, bars: [] };
       cur.bars.push(label);
       shapes.set(key, cur);
     });
@@ -549,16 +571,25 @@ function scoreCandidate(candidate, ctx, opts = {}) {
 function targetDistance(total, target) { return Math.round(Math.abs(total - target) / TARGET_STEP) * TARGET_STEP; }
 
 /**
- * Rank scored candidates: distance from the tension target (TARGET_STEP buckets),
- * then total motion, then fewer omitted named tones, then voicing text.
+ * The ranking key of a scored candidate: [distance from the tension target
+ * (TARGET_STEP buckets), total motion, omitted named tones]. Lower sorts
+ * first, component by component; rankCandidates breaks full ties by voicing
+ * text. Exported so the describer can explain a rank by the first component
+ * that differs from its neighbours.
+ */
+function rankKey(c, target = 0) { return [targetDistance(c.tension.total, target), c.motion.total, c.omitted]; }
+
+/**
+ * Rank scored candidates by rankKey, then voicing text.
  * Returns a sorted copy with `rank` (1-based) and `distance`.
  */
 function rankCandidates(scored, { target = 0 } = {}) {
   const out = scored.map(c => ({ ...c, distance: targetDistance(c.tension.total, target) }));
-  out.sort((a, b) => a.distance - b.distance
-    || a.motion.total - b.motion.total
-    || a.omitted - b.omitted
-    || a.voicing.join(' ').localeCompare(b.voicing.join(' ')));
+  out.sort((a, b) => {
+    const ka = rankKey(a, target), kb = rankKey(b, target);
+    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    return a.voicing.join(' ').localeCompare(b.voicing.join(' '));
+  });
   out.forEach((c, i) => { c.rank = i + 1; });
   return out;
 }
@@ -636,8 +667,8 @@ function applyOverrides(progression, overrides) {
 // ════════════════════════════════════════════════════════════════════
 
 export {
-  chordTones, voicedNeighbours, eventContext, pieceCeiling, harvestShapes, mergeShapes, applyShape, resolveDegree,
-  generateCandidates, scoreCandidate, rankCandidates,
+  chordTones, voicedNeighbours, eventContext, pieceCeiling, shapeKey, harvestShapes, mergeShapes, applyShape, resolveDegree,
+  generateCandidates, scoreCandidate, rankKey, rankCandidates,
   expandOverrides, applyOverrides, overrideKey, voiceCounts, spellMidi,
   MIN_ABOVE_BASS, DEFAULT_MAX_SPAN, SHAPE_NAMES, selfTest,
   // Explainer layer (Session 6.5): read-only constants for interpolation into content.
@@ -646,8 +677,8 @@ export {
 
 if (typeof window !== 'undefined') {
   window.VoicingExplore = {
-    chordTones, voicedNeighbours, eventContext, pieceCeiling, harvestShapes, mergeShapes, applyShape, resolveDegree,
-    generateCandidates, scoreCandidate, rankCandidates,
+    chordTones, voicedNeighbours, eventContext, pieceCeiling, shapeKey, harvestShapes, mergeShapes, applyShape, resolveDegree,
+    generateCandidates, scoreCandidate, rankKey, rankCandidates,
     expandOverrides, applyOverrides, overrideKey, voiceCounts, spellMidi,
     MIN_ABOVE_BASS, DEFAULT_MAX_SPAN, SHAPE_NAMES,
     TARGET_STEP, EXPLORE_ROWS, MIN_COUNT, MAX_COUNT, DEFAULT_COUNT, FALLBACK_CEILING, DEGREE_CLASS, EXTENSION_SEMIS, targetDistance,

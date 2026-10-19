@@ -93,6 +93,31 @@
   .vp-explore__json { width: 100%; min-height: 6em; margin-top: 8px; font-family: var(--font-family-mono, monospace); font-size: var(--font-size-2xs); background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); }
   .vp-explore__json[hidden] { display: none; }
 
+  /* ── Theory card (docked, collapsible; voicing-describe.js) ── */
+  .vp-theory { padding: 0; }
+  .vp-theory__toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: var(--space-md, 12px) var(--space-lg, 16px); border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .vp-theory__toggle .vp-panel__label { margin: 0; flex: none; }
+  .vp-theory__what { flex: 1 1 auto; min-width: 0; font-size: var(--font-size-xs); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vp-theory__what--preview { color: var(--accent-gold, #D4A03C); }
+  .vp-theory__chev { flex: none; color: var(--text-muted); font-size: var(--font-size-2xs); transition: transform 0.15s; }
+  .vp-theory--closed .vp-theory__chev { transform: rotate(-90deg); }
+  .vp-theory__body { padding: 0 var(--space-lg, 16px) var(--space-md, 12px); display: flex; flex-direction: column; gap: 10px; }
+  .vp-theory--closed .vp-theory__body { display: none; }
+  .vp-theory__section { padding: 2px 0 2px 10px; }
+  .vp-theory__head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; }
+  .vp-theory__title { margin: 0; font-size: var(--font-size-xs); font-weight: 500; color: var(--text-primary); }
+  .vp-theory__items { margin: 0; padding: 0 0 0 1.1em; font-size: var(--font-size-xs); line-height: 1.5; color: var(--text-secondary); }
+  .vp-theory__items li { margin: 2px 0; }
+  .vp-theory__items li.vp-theory__item--heuristic { list-style: none; margin-left: -1.1em; padding-left: calc(1.1em - 3px); border-left: 3px solid var(--accent-coral, #E87461); color: var(--text-secondary); }
+  .vp-theory__items li.vp-theory__item--heuristic::before { content: 'rule of thumb · '; color: var(--accent-coral, #E87461); font-size: var(--font-size-2xs); }
+  .vp-theory__items .learn-link { color: var(--accent-gold, #D4A03C); }
+  .vp-theory__chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0; }
+  .vp-theory__chip { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-color); color: var(--text-muted); font-size: var(--font-size-2xs); text-decoration: none; }
+  .vp-theory__chip:hover { border-color: var(--accent-gold, #D4A03C); color: var(--text-primary); }
+  .vp-theory__chip--stub { border-style: dashed; }
+  .vp-theory__chip--page::after { content: ' ↗'; opacity: 0.7; }
+  .vp-theory__empty { color: var(--text-muted); font-style: italic; font-size: var(--font-size-xs); margin: 0; }
+
   @media (max-width: 1000px) {
     .vp-detail { grid-template-columns: 1fr 1fr; }
     .vp-detail > .vp-panel--tonnetz { grid-column: 1 / -1; }
@@ -105,6 +130,7 @@
     .vp-piece-form { margin-left: 0; }
   }
 </style>
+<link rel="stylesheet" href="{{ url_for('static', filename='shared/learn.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -143,6 +169,17 @@
         <p class="vp-panel__label" data-explain="staff">Staff — click a note to find it on the keyboard</p>
         <div id="vp-staff"></div>
       </div>
+      <section class="vp-panel vp-theory" id="vp-theory" aria-label="Theory">
+        <button type="button" class="vp-theory__toggle" id="vp-theory-toggle" aria-expanded="true" aria-controls="vp-theory-body">
+          <span class="vp-panel__label">Theory</span>
+          <span class="vp-theory__what" id="vp-theory-what">—</span>
+          <span class="vp-theory__chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="vp-theory__body" id="vp-theory-body">
+          <div id="vp-theory-disclaimer"></div>
+          <div id="vp-theory-sections"></div>
+        </div>
+      </section>
     </div>
     <div class="vp-panel vp-panel--tonnetz">
       <p class="vp-panel__label" data-explain="tonnetz">Tonnetz</p>
@@ -209,7 +246,9 @@
   import { eventContext, generateCandidates, scoreCandidate, rankCandidates, applyOverrides, expandOverrides, overrideKey, TARGET_STEP, EXPLORE_ROWS }
                                    from "{{ url_for('static', filename='shared/voicing-explore.js') }}";
   import { InfoPill }              from "{{ url_for('static', filename='shared/info-pill.js') }}";
-  import { topicsForPanel }        from "{{ url_for('static', filename='shared/voicing-explainer-content.js') }}";
+  import { topicsForPanel, glossaryLookup, resolveSlug, DISCLAIMER }
+                                   from "{{ url_for('static', filename='shared/voicing-explainer-content.js') }}";
+  import { describeVoicing }       from "{{ url_for('static', filename='shared/voicing-describe.js') }}";
 
   const DEFAULT_PIECE = 'dont-be-sad';
   const FIXTURE_PIECE = 'fixture';
@@ -253,6 +292,11 @@
     exploreReset: document.getElementById('vp-explore-reset'),
     exploreCopy: document.getElementById('vp-explore-copy'),
     exploreJson: document.getElementById('vp-explore-json'),
+    theory: document.getElementById('vp-theory'),
+    theoryToggle: document.getElementById('vp-theory-toggle'),
+    theoryWhat: document.getElementById('vp-theory-what'),
+    theoryDisclaimer: document.getElementById('vp-theory-disclaimer'),
+    theorySections: document.getElementById('vp-theory-sections'),
   };
 
   // ── Views ───────────────────────────────────────────────────────
@@ -309,6 +353,7 @@
     keyboard.render(event ? { bass: event.bass, voicing: event.voicing, melody: state.includeMelody ? melodyOver(bar.bar, event) : [] } : {});
     if (staffFrom.progression === progression && staffFrom.bar === bar.bar && staff.model && staff.model.bar === bar.bar) staff.setEvent(state.selectedEvent);
     else { staffFrom = { progression, bar: bar.bar }; staff.render(progression, bar.bar, { event: state.selectedEvent }); }   // async; latest wins
+    renderTheory(progression, bar, event);
 
     // Publish exactly these pitches. source:'user' is the only path the
     // shared Tonnetz treats as octave-faithful Note Mode. No progressionState.
@@ -317,6 +362,88 @@
       activeNotes: notes,
       activeTriads: [], activeChord: null, activeTransform: null, activeInterval: null,
     });
+  }
+
+  // ── Theory card ─────────────────────────────────────────────────
+  // Docked under the staff: describeVoicing() for the selected event, or for
+  // the previewed candidate (with its rank, the rows shown and the target, so
+  // it can say why it ranked there). Re-rendered from renderPanels only —
+  // playback follow never touches it. Open / closed is remembered per browser.
+  const THEORY_OPEN_KEY = 'vp-theory-open';
+  const THEORY_STATUS = 'claude-draft';   // every describer sentence is a Claude draft
+  function theoryOpen() { try { return localStorage.getItem(THEORY_OPEN_KEY) !== '0'; } catch (_) { return true; } }
+  function setTheoryOpen(open) {
+    try { localStorage.setItem(THEORY_OPEN_KEY, open ? '1' : '0'); } catch (_) { /* unavailable: this visit only */ }
+    els.theory.classList.toggle('vp-theory--closed', !open);
+    els.theoryToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  els.theoryToggle.addEventListener('click', () => setTheoryOpen(els.theory.classList.contains('vp-theory--closed')));
+  setTheoryOpen(theoryOpen());
+
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  /** A term link into /learn (new tab); the term is linked inside the text when it occurs there, else appended. */
+  function theoryItemContent(li, item) {
+    const hit = item.term ? glossaryLookup(item.term) : null;
+    if (!hit) { li.textContent = item.text; return; }
+    const a = el('a', 'learn-link' + (hit.status === 'stub' ? ' learn-link--stub' : ''));
+    a.href = hit.url; a.target = '_blank'; a.rel = 'noopener'; a.title = hit.title;
+    const m = item.text.match(new RegExp(`(^|[^\\p{L}])(${item.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s?)(?![\\p{L}])`, 'iu'));
+    if (m) {
+      const at = m.index + m[1].length;
+      a.textContent = m[2];
+      li.append(item.text.slice(0, at), a, item.text.slice(at + m[2].length));
+    } else {
+      a.textContent = item.term;
+      li.append(item.text, ' ', el('span', 'vp-explore__mark', '· '), a);
+    }
+  }
+  function renderTheory(progression, bar, event) {
+    const preview = state.preview;
+    if (preview) els.theoryWhat.textContent = `Previewing candidate #${preview.rank} of ${exploreRows.length}`;
+    else if (event) els.theoryWhat.textContent = `Bar ${bar.bar}${bar.events.length > 1 ? `, event ${state.selectedEvent + 1}` : ''} — ${event.symbol || 'no symbol'}`;
+    else els.theoryWhat.textContent = `Bar ${bar.bar} — no comp event`;
+    els.theoryWhat.classList.toggle('vp-theory__what--preview', !!preview);
+
+    els.theoryDisclaimer.textContent = '';
+    els.theorySections.textContent = '';
+    if (!event) { els.theorySections.appendChild(el('p', 'vp-theory__empty', 'Nothing to describe: this bar has no comp event.')); return; }
+    const ctx = eventContext(progression, bar.bar, state.selectedEvent);
+    const context = {
+      parsed: ctx ? ctx.parsed : null, bass: ctx ? ctx.bass : event.bass,
+      prev: ctx ? ctx.neighbours.prev : null, next: ctx ? ctx.neighbours.next : null,
+      includeMelody: state.includeMelody,
+    };
+    if (preview && exploreMeta) Object.assign(context, { rank: preview.rank, rows: exploreRows, target: exploreMeta.target, total: exploreMeta.total, originalTotal: exploreMeta.originalTotal });
+    const sections = describeVoicing(event, context);
+    if (!sections.length) { els.theorySections.appendChild(el('p', 'vp-theory__empty', 'Nothing to describe for this event.')); return; }
+
+    const d = el('div', 'learn-disclaimer');
+    d.append(el('span', 'learn-disclaimer__icon', '⚠'), el('span', null, DISCLAIMER[THEORY_STATUS]));
+    els.theoryDisclaimer.appendChild(d);
+    for (const s of sections) {
+      const sec = el('section', `vp-theory__section learn-kind--${s.kind}`);
+      const head = el('div', 'vp-theory__head');
+      head.append(el('h4', 'vp-theory__title', s.title), el('span', `learn-badge learn-badge--kind-${s.kind}`, s.kind));
+      sec.appendChild(head);
+      const ul = el('ul', 'vp-theory__items');
+      for (const item of s.items) {
+        const li = el('li', item.kind && item.kind !== s.kind ? `vp-theory__item--${item.kind}` : null);
+        theoryItemContent(li, item);
+        ul.appendChild(li);
+      }
+      sec.appendChild(ul);
+      const links = s.see_also.map(resolveSlug).filter(Boolean);
+      if (links.length) {
+        const chips = el('div', 'vp-theory__chips');
+        for (const r of links) {
+          const a = el('a', 'vp-theory__chip' + (r.status === 'stub' ? ' vp-theory__chip--stub' : '') + (r.kind === 'page' ? ' vp-theory__chip--page' : ''), r.title);
+          a.href = r.url; a.target = '_blank'; a.rel = 'noopener';
+          chips.appendChild(a);
+        }
+        sec.appendChild(chips);
+      }
+      els.theorySections.appendChild(sec);
+    }
   }
 
   /** Re-derive the effective progression and both analyses from the overrides. */
@@ -496,6 +623,7 @@
   // state.overrides. "Original" is the pristine piece's voicing and total.
   // EXPLORE_ROWS (12) comes from voicing-explore.js so the explainer content can quote it.
   let exploreRows = [];   // the ranked rows currently shown
+  let exploreMeta = null; // { target, total, originalTotal } of that computation, for the Theory card's "why it ranked here"
 
   /** The effective progression, plus the previewed candidate when there is one. */
   function trialProgression() {
@@ -536,7 +664,7 @@
 
   function renderExplore() {
     const ex = computeExplore();
-    if (!ex) { els.explore.hidden = true; exploreRows = []; return; }
+    if (!ex) { els.explore.hidden = true; exploreRows = []; exploreMeta = null; return; }
     els.explore.hidden = false;
     const label = `Explore — bar ${state.selectedBar}, event ${state.selectedEvent + 1} (${ex.ctx.symbol || 'no symbol'}): ${ex.ranked.length} candidates, ${ex.rows.length} shown · click a row to preview, ▶ to hear it, Keep to swap it in · [ ] step · K keep · − = target`;
     document.getElementById('vp-explore-label-text').textContent = label;   // the span, not the <p>: the ⓘ pill lives in the <p>
@@ -552,6 +680,7 @@
     els.exploreReset.disabled = !nOver;
     els.exploreCopy.disabled = !nOver;
     exploreRows = ex.rows;
+    exploreMeta = { target: ex.target, total: ex.ranked.length, originalTotal: ex.originalTotal };
 
     const root = els.exploreRows;
     root.textContent = '';
