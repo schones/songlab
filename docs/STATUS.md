@@ -210,11 +210,11 @@ distance from a tension target then motion in + out; an Explore
 panel with preview in every panel, per-row audition through the
 player, Keep / Revert / Reset / Copy JSON over a non-destructive
 override layer with tie propagation; kept bars outlined green. First
-listening on bar 21 recorded in SESSION_LOG. Next: Session 6.5
-explainer layer (info pills per panel with the relevant reasoning and
-links out to fuller pages; content written once, numbers pulled from
-code constants), then Explore tuning (structured listening across
-bars and pieces), then Session 7 (merge to dev). Plan:
+listening on bar 21 recorded in SESSION_LOG. Session 6.5 (explainer
+layer, Theory card, dominant rule, piece picker, rag fixes) landed
+2026-10-19 and the branch merged to dev (`df0e2fc`). Next:
+Instructional content — Phase 0 example block (see
+`docs/active-plans/instructional-content.md`). Plan:
 `docs/active-plans/voicing-explorer-build-plan.md`. Schema:
 `tools/voicings/schema.md`.
 
@@ -237,7 +237,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 **Next priorities (active):**
 1. ~~**Voicing Explorer — tension option B**~~ — landed 2026-10-15 (`af3034b`): spans reduced mod 12, `OCTAVE_DISCOUNTS = {m2: 2/3, M2: 0, TT: 2/3, M7: 0}`; comp-only numbers inside one octave unchanged; compound minor 2nds and tritones now score (bar 26 0 → 1.333, bar 28 3 → 4.333), major 9ths/14ths do not (see SESSION_LOG).
-2. **Voicing Explorer Session 6.5 — explainer layer**: info pills per panel with the relevant reasoning and links out to fuller pages; content written once, numbers pulled from code constants. Then Explore tuning (structured listening across bars and pieces; hypotheses in RADAR), then Session 7 (merge to dev with a clean-clone check). ~~Session 6 (Explore first slice)~~ landed 2026-10-16 (`ad44437`, `7ccd8fb`, `ea7d7ff`). ~~Session 5 (playback + melody toggle)~~ landed 2026-10-16. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+2. **Next: Instructional content — Phase 0 example block** (see `docs/active-plans/instructional-content.md`). ~~Voicing Explorer Session 6.5 (explainer layer, Theory card, dominant rule, piece picker, rag fixes)~~ landed 2026-10-19 and merged to dev (`df0e2fc`); Explore tuning items stay open in RADAR. ~~Session 6 (Explore first slice)~~ landed 2026-10-16 (`ad44437`, `7ccd8fb`, `ea7d7ff`). ~~Session 5 (playback + melody toggle)~~ landed 2026-10-16. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
 3. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
 4. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
 

@@ -11,6 +11,8 @@ Nine build-then-STOP prompts plus read-only checks (P1–P2 on 10-17,
 `690ead8` piece picker, `47d8b24` bass provenance, then the rag symbol
 correction and P6). Each prompt ran its suites and a headless-Chrome
 check over CDP; nothing private landed in a committed file.
+Merged to dev (`df0e2fc`); instructional-content plan written
+(`docs/active-plans/instructional-content.md`).
 
 ### Landed
 - Explainer layer: registry (`voicing-explainer-content.js`, 25
