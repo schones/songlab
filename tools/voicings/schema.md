@@ -16,7 +16,7 @@ in quarter notes.
 | `beatsPerBar` | number | Quarter notes per bar (3 for 3/4, 3 for 6/8). The engine falls back to deriving it from `timeSignature`. |
 | `tempo` | int | BPM, quarter note. |
 | `form` | object, optional | `repeats: [[start, end], …]`, `endings: {"1": [a, b], "2": [a, b]}`, `playOrder: [bar, …]` (repeats and endings expanded). For playback; the analysis ignores it. |
-| `chordSymbols` | string, optional | `"derived"` when the chord symbols are our harmonic reading rather than part of the source (rags carry none). Absent = symbols come from the source. |
+| `chordSymbols` | string, optional | `"derived"` when the chord symbols were added by analysis (for the rag, by an earlier Claude session) rather than taken from the source (rags carry none); /voicings shows a note in the header meta. Absent = symbols come from the source. |
 | `attribution` | object, optional | For committed public fixtures: `source`, `edition`, `license`, `url`, `typesetter`, and `notes` (free text, e.g. the reduction rules applied). Ignored by the engine. |
 | `bars` | array | One entry per written bar, ascending. |
 
@@ -46,6 +46,7 @@ still scores tension, named-vs-played is null).
 | `beat` | number | Onset within the bar, 0-based. |
 | `dur` | number | Sustained length in quarters. |
 | `bass` | note | The bass under this chord, by lookback: the most recent bass-voice onset at or before the onset in this bar, sounding or not; else a bass tied or still sounding (through the bar line) from the previous bar; else the lowest chord note. |
+| `bassSource` | `"voice"` / `"carried"` / `"inferred"`, optional | How `bass` was chosen: a bass-voice note (lookback in this bar, or a bass-only bar), a bass carried from the previous bar, or the lowest chord note because no bass line sounds there. The page tags an inferred bass and the Theory card calls it "the lowest note". Absent = unknown (treated as a bass-voice note). |
 | `voicing` | note[] | Every other comp note sounding at the onset, ascending (chord notes plus any further bass-voice notes, e.g. the upper note of an octave). |
 | `arp` | true, optional | Arpeggiated. Absent otherwise. |
 | `tie` | true, optional | Ties into the next bar. Absent otherwise. |

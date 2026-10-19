@@ -12,11 +12,15 @@
  *   event    an analyzeProgression() EventResult, or a scored Explore
  *            candidate (scoreCandidate). Both carry voicing and
  *            namedVsPlayed; an EventResult also carries bass.
- *   context  { parsed, bass?, prev, next, includeMelody,
+ *   context  { parsed, bass?, bassSource?, prev, next, includeMelody,
  *              rank?, rows?, target?, total?, originalTotal? }
  *            parsed         parseSymbol() result for the symbol in effect
  *            bass           the event's bass when the event has none
  *                           (candidates): eventContext().bass
+ *            bassSource     'voice' | 'carried' | 'inferred' (data field; the
+ *                           event's own wins). An inferred bass is the chord's
+ *                           lowest note with no bass line under it, and every
+ *                           bass-relative sentence says "the lowest note".
  *            prev / next    voicedNeighbours() refs { bar, event, events, bass, voicing }
  *            includeMelody  whether event.namedVsPlayed counted the melody
  *            rank / rows / target   for a previewed candidate: its rank, the
@@ -178,8 +182,15 @@ function section(id, title, kind, items, see_also) {
   return { id, title, kind, items, see_also: [...new Set(see_also)] };
 }
 
+/** Words for the bass: a real bass-voice note, or the chord's lowest note standing in for one. */
+function bassWords(inferred) {
+  return inferred
+    ? { inferred, noun: 'lowest note', Noun: 'The lowest note', aside: " (there's no separate bass line here)" }
+    : { inferred, noun: 'bass', Noun: 'Bass', aside: '' };
+}
+
 /** 1. Shape — catalogue match or the plain degree list, then layout, doubling and the bass. */
-function shapeSection(v, bass, parsed) {
+function shapeSection(v, bass, parsed, B) {
   const { notes, bassDegree, named } = v;
   const items = [];
   const see = ['voicings-as-shapes'];
@@ -192,23 +203,27 @@ function shapeSection(v, bass, parsed) {
   } else {
     items.push({ text: `Degrees bottom to top: ${degreeList} — not one of the catalogue shapes (${CATALOGUE_SUMMARY}).`, term: 'shape' });
   }
+  const slash = !!parsed && parsed.bassPC != null;
+  const degreeLine = !!(parsed && bassDegree && (slash || bassDegree !== 'R'));   // the aside goes there when there is one, else on the layout line
   const bassWord = bassDegree ? ` (the ${degreeWord(bassDegree)})` : '';
   const layout = notes.map((n, i) => `${n.name} ${i === 0 ? 'is ' : ''}${intervalName(n.midi - v.bassMidi)}${i === 0 ? ' above it' : ''}`);
   const span = notes[notes.length - 1].midi - notes[0].midi;
-  items.push({ text: `Layout over the bass ${bass}${bassWord}: ${list(layout)}${notes.length > 1 ? `; the voicing spans ${intervalName(span)}` : ''}.`, term: 'register' });
-  const doubles = notes.filter(n => n.pc === v.bassPC).map(n => `${n.name} doubles the bass ${bass} ${intervalName(n.midi - v.bassMidi)} up`);
+  items.push({ text: `Layout ${B.inferred ? 'above' : 'over'} the ${B.noun} ${bass}${bassWord}${degreeLine ? '' : B.aside}: ${list(layout)}${notes.length > 1 ? `; the voicing spans ${intervalName(span)}` : ''}.`, term: 'register' });
+  const doubles = notes.filter(n => n.pc === v.bassPC).map(n => `${n.name} doubles the ${B.noun} ${bass} ${intervalName(n.midi - v.bassMidi)} up`);
   for (let i = 1; i < notes.length; i++) for (let j = 0; j < i; j++) if (notes[i].pc === notes[j].pc) doubles.push(`${notes[i].name} doubles ${notes[j].name} ${intervalName(notes[i].midi - notes[j].midi)} up`);
   if (doubles.length) items.push({ text: `${list(doubles)}.` });
-  if (parsed && bassDegree) {
-    const slash = parsed.bassPC != null;
+  if (degreeLine) {
+    const subject = B.inferred ? `The lowest note, ${bass}${B.aside},` : `The bass ${bass}`;
     if (slash && v.bassPC !== parsed.bassPC) {
-      items.push({ text: `The symbol ${parsed.display} shows ${parsed.bass} in the bass; the bass note in effect here is ${bass}, the ${degreeWord(bassDegree)}.`, term: 'slash bass' });
+      items.push({ text: B.inferred
+        ? `The symbol ${parsed.display} shows ${parsed.bass} in the bass; the lowest note here is ${bass}, the ${degreeWord(bassDegree)}${B.aside}.`
+        : `The symbol ${parsed.display} shows ${parsed.bass} in the bass; the bass note in effect here is ${bass}, the ${degreeWord(bassDegree)}.`, term: 'slash bass' });
       see.push('chord-tones-and-roles');
     } else if (slash) {
-      items.push({ text: `The bass ${bass} is the ${degreeWord(bassDegree)}, the slash bass in ${parsed.display}.`, term: 'slash bass' });
+      items.push({ text: `${subject} is the ${degreeWord(bassDegree)}, the slash bass in ${parsed.display}.`, term: 'slash bass' });
       see.push('chord-tones-and-roles');
-    } else if (bassDegree !== 'R') {
-      items.push({ text: `The bass ${bass} is the ${degreeWord(bassDegree)}, not the root.`, term: 'degree' });
+    } else {
+      items.push({ text: `${subject} is the ${degreeWord(bassDegree)}, not the root.`, term: 'degree' });
       see.push('chord-tones-and-roles');
     }
   }
@@ -216,7 +231,7 @@ function shapeSection(v, bass, parsed) {
 }
 
 /** 2. Guide tones — where the 3rd and 7th sit, the interval between them, what is missing. */
-function guideTonesSection(v, bass, parsed) {
+function guideTonesSection(v, bass, parsed, B) {
   const { notes, named, bassDegree } = v;
   if (!parsed || !notes.length) return null;
   const dominant = !!chordTones(parsed)?.dominant;
@@ -231,10 +246,10 @@ function guideTonesSection(v, bass, parsed) {
       const n = notes[idx];
       places[cls] = { midi: n.midi, name: n.name };
       const unnamed = namedEntry ? '' : ` — ${parsed.display} names no ${cls === '3' ? '3rd' : '7th'}, but one is played`;
-      items.push({ text: `The ${degreeWord(n.degree)} (${n.name}) is ${voiceLabel(idx, notes.length)}${inBass ? ', and the bass has it too' : ''}${unnamed}.` });
+      items.push({ text: `The ${degreeWord(n.degree)} (${n.name}) is ${voiceLabel(idx, notes.length)}${inBass ? `, and the ${B.noun} has it too` : ''}${unnamed}.` });
     } else if (inBass) {
       places[cls] = { midi: v.bassMidi, name: bass, bass: true };
-      items.push({ text: `The ${degreeWord(bassDegree)} (${bass}) is the bass, not part of the voicing.` });
+      items.push({ text: B.inferred ? `The ${degreeWord(bassDegree)} (${bass}) is the lowest note, under the voicing.` : `The ${degreeWord(bassDegree)} (${bass}) is the bass, not part of the voicing.` });
     } else if (namedEntry) {
       items.push({ text: `The ${degreeWord(namedEntry.degree)} (${namedEntry.name}) is not played.` });
     } else {
@@ -246,7 +261,7 @@ function guideTonesSection(v, bass, parsed) {
     const [lo, hi] = [places['3'], places['7']].sort((a, b) => a.midi - b.midi);
     const semis = hi.midi - lo.midi;
     const tritone = semis % 12 === 6;
-    const where = lo.bass || hi.bass ? `from the bass ${lo.name} up to ${hi.name}` : `from ${lo.name} up to ${hi.name}`;
+    const where = lo.bass || hi.bass ? `from the ${B.noun} ${lo.name} up to ${hi.name}` : `from ${lo.name} up to ${hi.name}`;
     const why = tritone && dominant ? ' — the interval that gives a dominant its pull' : '';
     items.push({ text: `Between them, ${where}: ${intervalName(semis)}${why}.`, term: tritone ? 'tritone' : undefined });
     if (tritone) see.push('tritone');
@@ -265,7 +280,7 @@ function impliedSeventh(parsed, rawDegree) {
 }
 
 /** 3. Colour tones — extensions and alterations present, rubs with chord tones, unusual labels, what the melody adds. */
-function colourTonesSection(v, event, bass, parsed, context) {
+function colourTonesSection(v, event, bass, parsed, context, B) {
   const { notes, nvp, named } = v;
   if (!parsed || !nvp || !notes.length) return null;
   const items = [];
@@ -287,7 +302,7 @@ function colourTonesSection(v, event, bass, parsed, context) {
     // A rub: the colour tone a half step from a chord tone that is sounding.
     for (const o of sounding) {
       if (o === n || Math.abs(o.midi - n.midi) !== 1 || !['R', '3', '5', '7'].includes(degClass(o.degree))) continue;
-      items.push({ text: `${n.degree} (${n.name}) sits a half step ${n.midi > o.midi ? 'above' : 'below'} the ${degreeWord(o.degree)} (${o.name}${o.bass ? ', the bass' : ''}): a minor 2nd rub.`, term: 'rub' });
+      items.push({ text: `${n.degree} (${n.name}) sits a half step ${n.midi > o.midi ? 'above' : 'below'} the ${degreeWord(o.degree)} (${o.name}${o.bass ? `, the ${B.noun}` : ''}): a minor 2nd rub.`, term: 'rub' });
       see.push('intervals-that-rub');
     }
     // Labels that surprise: keep the fact above, explain here.
@@ -311,7 +326,7 @@ function colourTonesSection(v, event, bass, parsed, context) {
 }
 
 /** 4. Omissions — named tones not played, with the rule of thumb for each. */
-function omissionsSection(v, parsed) {
+function omissionsSection(v, parsed, B) {
   const { nvp } = v;
   if (!parsed || !nvp || !nvp.omitted.length) return null;
   const dominant = !!chordTones(parsed)?.dominant;
@@ -322,7 +337,9 @@ function omissionsSection(v, parsed) {
     let text;
     if (o.degree === '5') text = `${label} — routine: the 5th is the chord tone most often dropped; it adds little that the root does not.`;
     else if (cls === '5') text = `${label} — notable: the altered 5th is part of what ${parsed.display} says; without it the chord loses that colour.`;
-    else if (cls === 'R') text = `${label}, and the bass does not have it either, so the chord is implied by its other tones rather than stated.`;
+    else if (cls === 'R') text = B.inferred
+      ? `${label}: no sounding note has it${B.aside}, so the chord is implied by its other tones rather than stated.`
+      : `${label}, and the bass does not have it either, so the chord is implied by its other tones rather than stated.`;
     else if (cls === '3') text = `${label} — notable: a guide tone is missing. Without the 3rd the chord is open and ambiguous, major or minor.`;
     else if (cls === '7') text = `${label} — notable: a guide tone is missing. ${dominant ? `Without the 7th, ${parsed.display} stops sounding like a dominant.` : 'Without the 7th what is left is a plain triad.'}`;
     else if (['2', '4', '6'].includes(o.degree)) text = `${label} — notable: it is the tone that makes ${parsed.display} what it is.`;
@@ -333,7 +350,7 @@ function omissionsSection(v, parsed) {
 }
 
 /** 5. Motion — from the previous voiced event: voice count, common tones, steps, leaps, bass; then a word on the next. */
-function motionSection(v, bass, context) {
+function motionSection(v, bass, context, B) {
   const { notes } = v;
   const prev = context.prev;
   if (!prev || !Array.isArray(prev.voicing) || !prev.voicing.length || !notes.length) return null;
@@ -366,10 +383,10 @@ function motionSection(v, bass, context) {
     const upperMoves = m.perVoice.some(p => p.delta !== 0);
     const ups = m.perVoice.filter(p => p.delta > 0).length, downs = m.perVoice.filter(p => p.delta < 0).length;
     let text, term = 'bass line';
-    if (d === 0 && !upperMoves) text = `Bass ${bass} holds, and so do the upper voices.`;
-    else if (d === 0) { text = `Bass ${bass} holds while the upper voices move (oblique motion).`; term = 'oblique motion'; }
+    if (d === 0 && !upperMoves) text = `${B.Noun} ${bass} holds, and so do the upper voices.`;
+    else if (d === 0) { text = `${B.Noun} ${bass} holds while the upper voices move (oblique motion).`; term = 'oblique motion'; }
     else {
-      const bassMove = `Bass moves ${direction(d)} ${intervalName(d)} (${prev.bass} → ${bass})`;
+      const bassMove = `${B.Noun} moves ${direction(d)} ${intervalName(d)} (${prev.bass} → ${bass})`;
       if (!upperMoves) { text = `${bassMove} under held upper voices (oblique motion).`; term = 'oblique motion'; }
       else if (ups && downs) text = `${bassMove}; the upper voices split, some up and some down.`;
       else if (Math.sign(upperSum) === Math.sign(d)) { text = `${bassMove}, and the upper voices move with it (similar motion).`; term = 'similar motion'; }
@@ -459,10 +476,11 @@ function describeVoicing(event, context = {}) {
   }
   const v = readVoicing(voicing, bass, parsed);
   if (!v.notes.length) return [];
+  const B = bassWords((event?.bassSource ?? context.bassSource) === 'inferred');
   const sections = [];
-  if (parsed && !isNaN(v.bassMidi)) sections.push(shapeSection(v, bass, parsed));
-  else sections.push(section('shape', 'Shape', 'fact', [{ text: `Notes bottom to top: ${list(v.notes.map(n => n.name))}${bass ? ` over the bass ${bass}` : ''}${parsed ? '' : ' — no chord symbol in effect, so no degrees'}.`, term: 'shape' }], ['voicings-as-shapes']));
-  for (const s of [guideTonesSection(v, bass, parsed), colourTonesSection(v, event, bass, parsed, context), omissionsSection(v, parsed), motionSection(v, bass, context), whyRankedSection(context)]) {
+  if (parsed && !isNaN(v.bassMidi)) sections.push(shapeSection(v, bass, parsed, B));
+  else sections.push(section('shape', 'Shape', 'fact', [{ text: `Notes bottom to top: ${list(v.notes.map(n => n.name))}${bass ? ` over the ${B.noun} ${bass}` : ''}${parsed ? '' : ' — no chord symbol in effect, so no degrees'}.`, term: 'shape' }], ['voicings-as-shapes']));
+  for (const s of [guideTonesSection(v, bass, parsed, B), colourTonesSection(v, event, bass, parsed, context, B), omissionsSection(v, parsed, B), motionSection(v, bass, context, B), whyRankedSection(context)]) {
     if (s) sections.push(s);
   }
   return sections;
@@ -536,22 +554,27 @@ async function selfTest() {
   const nb = voicedNeighbours(fixture, 5, 1);
   check('voicedNeighbours refs carry bass and events', nb.prev.bass === 'F3' && nb.prev.events === 2 && nb.next.bass === 'C♯3' && nb.next.events === 1, JSON.stringify(nb));
 
-  // ── Rag bar 12, event 2: E♭7/D♭ over E♭4, G4 D♭5 — the shell ────
+  // ── Rag bar 12, event 2: E♭7 over E♭4, G4 D♭5 — the shell ───────
   const ra = analyzeProgression(rag);
   const r12 = describeAt(rag, ra, 12, 1);
   check('rag 12.2 is a shell, 3rd below the 7th', byId(r12, 'shape').items[0].term === 'shell' && /^Shell voicing, 3rd below the 7th/.test(byId(r12, 'shape').items[0].text), byId(r12, 'shape').items[0].text);
-  check('rag 12.2 shape states the slash neutrally', /The symbol E♭7\/D♭ shows D♭ in the bass; the bass note in effect here is E♭4, the root\./.test(texts([byId(r12, 'shape')])), texts([byId(r12, 'shape')]));
+  check('rag 12.2 symbol is E♭7 with the root in the bass: no slash sentence', ra.bars.find(b => b.bar === 12).events[1].symbol === 'E♭7' && !/slash|shows .* in the bass/.test(texts([byId(r12, 'shape')])) && byId(r12, 'shape').items.length === 2, texts([byId(r12, 'shape')]));
+  const r12a = describeAt(rag, ra, 12, 0);                        // A♭/E♭ over E♭4: the slash names the bass
+  check('rag 12.1 (A♭/E♭, inferred bass): "The lowest note, E♭4 (there\'s no separate bass line here), is the 5th, the slash bass"', /The lowest note, E♭4 \(there's no separate bass line here\), is the 5th, the slash bass in A♭\/E♭\./.test(texts([byId(r12a, 'shape')])) && !/\bthe bass\b/.test(texts([byId(r12a, 'shape')])), texts([byId(r12a, 'shape')]));
+  const r10 = describeAt(rag, ra, 10, 0);                        // A♭/E♭ over an inferred E♭4 (no bass line in bars 9–15)
+  check('rag 10 (inferred bass): bassSource is on the event; shape, guide tones and motion all say "lowest note", never "bass"', ra.bars.find(b => b.bar === 10).events[0].bassSource === 'inferred' && /Layout above the lowest note E♭4 \(the 5th\): /.test(texts([byId(r10, 'shape')])) && /The lowest note, E♭4 \(there's no separate bass line here\), is the 5th, the slash bass in A♭\/E♭\./.test(texts([byId(r10, 'shape')])) && /^The lowest note moves up a minor 2nd \(D4 → E♭4\)/m.test(texts([byId(r10, 'motion')])) && !/\b[Bb]ass [A-G]/.test(texts(r10).replace(/slash bass/g, '')), texts(r10));
   check('rag 12.2 guide tones: 3rd lower, ♭7 upper, tritone with the dominant remark', /3rd \(G4\) is the lower voice/.test(texts([byId(r12, 'guide-tones')])) && /♭7 \(D♭5\) is the upper voice/.test(texts([byId(r12, 'guide-tones')])) && /a tritone — the interval that gives a dominant its pull/.test(texts([byId(r12, 'guide-tones')])));
   check('rag 12.2 omissions: perfect 5th routine, section heuristic', byId(r12, 'omissions').kind === 'heuristic' && /5th \(B♭\) left out — routine/.test(texts([byId(r12, 'omissions')])));
   check('rag 12.2 colour: none', /No colour tones/.test(texts([byId(r12, 'colour-tones')])));
   const m12 = byId(r12, 'motion');
-  check('rag 12.2 motion names bar 12, event 1 (multi-event bar); both voices by step; oblique', /^From bar 12, event 1/.test(m12.items[0].text) && /A♭4 → G4 \(down a half step\)/.test(texts([m12])) && /C5 → D♭5 \(up a half step\)/.test(texts([m12])) && m12.items.some(it => it.term === 'oblique motion'), texts([m12]));
+  check('rag 12.2 motion names bar 12, event 1 (multi-event bar); both voices by step; oblique, "the lowest note" (inferred bass)', /^From bar 12, event 1/.test(m12.items[0].text) && /A♭4 → G4 \(down a half step\)/.test(texts([m12])) && /C5 → D♭5 \(up a half step\)/.test(texts([m12])) && m12.items.some(it => it.term === 'oblique motion' && /^The lowest note E♭4 holds while the upper voices move/.test(it.text)), texts([m12]));
+  check('rag 12.2 (root, no slash): the aside lands on the layout line', /^Layout above the lowest note E♭4 \(the root\) \(there's no separate bass line here\): /.test(byId(r12, 'shape').items[1].text), byId(r12, 'shape').items[1].text);
   check('rag 12.2 motion mentions the next event (bar 12, event 3)', /On to bar 12, event 3/.test(texts([m12])));
 
   // ── Rag bar 9: Bdim7 over D4 (the ♭3 in the bass), F4 A♭4 B4 ─────
   const r9 = describeAt(rag, ra, 9, 0);
-  check('rag 9 shape: no catalogue match, bass is the ♭3', byId(r9, 'shape').items[0].term === 'shape' && /not one of the catalogue shapes/.test(byId(r9, 'shape').items[0].text) && /The bass D4 is the ♭3, not the root/.test(texts([byId(r9, 'shape')])), texts([byId(r9, 'shape')]));
-  check('rag 9 guide tones: ♭3 in the bass, ♭♭7 inner, tritone between them', /♭3 \(D4\) is the bass, not part of the voicing/.test(texts([byId(r9, 'guide-tones')])) && /♭♭7 \(the diminished 7th\) \(A♭4\) is an inner voice/.test(texts([byId(r9, 'guide-tones')])) && /from the bass D4 up to A♭4: a tritone\./.test(texts([byId(r9, 'guide-tones')])), texts([byId(r9, 'guide-tones')]));
+  check('rag 9 shape: no catalogue match, the lowest note (inferred) is the ♭3', byId(r9, 'shape').items[0].term === 'shape' && /not one of the catalogue shapes/.test(byId(r9, 'shape').items[0].text) && /The lowest note, D4 \(there's no separate bass line here\), is the ♭3, not the root/.test(texts([byId(r9, 'shape')])), texts([byId(r9, 'shape')]));
+  check('rag 9 guide tones: ♭3 is the lowest note, ♭♭7 inner, tritone between them', /♭3 \(D4\) is the lowest note, under the voicing/.test(texts([byId(r9, 'guide-tones')])) && /♭♭7 \(the diminished 7th\) \(A♭4\) is an inner voice/.test(texts([byId(r9, 'guide-tones')])) && /from the lowest note D4 up to A♭4: a tritone\./.test(texts([byId(r9, 'guide-tones')])), texts([byId(r9, 'guide-tones')]));
   check('rag 9 (first event of the bar) motion looks back past bars 5–8 to bar 4, event 2', /^From bar 4, event 2/.test(byId(r9, 'motion').items[0].text), byId(r9, 'motion').items[0].text);
   check('rag 9: nothing omitted → no omissions section', byId(r9, 'omissions') === null);
 
@@ -559,6 +582,7 @@ async function selfTest() {
   const fa = analyzeProgression(fixture), fam = analyzeProgression(fixture, { includeMelody: true });
   const f4 = describeAt(fixture, fa, 4);                           // C7/E over E3, B♭3
   check('fixture 4 (C7/E): 3rd is the slash bass; ♭7 the only voice; tritone from the bass', /The bass E3 is the 3rd, the slash bass in C7\/E\./.test(texts([byId(f4, 'shape')])) && /♭7 \(B♭3\) is the only voice/.test(texts([byId(f4, 'guide-tones')])) && /from the bass E3 up to B♭3: a tritone — the interval/.test(texts([byId(f4, 'guide-tones')])), texts(f4));
+  check('fixture 4 (voice bass) keeps the bass wording', fa.bars.find(b => b.bar === 4).events[0].bassSource === 'voice' && /The bass E3 is the 3rd, the slash bass in C7\/E\./.test(texts([byId(f4, 'shape')])) && /Layout over the bass E3/.test(texts([byId(f4, 'shape')])));
   const f5b = describeAt(fixture, fa, 5, 1);                       // Gm7/F: A3 B♭3 D4 → A♭3 D4
   const m5b = byId(f5b, 'motion');
   check('fixture 5.2: voice-count change leads the motion section and the total is omitted', /^From bar 5, event 1, the previous voiced event \(A3 B♭3 D4 over F3\): the voicing drops a voice — B♭3 has no partner here\.$/.test(m5b.items[0].text) && !/Total upper-voice motion/.test(texts([m5b])), texts([m5b]));

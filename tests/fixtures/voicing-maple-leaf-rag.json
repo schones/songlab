@@ -13,7 +13,7 @@
   "edition": "Reproduction of original edition (1899), typeset in LilyPond 2.14.2",
   "typesetter": "Chris Sawer (maintainer, Mutopia Project)",
   "license": "Public Domain (Creative Commons public domain mark)",
-  "notes": "Reduction of the A strain (bars 1–15 plus first and second endings as bars 16 and 17; the eighth-note pickup is dropped). melody = the top note of each right-hand event; right-hand inner tones and octave doublings are dropped. bass voice = left-hand single notes and octave dyads, of which bassLine keeps the lower note; chord voice = every other left-hand event. Chord symbols are ours (derived), not part of the edition. Staff-vs-PDF differences that follow from these rules are expected."
+  "notes": "Reduction of the A strain (bars 1–15 plus first and second endings as bars 16 and 17; the eighth-note pickup is dropped). melody = the top note of each right-hand event; right-hand inner tones and octave doublings are dropped. bass voice = left-hand single notes and octave dyads, of which bassLine keeps the lower note; chord voice = every other left-hand event. Chord symbols are not part of the edition: an earlier Claude session derived them by analysis (chordSymbols: derived). Staff-vs-PDF differences that follow from these rules are expected."
  },
  "form": {
   "repeats": [
@@ -84,6 +84,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "A♭2",
+     "bassSource": "voice",
      "voicing": [
       "E♭3",
       "A♭3",
@@ -94,6 +95,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "A♭2",
+     "bassSource": "voice",
      "voicing": [
       "E♭3",
       "A♭3",
@@ -162,6 +164,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "B♭2",
+     "bassSource": "voice",
      "voicing": [
       "E♭3",
       "G3",
@@ -172,6 +175,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "B♭2",
+     "bassSource": "voice",
      "voicing": [
       "E♭3",
       "G3",
@@ -230,6 +234,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "A♭2",
+     "bassSource": "voice",
      "voicing": [
       "E♭3",
       "A♭3",
@@ -240,6 +245,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "A♭2",
+     "bassSource": "voice",
      "voicing": [
       "E♭3",
       "A♭3",
@@ -308,6 +314,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "B♭2",
+     "bassSource": "voice",
      "voicing": [
       "E♭3",
       "G3",
@@ -318,6 +325,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "B♭2",
+     "bassSource": "voice",
      "voicing": [
       "E♭3",
       "G3",
@@ -381,18 +389,21 @@
      "beat": 0,
      "dur": 1,
      "bass": "F♭2",
+     "bassSource": "voice",
      "voicing": []
     },
     {
      "beat": 1,
      "dur": 0.5,
      "bass": "E♭2",
+     "bassSource": "voice",
      "voicing": []
     },
     {
      "beat": 1.5,
      "dur": 0.5,
      "bass": "E♭2",
+     "bassSource": "voice",
      "voicing": []
     }
    ],
@@ -461,12 +472,14 @@
      "beat": 0,
      "dur": 1,
      "bass": "F♭2",
+     "bassSource": "voice",
      "voicing": []
     },
     {
      "beat": 1,
      "dur": 0.5,
      "bass": "E♭2",
+     "bassSource": "voice",
      "voicing": []
     }
    ],
@@ -521,12 +534,14 @@
      "beat": 0,
      "dur": 0.5,
      "bass": "A♭1",
+     "bassSource": "voice",
      "voicing": []
     },
     {
      "beat": 1,
      "dur": 0.5,
      "bass": "A♭2",
+     "bassSource": "voice",
      "voicing": []
     }
    ],
@@ -591,12 +606,14 @@
      "beat": 0,
      "dur": 0.5,
      "bass": "A♭3",
+     "bassSource": "voice",
      "voicing": []
     },
     {
      "beat": 1,
      "dur": 0.5,
      "bass": "A♭4",
+     "bassSource": "voice",
      "voicing": []
     }
    ],
@@ -661,6 +678,7 @@
      "beat": 0,
      "dur": 0.5,
      "bass": "D4",
+     "bassSource": "inferred",
      "voicing": [
       "F4",
       "A♭4",
@@ -671,6 +689,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "D4",
+     "bassSource": "inferred",
      "voicing": [
       "F4",
       "A♭4",
@@ -681,6 +700,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "D4",
+     "bassSource": "inferred",
      "voicing": [
       "F4",
       "A♭4",
@@ -691,6 +711,7 @@
      "beat": 1.5,
      "dur": 0.5,
      "bass": "D4",
+     "bassSource": "inferred",
      "voicing": [
       "F4",
       "A♭4",
@@ -735,7 +756,7 @@
    "symbols": [
     {
      "beat": 0,
-     "symbol": "A♭/C"
+     "symbol": "A♭/E♭"
     }
    ],
    "annotation": null,
@@ -744,6 +765,7 @@
      "beat": 0,
      "dur": 0.5,
      "bass": "E♭4",
+     "bassSource": "inferred",
      "voicing": [
       "A♭4",
       "C5"
@@ -753,6 +775,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "E♭4",
+     "bassSource": "inferred",
      "voicing": [
       "A♭4",
       "C5"
@@ -762,6 +785,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "E♭4",
+     "bassSource": "inferred",
      "voicing": [
       "A♭4",
       "C5"
@@ -771,6 +795,7 @@
      "beat": 1.5,
      "dur": 0.5,
      "bass": "E♭4",
+     "bassSource": "inferred",
      "voicing": [
       "A♭4",
       "C5"
@@ -824,11 +849,11 @@
    "symbols": [
     {
      "beat": 0,
-     "symbol": "F♭/C♭"
+     "symbol": "F♭"
     },
     {
      "beat": 1,
-     "symbol": "A♭/C"
+     "symbol": "A♭/E♭"
     }
    ],
    "annotation": null,
@@ -837,6 +862,7 @@
      "beat": 0,
      "dur": 0.5,
      "bass": "F♭4",
+     "bassSource": "inferred",
      "voicing": [
       "A♭4",
       "C♭5"
@@ -846,6 +872,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "F♭4",
+     "bassSource": "inferred",
      "voicing": [
       "A♭4",
       "C♭5"
@@ -855,6 +882,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "E♭4",
+     "bassSource": "inferred",
      "voicing": [
       "A♭4",
       "C5"
@@ -864,6 +892,7 @@
      "beat": 1.5,
      "dur": 0.5,
      "bass": "E♭4",
+     "bassSource": "inferred",
      "voicing": [
       "A♭4",
       "C5"
@@ -916,15 +945,15 @@
    "symbols": [
     {
      "beat": 0,
-     "symbol": "A♭/C"
+     "symbol": "A♭/E♭"
     },
     {
      "beat": 0.5,
-     "symbol": "E♭7/D♭"
+     "symbol": "E♭7"
     },
     {
      "beat": 1,
-     "symbol": "A♭/C"
+     "symbol": "A♭"
     }
    ],
    "annotation": null,
@@ -933,6 +962,7 @@
      "beat": 0,
      "dur": 0.5,
      "bass": "E♭4",
+     "bassSource": "inferred",
      "voicing": [
       "A♭4",
       "C5"
@@ -942,6 +972,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "E♭4",
+     "bassSource": "inferred",
      "voicing": [
       "G4",
       "D♭5"
@@ -951,6 +982,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "A♭4",
+     "bassSource": "inferred",
      "voicing": [
       "C5"
      ]
@@ -1002,6 +1034,7 @@
      "beat": 0,
      "dur": 0.5,
      "bass": "D3",
+     "bassSource": "inferred",
      "voicing": [
       "F3",
       "A♭3",
@@ -1012,6 +1045,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "D3",
+     "bassSource": "inferred",
      "voicing": [
       "F3",
       "A♭3",
@@ -1022,6 +1056,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "D3",
+     "bassSource": "inferred",
      "voicing": [
       "F3",
       "A♭3",
@@ -1032,6 +1067,7 @@
      "beat": 1.5,
      "dur": 0.5,
      "bass": "D3",
+     "bassSource": "inferred",
      "voicing": [
       "F3",
       "A♭3",
@@ -1076,7 +1112,7 @@
    "symbols": [
     {
      "beat": 0,
-     "symbol": "A♭/C"
+     "symbol": "A♭/E♭"
     }
    ],
    "annotation": null,
@@ -1085,6 +1121,7 @@
      "beat": 0,
      "dur": 0.5,
      "bass": "E♭3",
+     "bassSource": "inferred",
      "voicing": [
       "A♭3",
       "C4"
@@ -1094,6 +1131,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "E♭3",
+     "bassSource": "inferred",
      "voicing": [
       "A♭3",
       "C4"
@@ -1103,6 +1141,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "E♭3",
+     "bassSource": "inferred",
      "voicing": [
       "A♭3",
       "C4"
@@ -1112,6 +1151,7 @@
      "beat": 1.5,
      "dur": 0.5,
      "bass": "E♭3",
+     "bassSource": "inferred",
      "voicing": [
       "A♭3",
       "C4"
@@ -1165,11 +1205,11 @@
    "symbols": [
     {
      "beat": 0,
-     "symbol": "F♭/C♭"
+     "symbol": "F♭"
     },
     {
      "beat": 1,
-     "symbol": "A♭/C"
+     "symbol": "A♭/E♭"
     }
    ],
    "annotation": null,
@@ -1178,6 +1218,7 @@
      "beat": 0,
      "dur": 0.5,
      "bass": "F♭3",
+     "bassSource": "inferred",
      "voicing": [
       "A♭3",
       "C♭4"
@@ -1187,6 +1228,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "F♭3",
+     "bassSource": "inferred",
      "voicing": [
       "A♭3",
       "C♭4"
@@ -1196,6 +1238,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "E♭3",
+     "bassSource": "inferred",
      "voicing": [
       "A♭3",
       "C4"
@@ -1205,6 +1248,7 @@
      "beat": 1.5,
      "dur": 0.5,
      "bass": "E♭3",
+     "bassSource": "inferred",
      "voicing": [
       "A♭3",
       "C4"
@@ -1257,15 +1301,15 @@
    "symbols": [
     {
      "beat": 0,
-     "symbol": "A♭/C"
+     "symbol": "A♭/E♭"
     },
     {
      "beat": 0.5,
-     "symbol": "E♭7/D♭"
+     "symbol": "E♭7"
     },
     {
      "beat": 1,
-     "symbol": "A♭/C"
+     "symbol": "A♭"
     },
     {
      "beat": 1.5,
@@ -1278,6 +1322,7 @@
      "beat": 0,
      "dur": 0.5,
      "bass": "E♭3",
+     "bassSource": "inferred",
      "voicing": [
       "A♭3",
       "C4"
@@ -1287,6 +1332,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "E♭3",
+     "bassSource": "inferred",
      "voicing": [
       "G3",
       "D♭4"
@@ -1296,6 +1342,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "A♭3",
+     "bassSource": "inferred",
      "voicing": [
       "C4"
      ]
@@ -1338,15 +1385,15 @@
    "symbols": [
     {
      "beat": 0,
-     "symbol": "A♭/C"
+     "symbol": "A♭/E♭"
     },
     {
      "beat": 0.5,
-     "symbol": "E♭7/D♭"
+     "symbol": "E♭7"
     },
     {
      "beat": 1,
-     "symbol": "A♭/C"
+     "symbol": "A♭"
     }
    ],
    "annotation": null,
@@ -1355,6 +1402,7 @@
      "beat": 0,
      "dur": 0.5,
      "bass": "E♭3",
+     "bassSource": "inferred",
      "voicing": [
       "A♭3",
       "C4"
@@ -1364,6 +1412,7 @@
      "beat": 0.5,
      "dur": 0.5,
      "bass": "E♭3",
+     "bassSource": "inferred",
      "voicing": [
       "G3",
       "D♭4"
@@ -1373,6 +1422,7 @@
      "beat": 1,
      "dur": 0.5,
      "bass": "A♭3",
+     "bassSource": "inferred",
      "voicing": [
       "C4"
      ]

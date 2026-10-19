@@ -27,6 +27,7 @@ const CSS = /* css */ `
 .vd-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
 .vd-tag { font-size: var(--font-size-2xs, 0.8rem); padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-color); color: var(--text-secondary); }
 .vd-tag--hold { border-color: var(--accent-gold); color: var(--accent-gold); }
+.vd-tag--inferred { margin-left: 6px; border-style: dotted; color: var(--text-muted); cursor: help; }
 .vd-events { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; padding: 0; list-style: none; }
 .vd-chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-raised); color: var(--text-secondary); font: inherit; font-size: var(--font-size-xs, 0.85rem); cursor: pointer; line-height: 1.3; }
 .vd-chip:hover { border-color: var(--border-strong); color: var(--text-primary); }
@@ -162,7 +163,14 @@ class VoicingDetail {
     const row = (label, node) => { dl.appendChild(_h('dt', null, label)); const dd = _h('dd'); dd.appendChild(node); dl.appendChild(dd); };
 
     const bassWrap = _h('span');
-    if (event && event.bass) bassWrap.appendChild(_h('span', 'vd-note vd-note--bass', event.bass));
+    if (event && event.bass) {
+      bassWrap.appendChild(_h('span', 'vd-note vd-note--bass', event.bass));
+      if (event.bassSource === 'inferred') {   // the data has no bass line here: the "bass" is the chord's lowest note
+        const tag = _h('span', 'vd-tag vd-tag--inferred', 'inferred');
+        tag.title = 'lowest chord note — no bass line here';
+        bassWrap.appendChild(tag);
+      }
+    }
     else bassWrap.appendChild(_h('span', 'vd-empty', 'none'));
     row('Bass', bassWrap);
 

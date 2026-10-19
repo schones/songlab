@@ -27,7 +27,7 @@ above the bass, from the bass voice), which never joins the voicing.
 comp.bass is found by lookback (bass_for_onset): the most recent bass
 onset at or before the chord onset in this bar, sounding or not; else a
 bass tied or still sounding from the previous bar; else the lowest chord
-note. "Previous bar" is the performance predecessor (first occurrence in
+note. comp.bassSource records which: 'voice', 'carried' or 'inferred'. "Previous bar" is the performance predecessor (first occurrence in
 the play order, so a second ending follows the bar before the first
 ending), not the written one. If the chord voice is silent for the whole
 bar, bass-voice onsets are used instead.
@@ -200,6 +200,10 @@ def comp_events(bass_text, chord_text, prev_bass_ev=None, beats_per_bar=None):
             bass, how = bass_for_onset(bass_ev, ev['beat'], prev_bass_ev, beats_per_bar)
         if bass is None:
             bass = uniq[0][:2]
+        # How the bass was chosen, for honest display: a bass-voice note ('voice', rule 1 or a
+        # bass-only bar), one carried from the previous bar ('carried', rule 2), or the lowest
+        # chord note because no bass line is there ('inferred', rule 3).
+        bass_source = {'bar': 'voice', 'prev': 'carried', 'chord': 'inferred'}[how] if keyed_to_chord else 'voice'
         # An exact octave doubling of the bass from the bass voice never joins the voicing.
         voicing = [sp for sp, mid, from_bass in uniq
                    if mid != bass[1] and not (from_bass and mid > bass[1] and (mid - bass[1]) % 12 == 0)]
@@ -207,6 +211,7 @@ def comp_events(bass_text, chord_text, prev_bass_ev=None, beats_per_bar=None):
             'beat': num(ev['beat']),
             'dur': num(ev['dur']),
             'bass': bass[0],
+            'bassSource': bass_source,
             'voicing': voicing,
         }
         arp = ev['arp'] or any(b['arp'] for b in bass_ev

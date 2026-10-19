@@ -17,6 +17,16 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-19] Late-bar bass notes never become comp events.** Rag bars 16
+  and 17: the real left-hand octave on beat 1.5 (E♭2, A2) lands in
+  `bassLine` only, because comp events are keyed to chord-voice onsets and
+  the chord voice rests there. So the analysis, the Theory card and Explore
+  never voice against it, and the three chord events carry an inferred bass
+  (`bassSource: "inferred"`, now tagged on the page). Revisit how bass-voice
+  onsets after the last chord onset should become comp events (or extend
+  the previous event) in `tools/voicings/export_json.py`.
+  See: `bass_for_onset`, the "keyed to chord-voice onsets" rule in the exporter docstring.
+
 - **[2026-10-19] /voicings layout on wide screens and tablets.** The Tonnetz
   (fixed 380px height) and the staff (Verovio at its own scale) do not grow
   with their panels, so at 1800px+ the middle of the page is mostly empty

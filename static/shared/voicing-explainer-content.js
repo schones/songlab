@@ -827,7 +827,7 @@ const TOPICS = {
       B♭ still lean towards F.
 
       The same thing in a real piece: load the Maple Leaf Rag and select bar
-      12's second event (E♭7 over E♭4, voicing G4 D♭5). That is a shell, 3rd
+      12's second event (E♭7, bass E♭4, voicing G4 D♭5). That is a shell, 3rd
       below the 7th, with the 5th left out — the panel shows B♭ (5) as the
       only tone left out. In the Explore panel, compare it with a candidate
       that drops the D♭ instead and listen for the dominant quality going.

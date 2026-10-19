@@ -9,76 +9,76 @@
   {
    "bar": 1, "section": "tension", "source": "user",
    "symbols": [{"beat": 0, "symbol": "C"}], "annotation": "m2 cluster alone: B3–C4 = 1 semitone (3). Bass far enough down that no other pair scores.",
-   "comp": [{"beat": 0, "dur": 4, "bass": "C2", "voicing": ["B3", "C4"]}],
+   "comp": [{"beat": 0, "dur": 4, "bass": "C2", "bassSource": "voice", "voicing": ["B3", "C4"]}],
    "melody": []
   },
   {
    "bar": 2, "section": "tension", "source": "user",
    "symbols": [{"beat": 0, "symbol": "Cmaj7"}], "annotation": "M7 by register: C3–B3 = 11 semitones (1).",
-   "comp": [{"beat": 0, "dur": 4, "bass": "C3", "voicing": ["B3"]}],
+   "comp": [{"beat": 0, "dur": 4, "bass": "C3", "bassSource": "voice", "voicing": ["B3"]}],
    "melody": []
   },
   {
    "bar": 3, "section": "tension", "source": "user",
    "symbols": [{"beat": 0, "symbol": "Cmaj7/B"}], "annotation": "Same pitch classes as bar 2 at 13 semitones: B2–C4 = m9 (2). Slash bass is a chord tone.",
-   "comp": [{"beat": 0, "dur": 4, "bass": "B2", "voicing": ["C4"]}],
+   "comp": [{"beat": 0, "dur": 4, "bass": "B2", "bassSource": "voice", "voicing": ["C4"]}],
    "melody": []
   },
   {
    "bar": 4, "section": "tension", "source": "user",
    "symbols": [{"beat": 0, "symbol": "C7/E"}], "annotation": "Tritone alone: E3–B♭3 = 6 semitones (2).",
-   "comp": [{"beat": 0, "dur": 4, "bass": "E3", "voicing": ["B♭3"]}],
+   "comp": [{"beat": 0, "dur": 4, "bass": "E3", "bassSource": "voice", "voicing": ["B♭3"]}],
    "melody": []
   },
   {
    "bar": 5, "section": "named-vs-played", "source": "user",
    "symbols": [{"beat": 0, "symbol": "Gm7/F"}], "annotation": "Slash bass F is the ♭7; root G omitted; A added as 9. Second comp event is ignored by the analysis (first event only).",
    "comp": [
-    {"beat": 0, "dur": 2, "bass": "F3", "voicing": ["A3", "B♭3", "D4"]},
-    {"beat": 2, "dur": 2, "bass": "F3", "voicing": ["A♭3", "D4"]}
+    {"beat": 0, "dur": 2, "bass": "F3", "bassSource": "voice", "voicing": ["A3", "B♭3", "D4"]},
+    {"beat": 2, "dur": 2, "bass": "F3", "bassSource": "voice", "voicing": ["A♭3", "D4"]}
    ],
    "melody": []
   },
   {
    "bar": 6, "section": "named-vs-played", "source": "user",
    "symbols": [{"beat": 0, "symbol": "A7♯11/C♯"}], "annotation": "Enharmonic: written D♯ labels as ♯11 (not E♭); omitted root and fifth spelled chord-relatively.",
-   "comp": [{"beat": 0, "dur": 4, "bass": "C♯3", "voicing": ["G3", "D♯4"]}],
+   "comp": [{"beat": 0, "dur": 4, "bass": "C♯3", "bassSource": "voice", "voicing": ["G3", "D♯4"]}],
    "melody": []
   },
   {
    "bar": 7, "section": "melody", "source": "user",
    "symbols": [{"beat": 0, "symbol": "C"}], "annotation": "Duration-weighted melody: F4 for 2 of 4 beats against E4 = m2 → 3 × 0.5 = 1.5. G4 rubs nothing. Comp alone scores 0.",
-   "comp": [{"beat": 0, "dur": 4, "bass": "C3", "voicing": ["E4"]}],
+   "comp": [{"beat": 0, "dur": 4, "bass": "C3", "bassSource": "voice", "voicing": ["E4"]}],
    "melody": [{"beat": 0, "dur": 2, "note": "F4"}, {"beat": 2, "dur": 2, "note": "G4"}]
   },
   {
    "bar": 8, "section": "melody", "source": "user",
    "symbols": [{"beat": 0, "symbol": "Gmaj7"}], "annotation": "Written B♭ over G labels as ♭3 from the letter, not ♯9.",
-   "comp": [{"beat": 0, "dur": 4, "bass": "G3", "voicing": ["B3", "D4", "F♯4"]}],
+   "comp": [{"beat": 0, "dur": 4, "bass": "G3", "bassSource": "voice", "voicing": ["B3", "D4", "F♯4"]}],
    "melody": [{"beat": 0, "dur": 4, "note": "B♭4"}]
   },
   {
    "bar": 9, "section": "motion", "source": "user",
    "symbols": [{"beat": 0, "symbol": "C"}], "annotation": "Motion start.",
-   "comp": [{"beat": 0, "dur": 4, "bass": "C3", "voicing": ["E3", "G3", "C4"]}],
+   "comp": [{"beat": 0, "dur": 4, "bass": "C3", "bassSource": "voice", "voicing": ["E3", "G3", "C4"]}],
    "melody": []
   },
   {
    "bar": 10, "section": "motion", "source": "user",
    "symbols": [{"beat": 0, "symbol": "D"}], "annotation": "Three upper voices each up 2 semitones → motion 6.",
-   "comp": [{"beat": 0, "dur": 4, "bass": "D3", "voicing": ["F♯3", "A3", "D4"]}],
+   "comp": [{"beat": 0, "dur": 4, "bass": "D3", "bassSource": "voice", "voicing": ["F♯3", "A3", "D4"]}],
    "melody": []
   },
   {
    "bar": 11, "section": "motion", "source": "user",
    "symbols": [{"beat": 0, "symbol": "G7"}], "annotation": "Four upper voices after three → motion null.",
-   "comp": [{"beat": 0, "dur": 4, "bass": "G2", "voicing": ["F3", "G3", "B3", "D4"]}],
+   "comp": [{"beat": 0, "dur": 4, "bass": "G2", "bassSource": "voice", "voicing": ["F3", "G3", "B3", "D4"]}],
    "melody": []
   },
   {
    "bar": 12, "section": "motion", "source": "user",
    "symbols": [], "annotation": "Hold bar: empty symbols carry G7; same voicing → motion 0.",
-   "comp": [{"beat": 0, "dur": 4, "bass": "G2", "voicing": ["F3", "G3", "B3", "D4"]}],
+   "comp": [{"beat": 0, "dur": 4, "bass": "G2", "bassSource": "voice", "voicing": ["F3", "G3", "B3", "D4"]}],
    "melody": []
   }
  ]

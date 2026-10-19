@@ -261,7 +261,7 @@ function symbolAt(progression, barIndex, beat) {
 /**
  * Everything generate/score need for one comp event, read from the progression.
  *
- * @returns {{ bar, event, symbol, parsed, bass, voicing, melody, beat, dur, beatsPerBar, prevVoicing, nextVoicing, neighbours }|null}
+ * @returns {{ bar, event, symbol, parsed, bass, bassSource, voicing, melody, beat, dur, beatsPerBar, prevVoicing, nextVoicing, neighbours }|null}
  */
 function eventContext(progression, barNumber, eventIndex = 0) {
   const bars = progression.bars || [];
@@ -277,7 +277,7 @@ function eventContext(progression, barNumber, eventIndex = 0) {
   return {
     progression,
     bar: barNumber, event: eventIndex, symbol, parsed: symbol ? parseSymbol(symbol) : null,
-    bass: ev.bass, voicing: (ev.voicing || []).slice(), melody: (bar.melody || []).map(m => ({ ...m })),
+    bass: ev.bass, bassSource: ev.bassSource, voicing: (ev.voicing || []).slice(), melody: (bar.melody || []).map(m => ({ ...m })),
     beat: Number(ev.beat) || 0, dur: Number(ev.dur) || 0, beatsPerBar,
     prevVoicing: neighbours.prev ? neighbours.prev.voicing : null,
     nextVoicing: neighbours.next ? neighbours.next.voicing : null,

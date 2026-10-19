@@ -499,8 +499,10 @@ function _predecessors(progression) {
  * @returns {{ beatsPerBar:number, bars:Array<BarResult> }}
  *
  * EventResult (one per comp event, in order):
- *   { index, beat, dur, symbol, bass, voicing, comp, melody, total,
+ *   { index, beat, dur, symbol, bass, bassSource, voicing, comp, melody, total,
  *     byInterval, namedVsPlayed, motion }
+ *   bassSource is copied from the data ('voice' | 'carried' | 'inferred', or
+ *   undefined) for display; the analysis treats every bass the same.
  *   symbol is the chord symbol in effect at the event's onset (the last
  *   of the bar's symbols at or before it, else the carried one) and
  *   namedVsPlayed is scored against it; melody is scored by time overlap
@@ -555,7 +557,7 @@ function analyzeProgression(progression, opts = {}) {
       if (includeMelody) for (const m of melodyEvents) if (_overlap(m, ev) > 1e-9) pitches.push(m.note ?? m.midi);
       const nvp = parsedAt ? namedVsPlayed(parsedAt, pitches) : null;
       const motion = i > 0 ? voiceMotion(compEvents[i - 1].voicing || [], voicing) : null;
-      return { index: i, beat: ev.beat, dur: ev.dur, symbol, bass, voicing, comp, melody, total, byInterval, namedVsPlayed: nvp, motion };
+      return { index: i, beat: ev.beat, dur: ev.dur, symbol, bass, bassSource: ev.bassSource, voicing, comp, melody, total, byInterval, namedVsPlayed: nvp, motion };
     });
 
     let maxEvent = null;

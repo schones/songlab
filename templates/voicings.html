@@ -17,6 +17,7 @@
   .vp-title__piece { color: var(--accent-gold, #D4A03C); }
   .vp-meta { margin: 0; color: var(--text-secondary); font-size: var(--font-size-sm); }
   .vp-meta span + span::before { content: '·'; margin: 0 8px; color: var(--text-muted); }
+  .vp-meta__note { color: var(--accent-gold, #D4A03C); }
   .vp-piece-form { margin-left: auto; display: flex; gap: 6px; align-items: center; font-size: var(--font-size-xs); color: var(--text-muted); }
   .vp-piece-form input { width: 11em; padding: 4px 8px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font: inherit; }
   .vp-piece-form button { padding: 4px 10px; border-radius: var(--radius-md); border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text-secondary); font: inherit; cursor: pointer; }
@@ -440,7 +441,7 @@
     if (!event) { els.theorySections.appendChild(el('p', 'vp-theory__empty', 'Nothing to describe: this bar has no comp event.')); return; }
     const ctx = eventContext(progression, bar.bar, state.selectedEvent);
     const context = {
-      parsed: ctx ? ctx.parsed : null, bass: ctx ? ctx.bass : event.bass,
+      parsed: ctx ? ctx.parsed : null, bass: ctx ? ctx.bass : event.bass, bassSource: ctx ? ctx.bassSource : event.bassSource,
       prev: ctx ? ctx.neighbours.prev : null, next: ctx ? ctx.neighbours.next : null,
       includeMelody: state.includeMelody,
     };
@@ -994,6 +995,8 @@
       progression.timeSignature,
       progression.tempo ? `♩ = ${progression.tempo}` : null,
       `${progression.bars.length} bars`,
+      // Provenance of the chord symbols, from the piece JSON (schema: chordSymbols "derived" = added by analysis).
+      progression.chordSymbols === 'derived' ? '<span class="vp-meta__note" title="The chord symbols were added by analysis; the source edition carries none.">symbols added by analysis — not in the original edition</span>' : null,
     ].filter(Boolean).map(s => `<span>${s}</span>`).join('');
     els.input.value = loadedName;
     syncPicker(loadedName);
