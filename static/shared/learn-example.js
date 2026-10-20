@@ -129,6 +129,11 @@ const EXAMPLES = {
   'g7-shell-tritone':  { symbol: 'G7',  bass: 'G2',  voicing: ['F3', 'B3'],  label: 'G7 — ♭7 and 3: the tritone' },
   'c-resolution':      { symbol: 'C',   bass: 'C3',  voicing: ['E3', 'C4'],  label: 'C — where the tritone lands', doubled: true },   // the root is doubled on purpose
   'db7-shell-tritone': { symbol: 'D♭7', bass: 'D♭3', voicing: ['F3', 'C♭4'], label: 'D♭7 — the same tritone, respelled' },
+  // T2 (shells): the ii and I shells of a ii–V–I in C, alternating 3rd-below
+  // and 7th-below around g7-shell-tritone so the guide tones hold or move a
+  // half step (checked in selfTest).
+  'dm7-shell-3-below-7':   { symbol: 'Dm7',   bass: 'D2', voicing: ['F3', 'C4'], label: 'Dm7 shell — 3rd below the 7th' },
+  'cmaj7-shell-3-below-7': { symbol: 'Cmaj7', bass: 'C2', voicing: ['E3', 'B3'], label: 'Cmaj7 shell — 3rd below the 7th' },
   // The notes the rag plays at bar 16, second event — but the fixture's bass
   // there is inferred (the lowest chord note, no bass line under it), so the
   // link is related, not strict. No E♭7 event with a real bass is a shell:
@@ -328,6 +333,12 @@ async function selfTest() {
     g7 && db7 && g7.midis.join() === db7.midis.join() && g7.voicing.join(' ') === 'F3 B3' && db7.voicing.join(' ') === 'F3 C♭4'
     && g7.degrees.join(' ') === '♭7 3' && db7.degrees.join(' ') === '3 ♭7' && g7.bassDegree === 'R' && db7.bassDegree === 'R');
   check('C resolution: C3 = R, E3 = 3, C4 = R (the tritone resolved outward)', cres && cres.bassDegree === 'R' && cres.degrees.join(' ') === '3 R' && cres.midis.join() === '52,60');
+  const ii = resolved['dm7-shell-3-below-7'], V = resolved['g7-shell-tritone'], I = resolved['cmaj7-shell-3-below-7'];
+  const line = (i) => [ii, V, I].map(r => r && r.midis[i]), degs = (i) => [ii, V, I].map(r => r && r.degrees[i]).join(' → ');
+  const steps = l => l.slice(1).every((m, i) => Math.abs(m - l[i]) <= 1);
+  check('ii–V–I guide-tone lines: F3 → F3 → E3 (♭3 → ♭7 → 3) and C4 → B3 → B3 (♭7 → 3 → 7), every step 0 or 1 semitone',
+    ii && V && I && line(0).join() === '53,53,52' && degs(0) === '♭3 → ♭7 → 3' && line(1).join() === '60,59,59' && degs(1) === '♭7 → 3 → 7' && steps(line(0)) && steps(line(1))
+    && [ii, V, I].every(r => r.bassDegree === 'R' && r.voicing.length === 2));
   const s5 = resolved['eb7-over-bb-rag'];
   check('E♭7/B♭: bass B♭2 = 5, E♭3 = R, G3 = 3, D♭4 = ♭7, strict link to rag 2.1', s5 && s5.display === 'E♭7/B♭' && s5.bassDegree === '5' && s5.degrees.join(' ') === 'R 3 ♭7' && s5.link.kind === 'strict' && s5.link.bar === 2 && s5.link.event === 1);
   const linkProblems = [];
