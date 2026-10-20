@@ -123,6 +123,12 @@ const EXAMPLES = {
     label: 'E♭7/B♭ — the 5th in the bass (Maple Leaf Rag, bar 2)',
     piece: 'maple-leaf-rag', bar: 2, event: 1, matches: true, bassSource: 'voice',
   },
+  // T2 (tritone): G7's tritone with the ♭7 on the bottom (an augmented 4th,
+  // F3–B3), its outward resolution to C, and the same two keys respelled as
+  // D♭7's 3rd and ♭7 (C♭4, not B3 — the letters follow the chord).
+  'g7-shell-tritone':  { symbol: 'G7',  bass: 'G2',  voicing: ['F3', 'B3'],  label: 'G7 — ♭7 and 3: the tritone' },
+  'c-resolution':      { symbol: 'C',   bass: 'C3',  voicing: ['E3', 'C4'],  label: 'C — where the tritone lands', doubled: true },   // the root is doubled on purpose
+  'db7-shell-tritone': { symbol: 'D♭7', bass: 'D♭3', voicing: ['F3', 'C♭4'], label: 'D♭7 — the same tritone, respelled' },
   // The notes the rag plays at bar 16, second event — but the fixture's bass
   // there is inferred (the lowest chord note, no bass line under it), so the
   // link is related, not strict. No E♭7 event with a real bass is a shell:
@@ -317,6 +323,11 @@ async function selfTest() {
   check('seed covers both link kinds and every link exposes bassSource', linked.some(r => r.link.kind === 'related') && linked.some(r => r.link.kind === 'strict') && linked.every(r => BASS_SOURCES.includes(r.link.bassSource)));
   const t1 = ['cmaj7-close', 'c7-close', 'cm7-close'].map(id => resolved[id]);
   check('T1 close voicings: C3 = R, degrees 3 5 7 / 3 5 ♭7 / ♭3 5 ♭7', t1.every(r => r && r.bassDegree === 'R') && t1.map(r => r.degrees.join(' ')).join(' | ') === '3 5 7 | 3 5 ♭7 | ♭3 5 ♭7');
+  const g7 = resolved['g7-shell-tritone'], db7 = resolved['db7-shell-tritone'], cres = resolved['c-resolution'];
+  check('G7 and D♭7 tritone examples: identical midis, different spellings, F3 = ♭7 / B3 = 3 vs F3 = 3 / C♭4 = ♭7',
+    g7 && db7 && g7.midis.join() === db7.midis.join() && g7.voicing.join(' ') === 'F3 B3' && db7.voicing.join(' ') === 'F3 C♭4'
+    && g7.degrees.join(' ') === '♭7 3' && db7.degrees.join(' ') === '3 ♭7' && g7.bassDegree === 'R' && db7.bassDegree === 'R');
+  check('C resolution: C3 = R, E3 = 3, C4 = R (the tritone resolved outward)', cres && cres.bassDegree === 'R' && cres.degrees.join(' ') === '3 R' && cres.midis.join() === '52,60');
   const s5 = resolved['eb7-over-bb-rag'];
   check('E♭7/B♭: bass B♭2 = 5, E♭3 = R, G3 = 3, D♭4 = ♭7, strict link to rag 2.1', s5 && s5.display === 'E♭7/B♭' && s5.bassDegree === '5' && s5.degrees.join(' ') === 'R 3 ♭7' && s5.link.kind === 'strict' && s5.link.bar === 2 && s5.link.event === 1);
   const linkProblems = [];

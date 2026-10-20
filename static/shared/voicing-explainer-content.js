@@ -976,9 +976,102 @@ const TOPICS = {
   'melody-against-harmony': stub('Melody against harmony', 'theory',
     ['melody-toggle', 'explore-panel', 'tension-scoring'],
     'The top voice is what the ear follows; solo piano versus a separate melody instrument; when a rub against the tune is the point.'),
-  'tritone': stub('The tritone', 'theory',
-    ['guide-tones-and-shells', 'intervals-that-rub', 'intro-intervals-scales'],
-    'Six semitones: the interval inside every dominant seventh, and why it pulls.'),
+  'tritone': {
+    title: 'The tritone',
+    status: 'verified', category: 'theory', kind: 'fact',
+    see_also: ['chord-tones-and-roles', 'guide-tones-and-shells', 'intervals-that-rub', 'intro-intervals-scales'],
+    summary: 'The tritone is the interval of three whole steps — exactly half an octave. It’s the tense core of every dominant 7th chord.',
+    body: `
+      ## What it is
+
+      A tritone spans six half steps: three whole steps, hence the name. It
+      splits the octave exactly in half, which makes it unusual in two ways:
+
+      - **Flip it and it's still a tritone.** Six half steps up, six more to
+        the octave. Every other interval turns into something different when
+        inverted.
+      - **It has two spellings.** C up to F♯ is an augmented 4th. C up to G♭
+        is a diminished 5th. Same keys, different letter names, and the
+        letters depend on the chord it belongs to.
+
+      [Intro chapter 4](intro-beyond-triads) introduces the tritone inside C7. This page
+      picks up from there.
+
+      ## Where it lives
+
+      In a dominant 7th chord, the 3rd and the ♭7 are a tritone apart. In C7
+      that's E and B♭. This is what gives a dominant chord its pull: the
+      tritone sounds unstable and wants to move.
+
+      Of the five common seventh chords, only the dominant 7th has its
+      tritone between the 3rd and 7th. Cmaj7 and Cm7 have no tritone at all.
+      Cm7♭5 has one between the root and the ♭5, and Cdim7 has two.
+
+      ## Hear it
+
+      The two notes of C7's tritone, first with the 3rd on the bottom, then
+      flipped. Either way up, it's the same unstable sound.
+
+      [[example c7-shell-3-below-7]]
+
+      [[example c7-shell-7-below-3]]
+
+      The tritone resolves by half steps. In G7 the tritone is B and F. Move
+      B up to C and F down to E, and you've landed on C major.
+
+      [[example g7-shell-tritone]]
+
+      [[example c-resolution]]
+
+      ## In a real piece
+
+      In bar 2 of Maple Leaf Rag the E♭7 chord has G and D♭ in the middle of
+      the voicing. That's its 3rd and ♭7, a tritone apart.
+
+      [[example eb7-over-bb-rag]]
+
+      ## Common confusions
+
+      - **Augmented 4th or diminished 5th?** Both are tritones, and they
+        sound identical — they're enharmonic intervals. The name follows the
+        letters: if the upper note is a 4th letter above (C to F♯), it's an
+        augmented 4th; if it's a 5th letter above (C to G♭), it's a
+        diminished 5th.
+      - **A tritone doesn't name one chord.** B and F are the 3rd and ♭7 of
+        G7, but also the ♭7 and 3rd of D♭7, where B is spelled C♭. B and C♭
+        are *enharmonic*: the same key on the piano, written with different
+        letter names. This shared tritone is the basis of tritone
+        substitution, covered later.
+
+      [[example db7-shell-tritone]]
+
+      ## Try it
+
+      - Play B and F together, then move B up to C and F down to E. The
+        tension drains away.
+      - Now play F below B and do the same moves. This time the notes move
+        apart instead of together, and land on E and C.
+
+      ## Sources
+
+      Levine, *The Jazz Theory Book*.
+    `,
+    notes: `T2. Verified by Dustin from own knowledge, 2026-10-20.
+      1. [x] A tritone is six half steps (three whole steps).
+      2. [x] It divides the octave exactly in half.
+      3. [x] An inverted tritone is still a tritone; no other interval inverts to itself.
+      4. [x] Augmented 4th and diminished 5th are the two spellings, named by the letters; they are enharmonic intervals.
+      5. [x] In a dominant 7th, the 3rd and ♭7 form a tritone.
+      6. [x] Cmaj7 and Cm7 contain no tritone; Cm7♭5 has one between root and ♭5; Cdim7 has two.
+      7. [x] In G7 → C, B resolves up to C and F down to E.
+      8. [x] A diminished 5th resolves inward, an augmented 4th outward.
+      9. [x] G7 and D♭7 share the same tritone (B/C♭ and F). B and C♭ are enharmonic: the same pitch with different letter names.
+      Engine check 2026-10-20: tritone pairs from the parser's interval sets — Cmaj7 none, C7 3–♭7, Cm7 none, Cm7♭5 R–♭5,
+      Cdim7 R–♭5 and ♭3–♭♭7; D♭7 with C♭4 spells F = 3, C♭ = ♭7 (midi 53, 59 — the same keys as G7's F3 B3).
+      Examples (learn-example.js): g7-shell-tritone, c-resolution, db7-shell-tritone; reused c7-shell-3-below-7,
+      c7-shell-7-below-3, eb7-over-bb-rag. Adaptation from the draft: the Intro chapter 4 link targets the EXTERNAL key
+      intro-beyond-triads (resolves to /intro/4 with its title) instead of the bare path; text otherwise verbatim.`,
+  },
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -996,6 +1089,7 @@ const GLOSSARY = {
   'A-form':             'rootless-voicings',
   'B-form':             'rootless-voicings',
   'tritone':            'tritone',
+  'enharmonic':         'tritone',
   'minor 2nd':          'register-and-low-interval-limits',
   'minor 9th':          'register-and-low-interval-limits',
   'low interval limit': 'register-and-low-interval-limits',
@@ -1196,9 +1290,12 @@ async function selfTest() {
   check('glossary lookup case-insensitive', glossaryLookup('Guide Tones')?.slug === 'guide-tones-and-shells');
   check('glossary lookup external', glossaryLookup('tonnetz')?.url === '/intro/5');
   check('glossary unknown', glossaryLookup('zzz') === null);
-  check('stub links carry the stub class', renderInline('[x](tritone)', { resolveLink }).includes('learn-link--stub'));
+  check('stub links carry the stub class', renderInline('[x](extensions)', { resolveLink }).includes('learn-link--stub'));
   check('topicsForPanel', topicsForPanel('chart').includes('tension-scoring') && PANELS.every(p => topicsForPanel(p).length >= 1));
-  check('rendered stub has disclaimer', renderTopic('tritone').disclaimer === DISCLAIMER.stub);
+  check('rendered stub has disclaimer', renderTopic('extensions').disclaimer === DISCLAIMER.stub);
+  check('verified topics carry no disclaimer', ['chord-tones-and-roles', 'tritone'].every(s => renderTopic(s).status === 'verified' && renderTopic(s).disclaimer === null));
+  check('glossary: tritone and enharmonic → the tritone topic', glossaryLookup('tritone')?.slug === 'tritone' && glossaryLookup('Enharmonic')?.slug === 'tritone');
+  check('tritone topic links Intro chapter 4 through EXTERNAL', renderTopic('tritone').html.includes('<a href="/intro/4" title="Fundamentals 4 — Beyond Triads" class="learn-link">Intro chapter 4</a>'));
 
   const counts = {}; for (const s of slugs) counts[TOPICS[s].status] = (counts[TOPICS[s].status] || 0) + 1;
   console.log(`\n${slugs.length} topics: ${Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(', ')}; ${Object.keys(EXTERNAL).length} external targets; ${Object.keys(GLOSSARY).length} glossary terms`);
