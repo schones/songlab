@@ -21,8 +21,13 @@
  * All text is HTML-escaped first; the only HTML that reaches the output is
  * what this module writes. Pure: no DOM, Node-runnable.
  *
- *   renderMarkdown(src, { resolveLink })  → HTML string
- *   renderInline(src, { resolveLink })    → HTML string (no block wrapper)
+ *   renderMarkdown(src, { resolveLink, renderBlock })  → HTML string
+ *   renderInline(src, { resolveLink })                 → HTML string (no block wrapper)
+ *
+ * Block hook: opts.renderBlock(block, opts) is tried on every trimmed block
+ * before the built-in dispatch. A string is used as the block's HTML; null or
+ * undefined falls through to the rules above (learn-example.js uses it for
+ * the one-line `[[example <id>]]` block). Inline text is never offered to it.
  *   escapeHtml(text)                      → escaped text
  *   selfTest()
  *
@@ -114,7 +119,12 @@ function renderMarkdown(src, opts = {}) {
   const indents = lines.filter(l => l.trim()).map(l => l.match(/^\s*/)[0].length);
   const common = indents.length ? Math.min(...indents) : 0;
   const dedented = lines.map(l => l.slice(Math.min(common, l.match(/^\s*/)[0].length))).join('\n');
-  return dedented.trim().split(/\n\s*\n/).filter(b => b.trim()).map(b => renderBlock(b.trim(), opts)).join('\n');
+  const hook = typeof opts.renderBlock === 'function' ? opts.renderBlock : null;
+  return dedented.trim().split(/\n\s*\n/).filter(b => b.trim()).map(b => {
+    const block = b.trim();
+    const custom = hook ? hook(block, opts) : null;
+    return custom != null ? custom : renderBlock(block, opts);
+  }).join('\n');
 }
 
 export { renderMarkdown, renderInline, escapeHtml, defaultResolveLink, selfTest };
@@ -160,6 +170,15 @@ async function selfTest() {
   assert('null', renderMarkdown(null), '');
   assert('no raw html passes', renderMarkdown('<script>x</script>'), '<p>&lt;script&gt;x&lt;/script&gt;</p>');
   assert('fraction text untouched', renderInline('2/3 and 0.667'), '2/3 and 0.667');
+  // Block hook.
+  const hook = (block) => (/^\[\[example [a-z0-9-]+\]\]$/.test(block) ? `<div data-example="${block.slice(10, -2)}"></div>` : null);
+  assert('block hook used', renderMarkdown('intro\n\n[[example c7-shell]]\n\nafter', { renderBlock: hook }),
+    '<p>intro</p>\n<div data-example="c7-shell"></div>\n<p>after</p>');
+  assert('block hook null falls through', renderMarkdown('# A\n\n- b', { renderBlock: () => null }), '<h2>A</h2>\n<ul><li>b</li></ul>');
+  assert('example inside a paragraph stays literal', renderMarkdown('see [[example c7-shell]] here', { renderBlock: hook }), '<p>see [[example c7-shell]] here</p>');
+  assert('no hook: example line is plain text', renderMarkdown('[[example c7-shell]]'), '<p>[[example c7-shell]]</p>');
+  const SAMPLE = '# T\n\npara **b**\n\n- a\n- b\n\n| x | y |\n|---|---|\n| 1 | 2 |\n\n> q';
+  assert('hook that always falls through matches no-hook output', renderMarkdown(SAMPLE, { renderBlock: () => undefined }), renderMarkdown(SAMPLE));
   console.log(`\n─── ${passed}/${total} passed ───\n`);
   return { passed, total };
 }

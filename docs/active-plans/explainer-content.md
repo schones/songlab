@@ -1,6 +1,8 @@
 # Voicing Explorer — explainer content (Session 6.5)
 
-Status: planning + first draft. Nothing here is verified yet.
+Status: planning + first draft. Nothing here is verified yet. Session
+6.5 build state is complete (merged to dev `df0e2fc`); Phase 0 example
+blocks are recorded at the end of this file (2026-10-20).
 
 ## Approach
 
@@ -304,3 +306,99 @@ no pill is open there is no listener at all, so the /voicings keydown
 handler (Stop playback, clear preview) keeps its current behaviour
 untouched. Outside `mousedown` is handled the same way (capture, only
 while open).
+
+## Phase 0 — example blocks (as built, 2026-10-20, branch `learn-examples`)
+
+Plan: `instructional-content.md` Phase 0. Built in three parts (A pure
+layer, B DOM, C deep links); all suites green; merge pending.
+
+### Syntax
+
+A topic body block that is **only** `[[example <id>]]` on one line.
+Inline use is not supported: `[[example x]]` inside a paragraph stays
+literal text. Pages render the block; pills and the index show the
+summary, which may never carry one (self-test). `mini-markdown.js`
+exposes the mechanism as an optional `renderBlock(block, opts)` hook on
+`renderMarkdown` (null falls through), and `voicing-explainer-content.js`
+passes `exampleBlockHook` from `renderTopic`.
+
+### Registry — `static/shared/learn-example.js` (pure)
+
+```
+EXAMPLES[id] = {
+  symbol, bass,                 // 'C7', 'C2'
+  voicing | shape,              // ['E3', 'B♭3']  or  { degrees: ['3','7'], aboveBass: [16, 22] } (applyShape)
+  label,                        // must contain the chord's display name
+  roll?, tempo?, key?,          // roll → comp arp + bassLine arp (bass leads); tempo default 90; key default 'C'
+  piece?, bar?, event?,         // PUBLIC_PIECES name, written bar, 1-BASED comp event (default 1)
+  matches?, bassSource?,        // strict link; the fixture event's bassSource (default 'voice')
+  wide?, doubled?,              // relax the span / repeated-pitch-class checks
+}
+resolveExample(id) → { id, symbol, display, parsed, bass, bassMidi, bassDegree, voicing, midis, degrees,
+                       notes, shape, label, roll, tempo, link, progression } | null
+```
+
+Nothing musical is typed twice: degrees come from `namedVsPlayed`, the
+shape from `shapeKey`, shape-built voicings from `applyShape`, and the
+synthetic one-bar progression (key C, 4/4, whole-bar chord, a one-note
+`bassLine`) feeds `buildBarModel` and `buildPlaybackList` unchanged.
+
+Links: **related** (default) — the bar and 1-based event must exist in
+the fixture; **strict** (`matches: true`) — the fixture event's bass +
+voicing must equal the example's notes and its `bassSource` must be
+`voice` or `carried`, never `inferred` (resolve-time error and
+self-test). `bassSource` is authored on the link because the browser
+cannot read fixtures; the self-test checks it against the fixture.
+`PUBLIC_PIECES` (maple-leaf-rag, fixture) is the allowlist; each entry
+needs a committed fixture with the same title. The private piece can
+never be linked.
+
+Seeds: `c7-shell-3-below-7` (related → rag 12.2, bass inferred),
+`c7-shell-7-below-3`, `c7-rootless-a-form` (shape-built, 3 13 ♭7 9),
+`eb7-shell-in-the-rag` (related → rag 16.2, bass inferred; no E♭7 event
+with a real bass is a shell — bars 2 and 4 are E♭7/B♭ with the root
+above). The first two sit in `guide-tones-and-shells`.
+
+### Mounter — `static/shared/learn-example-view.js` (DOM)
+
+`mountExamples(root)` after `body.innerHTML` in
+`templates/learn/topic.html` (loaded on topic pages only). Per block:
+label; `VoicingKeyboard` from the C at or below the bass to the B at or
+above the top note, at least two octaves, `height: 84`, `ariaLabel`
+"C7: C2, E3, B♭3"; degree line "C2 R · E3 3 · B♭3 ♭7" in role colours;
+`VoicingStaff`; ▶ with `aria-label` "Play <label>"; link line "This
+exact voicing: <Piece>, bar N" / "Related: <Piece>, bar N" plus
+"(bass inferred)".
+
+Rules: one shared `VoicingPlayer` per page (`Tone.Transport` is global)
+— ▶ on another block stops the current one and returns its button to
+idle; the playing block's button stops it. Button states idle /
+loading / playing, inline hints for muted (points at the nav sound
+button), blocked, error. Lazy: the staff renders when the block comes
+within 200 px of the viewport (Verovio loads then, once) or on first
+▶; Tone.js and the Salamander samples load on the first ▶ anywhere on
+the page. Keyboard and staff follow playback. Narrow screens: the
+keyboard keeps 28 px keys and scrolls inside the card, pre-scrolled to
+centre the voicing; no page overflow at 360 px.
+
+`voicing-keyboard.js` gained `height` and `ariaLabel` constructor
+options (additive; /voicings unchanged).
+
+### /voicings deep links — `static/shared/voicing-url.js`
+
+`/voicings?piece=<name>&bar=<written>&event=<1-based>&melody=1`.
+`parseVoicingsParams(search)` → `{ piece, melody, bar, event }`
+(positive integers or null); `resolveRequestedSelection(analysis,
+{ bar, event })` → `{ bar, eventIndex }` | null (event − 1 clamped to
+the bar's events; null bar, missing bar or no comp events → null);
+`voicingsUrl({ piece, bar, event, melody })`. The page consumes the
+request once in `load()` (only for the piece it named; silent fallback
+to the first comp bar), mirrors the selection back from `select()`
+with `replaceState` (no history entries), drops `bar` / `event` in
+`switchPiece`, keeps them in `setIncludeMelody`.
+
+### Suites
+
+analysis 64 · staff 70 · playback 95 · explore 89 · mini-markdown 33 ·
+content 41 · describe 61 · learn-example 34 · voicing-url 20 ·
+check_export 25/25 · check_midi 0 mismatches.

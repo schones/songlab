@@ -10,7 +10,9 @@
  * engine's exported constants (TENSION_WEIGHTS, OCTAVE_DISCOUNTS,
  * DEFAULT_MAX_SPAN, ARP_STEP_MS, …) so the content stays true when a
  * constant is tuned. Bodies are a Markdown subset (mini-markdown.js) in
- * template strings. Public examples only: the Maple Leaf Rag fixture
+ * template strings; a line that is only `[[example <id>]]` becomes an example
+ * block from the learn-example.js registry (pages only — pills and the index
+ * show the summary, which never carries one). Public examples only: the Maple Leaf Rag fixture
  * (`?piece=maple-leaf-rag`), the synthetic fixture (`?piece=fixture`), or
  * constructed chords. Private material never appears here.
  *
@@ -59,6 +61,7 @@ import { VEROVIO_VERSION } from './voicing-staff.js';
 import { INTERVAL_SERIES } from './voicing-chart.js';
 import { parseNote } from './voicing-analysis.js';
 import { renderMarkdown, renderInline } from './mini-markdown.js';
+import { exampleBlockHook, exampleRefs, getExample, exampleBlockHtml } from './learn-example.js';
 
 // ════════════════════════════════════════════════════════════════════
 // STATUS
@@ -805,6 +808,14 @@ const TOPICS = {
       - C2 bass, E3 and B♭3 above (3rd below the 7th)
       - C2 bass, B♭3 and E4 above (7th below the 3rd)
 
+      Here is the first one to hear: the bass, then the 3rd and the 7th above it.
+
+      [[example c7-shell-3-below-7]]
+
+      And the same two notes the other way up.
+
+      [[example c7-shell-7-below-3]]
+
       The 5th is left out, and it's rarely missed. That economy is the point:
       a shell leaves room for a melody on top and for
       [extensions](extensions) (9ths, 13ths) to be added as colour.
@@ -991,7 +1002,7 @@ function renderTopic(slug) {
     kind: t.kind || 'fact',
     panel: t.panel || null,
     summaryHtml: renderInline(t.summary || '', { resolveLink }),
-    html: renderMarkdown(t.body || '', { resolveLink }),
+    html: renderMarkdown(t.body || '', { resolveLink, renderBlock: exampleBlockHook }),
     seeAlso: (t.see_also || []).map(resolveSlug).filter(Boolean),
   };
 }
@@ -1049,6 +1060,26 @@ async function selfTest() {
     if (r.status === 'claude-draft' && r.disclaimer !== DISCLAIMER['claude-draft']) bad.push(`${s}: disclaimer`);
   }
   check('every body renders clean', !bad.length, bad.join('; '));
+
+  // Example blocks: every [[example id]] in a body is in the registry; summaries carry none.
+  const badExamples = [];
+  for (const s of slugs) for (const id of exampleRefs(TOPICS[s].body)) if (!getExample(id)) badExamples.push(`${s} → ${id}`);
+  check('every [[example id]] in a body resolves', !badExamples.length, badExamples.join('; '));
+  const exampleInSummary = slugs.filter(s => exampleRefs(TOPICS[s].summary).length);
+  check('no summary contains [[example', !exampleInSummary.length, exampleInSummary.join(', '));
+  // A synthetic topic exercises the block through renderTopic (real topics carry no example yet).
+  const SYN = '__example-test';
+  TOPICS[SYN] = { title: 'Synthetic', status: 'claude-draft', category: 'theory', kind: 'fact', see_also: [], summary: 'Synthetic topic for the self-test.',
+    body: '\n      Before.\n\n      [[example c7-shell-3-below-7]]\n\n      Inline [[example c7-shell-3-below-7]] stays text.\n\n      [[example no-such-example]]\n    ' };
+  try {
+    const r = renderTopic(SYN);
+    const lines = r.html.split('\n');
+    check('synthetic topic: block line becomes the example placeholder', lines[1] === exampleBlockHtml('c7-shell-3-below-7') && lines[0] === '<p>Before.</p>');
+    check('synthetic topic: inline reference stays literal text', r.html.includes('<p>Inline [[example c7-shell-3-below-7]] stays text.</p>'));
+    check('synthetic topic: unknown id renders the visible notice, not a throw', r.html.includes('learn-example--missing') && r.html.includes('no-such-example'));
+    check('synthetic topic: summary untouched by the hook', r.summaryHtml === 'Synthetic topic for the self-test.');
+    check('synthetic topic: the registry check catches its unknown id', exampleRefs(TOPICS[SYN].body).some(id => !getExample(id)));
+  } finally { delete TOPICS[SYN]; }
 
   // Interpolation spot checks: the numbers in the text are the constants.
   const ts = renderTopic('tension-scoring').html;

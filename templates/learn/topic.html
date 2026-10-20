@@ -37,6 +37,7 @@
 {% block scripts %}
 <script type="module">
   import { renderTopic, EXTERNAL } from "{{ url_for('static', filename='shared/voicing-explainer-content.js') }}";
+  import { mountExamples } from "{{ url_for('static', filename='shared/learn-example-view.js') }}";
 
   const slug = document.getElementById('lt-page').dataset.slug;
   const root = document.getElementById('lt-content');
@@ -78,6 +79,7 @@
       const body = h('article', `learn-body lt-body learn-kind--${r.kind}`);
       body.innerHTML = r.html;
       root.appendChild(body);
+      mountExamples(body);   // [[example id]] placeholders → keyboard + staff + ▶ (learn-example-view.js)
     }
     if (r.seeAlso.length) {
       const sec = h('section', 'lt-seealso');

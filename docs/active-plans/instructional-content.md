@@ -6,7 +6,14 @@ registry (`static/shared/voicing-explainer-content.js`). Status of the
 topics is tracked by the registry itself (`/learn#status=claude-draft`
 is the worklist).
 
-## Phase 0 — example block
+## Phase 0 — example block — DONE 2026-10-20 (branch `learn-examples`, merge pending)
+
+As built: `[[example <id>]]` on its own line (decided over a fenced
+block); registry `static/shared/learn-example.js`; mounter
+`static/shared/learn-example-view.js`; deep links `voicing-url.js`
+(`?piece=&bar=&event=`, 1-based event, added in part C). Record:
+`explainer-content.md` "Phase 0 — example blocks (as built)" and
+SESSION_LOG 2026-10-20. Original brief:
 
 An EXAMPLE BLOCK for /learn topic bodies: one line in the Markdown body
 (a fenced block or an `[[example ...]]` syntax, to decide) that renders
@@ -23,7 +30,7 @@ Pages only: pills keep showing summaries. Example voicings are
 validated in a `selfTest` so notes, degrees and labels can never
 disagree.
 
-## Phase 1 — theory stubs, in dependency order
+## Phase 1 — theory stubs, in dependency order — NEXT
 
 About 2–3 topics per session:
 
@@ -75,7 +82,19 @@ link) → common confusions → try it (Explore or a game) → sources.
 - C. Theory drafted in the planning chat; Claude Code formats and wires.
 - D. Per-claim verification, checklist kept in each topic's `notes`.
 
-## Open / RADAR highlights (as of 2026-10-19)
+## Open / RADAR highlights (as of 2026-10-20)
+
+- Public pieces track: I Got Rhythm, Body and Soul, Georgia on My Mind
+  (1930, US public domain since 2026-01-01). Sources: original 1930
+  sheet-music scans; melody + chords added by analysis; comping
+  constructed, recorded in a new provenance field `voicingSource:
+  "constructed"`. US-only status (Carmichael and Green are not PD under
+  life + 70). Just Friends (1931) becomes eligible 2027-01-01.
+- `/voicings` passes the raw `?piece=` name to `load()` unvalidated;
+  pairs with the private-data item below before any shared deploy.
+- Example blocks: Verovio may load at page load on a tall window (200 px
+  observer margin). Strict links require a non-inferred bass, so no rag
+  E♭7 shell can be strict; `eb7-shell-in-the-rag` is on no topic yet.
 
 - Unverified, on the Levine list: the shape catalogue (especially the
   dominant A/B rows), the T2 claims, the dominant-rule wording.

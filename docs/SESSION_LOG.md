@@ -3,6 +3,124 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-10-20 — Instructional content Phase 0: example blocks (pure layer, mounter, /voicings deep links)
+
+Branch `learn-examples` off `dev` (`df0e2fc`). One read-and-report,
+then three build-then-STOP parts (A pure layer, B DOM + styles, C deep
+links) and this docs pass. Every part ran all suites plus check_export
+/ check_midi and a headless-Chrome check over CDP. Nothing committed
+yet; Dustin's browser check is next.
+
+### Landed
+- `mini-markdown.js`: optional `renderBlock(block, opts)` hook on
+  `renderMarkdown`, tried before the built-in dispatch; null falls
+  through. 28 → 33 tests; a hook that always falls through gives
+  byte-identical output to no hook.
+- `static/shared/learn-example.js` (new, pure, 34/34): `EXAMPLES`
+  registry — symbol, bass, and either a spelled voicing or a shape
+  (`applyShape`); label; optional roll, tempo, key; optional piece /
+  bar / event (1-based) / matches / bassSource. `resolveExample(id)`
+  derives everything else through the engine (`parseSymbol`,
+  `namedVsPlayed`, `shapeKey`) and builds a synthetic one-bar
+  progression (key C, 4/4, whole-bar chord, `bassLine` with the bass)
+  for `buildBarModel` and `buildPlaybackList`. `exampleBlockHook`
+  turns a block that is only `[[example <id>]]` into a placeholder
+  div; inline references stay literal; unknown ids render a visible
+  notice. `PUBLIC_PIECES` allowlist (maple-leaf-rag, fixture), checked
+  against fixtures on disk and their titles. Seeds: `c7-shell-3-below-7`
+  (related → rag 12.2), `c7-shell-7-below-3`, `c7-rootless-a-form`
+  (shape-built: E3 A3 B♭3 D4 = 3 13 ♭7 9), `eb7-shell-in-the-rag`
+  (related → rag 16.2).
+- `voicing-explainer-content.js`: `renderTopic` passes the hook;
+  self-test checks every body reference resolves, summaries carry
+  none, and a synthetic topic exercises block / inline / unknown
+  through `renderTopic` (34 → 41). `guide-tones-and-shells` carries
+  the two C7 shells with one-sentence lead-ins.
+- `voicing-keyboard.js`: `height` and `ariaLabel` options (additive;
+  defaults reproduce today's keyboard).
+- `static/shared/learn-example-view.js` (new, DOM): `mountExamples(root)`
+  → per block: label, keyboard (C at/below the bass … B at/above the
+  top, ≥ 2 octaves, 84 px), degree line in role colours, staff, ▶,
+  link line. One shared `VoicingPlayer`; `owner` block; take-over
+  returns the previous button to idle; states idle / loading /
+  playing with hints for muted / blocked / error. Staff renders on
+  viewport entry (200 px margin) or first ▶; Tone + Salamander on
+  first ▶. Keyboard `setPlaying` and staff `setPlaying` follow
+  playback. `templates/learn/topic.html` imports it and mounts after
+  `innerHTML`; `learn.css` card styles.
+- `static/shared/voicing-url.js` (new, 20/20): `parseVoicingsParams`,
+  `resolveRequestedSelection`, `voicingsUrl`; `pieceUrl` in
+  learn-example delegates to it. `templates/voicings.html`: one-shot
+  `requestedSelection` consumed in `load()`; `syncSelectionUrl()` from
+  `select()` and `renderEmpty()` (`replaceState`); `switchPiece` drops
+  `bar` / `event`.
+- Suites: analysis 64, staff 70, playback 95, explore 89,
+  mini-markdown 33, content 41, describe 61, learn-example 34,
+  voicing-url 20; check_export 25/25; check_midi 0 mismatches.
+
+### Diagnosed / decided
+- Reference-by-id over a fenced block: mini-markdown has no fences,
+  its blank-line splitter would break multi-line data, and typed-in
+  notes are what the self-test exists to prevent. Block-level only:
+  a widget cannot live inside `<p>`.
+- Strict links need a real bass: bars 9–17 of the rag have
+  `bassSource: inferred`, so `eb7-shell-in-the-rag` (16.2) was
+  downgraded to related. The only real-bass E♭7 events (bars 2 and 4,
+  E♭7/B♭) put the 5th in the bass with the root above — not a shell.
+  `bassSource` is authored on the link (the browser cannot read
+  fixtures) and verified against the fixture by the self-test; a
+  strict link on an inferred bass throws at resolve time.
+- The playback model only lets the bass lead a roll when a `bassLine`
+  note flagged `arp` attacks with the chord, so the synthetic bar
+  carries a one-note `bassLine` (also the staff's bass voice).
+- Shared player: `Tone.Transport` is global and `play()` cancels it,
+  so a second `VoicingPlayer` on a page would cancel the first.
+- Narrow screens: keyboard keeps 28 px keys and scrolls inside the
+  card, pre-scrolled to centre the voicing; scaling makes labels
+  unreadable, shrinking the range hides notes. 360 px: document
+  scroll width = viewport.
+- Staff follow-highlight is free: the playback list and the staff
+  come from the same bar model, so piece ids match.
+- Deep links: a request applies only to the piece it named (dropped
+  when the page falls back to the fixture); no event → the bar's
+  max-tension event, then written back to the URL; raw `?piece=` still
+  goes to `load()` so an unknown name keeps its banner.
+
+### Setup for next session
+- Branch `learn-examples`, uncommitted working tree: mini-markdown.js,
+  learn-example.js (new), learn-example-view.js (new), voicing-url.js
+  (new), voicing-keyboard.js, voicing-explainer-content.js, learn.css,
+  templates/learn/topic.html, templates/voicings.html, these docs.
+- CDP check scripts live in the session scratchpad only (not in the
+  repo); the shape is the Session 6.5 one (Node's built-in WebSocket).
+- Dev server on 5001 was already running (Dustin's); mine refused the
+  port and was not needed.
+
+### Calibration notes
+- A rag link that "looks right" (16.2 is note-for-note the shell) can
+  still be wrong on provenance; the bassSource invariant caught the
+  distinction the eye did not.
+- The load-order check needed real request logs: a `/tone/i` grep
+  matched the page URL ("guide-tones"), not Tone.js.
+
+### Flagged for later
+- Public pieces track: I Got Rhythm, Body and Soul, Georgia on My Mind
+  (1930, US PD since 2026-01-01). Sources must be original 1930
+  sheet-music scans; melody + chords added by analysis; comping
+  constructed under a new provenance field `voicingSource:
+  "constructed"`. US-only (Carmichael, Green not PD under life + 70).
+  Just Friends (1931) eligible 2027-01-01. (RADAR)
+- Raw `?piece=` name reaches `load()` unvalidated; pairs with the
+  private-data-under-`static/` item before any shared deploy. (RADAR)
+- Verovio may load at page load on tall windows (200 px observer
+  margin reaches the first block). (RADAR)
+- `eb7-shell-in-the-rag` is in the registry but on no topic yet.
+
+### Out of scope / deferred
+- Phase 1 theory stubs (next). Tension / named-vs-played lines in the
+  block (Phase 0 shows notes, degrees, label only). Treble-only staff
+  for high voicings. Git (Dustin's).
+
 ## 2026-10-17 → 19 — Voicing Explorer Session 6.5: explainer layer, Theory card, dominant rule, piece picker, rag fixes, P6 close-out
 
 Nine build-then-STOP prompts plus read-only checks (P1–P2 on 10-17,

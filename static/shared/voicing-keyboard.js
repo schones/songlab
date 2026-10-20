@@ -10,6 +10,8 @@
  *
  * Usage:
  *   const kb = new VoicingKeyboard('vp-keyboard', { low: 'C2', high: 'B5' });
+ *   //   options.height     white-key height in px (default 112; black keys keep the 70/112 ratio)
+ *   //   options.ariaLabel  the keyboard's aria-label (default 'Keyboard showing the selected bar')
  *   kb.setRange(24, 95);                 // midi or spelled; rebuilds the keys
  *   kb.render({ bass: 'D3', voicing: ['F♯3', 'G3', 'A3', 'D4'], melody: [] });
  *   kb.setHighlight(62);                 // ring one key, or a Set/array of midis; null clears
@@ -54,13 +56,17 @@ const CSS = /* css */ `
 class VoicingKeyboard {
   /**
    * @param {string|Element} container
-   * @param {{ low?: string, high?: string }} [options]  Spelled notes with octave; default C2–B5.
+   * @param {{ low?: string, high?: string, height?: number, ariaLabel?: string }} [options]
+   *   low / high: spelled notes with octave; default C2–B5.
+   *   height: white-key height in px; omitted = the stylesheet's WHITE_H. ariaLabel: default 'Keyboard showing the selected bar'.
    */
   constructor(container, options = {}) {
     this._container = typeof container === 'string' ? document.getElementById(container) : container;
     const low = parseNote(options.low || 'C2'), high = parseNote(options.high || 'B5');
     this._low = low.midi;
     this._high = high.midi;
+    this._height = Number(options.height) > 0 ? Number(options.height) : null;   // null: CSS defaults apply
+    this._ariaLabel = options.ariaLabel || 'Keyboard showing the selected bar';
     this._keys = new Map();   // midi → element
     this._roles = {};         // last render() roles, restored after setPlaying(null)
     this._wrap = null;
@@ -176,7 +182,8 @@ class VoicingKeyboard {
     const kb = document.createElement('div');
     kb.className = 'vk';
     kb.setAttribute('role', 'img');
-    kb.setAttribute('aria-label', 'Keyboard showing the selected bar');
+    kb.setAttribute('aria-label', this._ariaLabel);
+    if (this._height) kb.style.height = `${this._height}px`;
 
     let whiteIdx = 0;
     let whites = 0;
@@ -189,6 +196,7 @@ class VoicingKeyboard {
       const el = document.createElement('div');
       el.className = `vk-key vk-key--${black ? 'black' : 'white'}`;
       el.dataset.midi = String(m);
+      if (this._height) el.style.height = `${black ? Math.round(this._height * BLACK_H / WHITE_H) : this._height}px`;
       const label = document.createElement('span');
       label.className = 'vk-key__label';
       if (black) {

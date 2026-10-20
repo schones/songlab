@@ -281,6 +281,7 @@
   import { topicsForPanel, glossaryLookup, resolveSlug, DISCLAIMER }
                                    from "{{ url_for('static', filename='shared/voicing-explainer-content.js') }}";
   import { describeVoicing }       from "{{ url_for('static', filename='shared/voicing-describe.js') }}";
+  import { parseVoicingsParams, resolveRequestedSelection } from "{{ url_for('static', filename='shared/voicing-url.js') }}";
 
   const DEFAULT_PIECE = 'dont-be-sad';
   const FIXTURE_PIECE = 'fixture';
@@ -368,9 +369,20 @@
     const nowKey = state.selectedEvent != null ? overrideKey(barNumber, state.selectedEvent) : null;
     if (nowKey !== wasKey) state.explore.target = null;   // the target defaults per event
 
-    chart.setSelected(barNumber);
+    chart.setSelected(barNumber);   // also scrolls the chart to the bar
+    syncSelectionUrl();
     renderPanels(state.effective, state.analysis);
     renderExplore();
+  }
+
+  // The address bar is always a copyable link to the current bar / event:
+  // ?bar=<written number>&event=<1-based>, replaced in place (no history
+  // entries). Both are dropped when nothing is selected.
+  function syncSelectionUrl() {
+    const url = new URL(window.location.href);
+    if (state.selectedBar != null) url.searchParams.set('bar', String(state.selectedBar)); else url.searchParams.delete('bar');
+    if (state.selectedBar != null && state.selectedEvent != null) url.searchParams.set('event', String(state.selectedEvent + 1)); else url.searchParams.delete('event');
+    history.replaceState(null, '', url);
   }
 
   // Detail, keyboard, staff and Tonnetz for the selected event, from a given
@@ -942,6 +954,7 @@
     keyboard.clear();
     staff.clear();
     HarmonyState.update({ activeNotes: [], activeTriads: [], activeChord: null, activeTransform: null, activeInterval: null });
+    syncSelectionUrl();
     renderPlayButton();
   }
 
@@ -1014,16 +1027,27 @@
     });
 
     chart.render(state.effective, state.analysis, null);
-    const firstWithComp = progression.bars.find(b => b.comp && b.comp.length) || progression.bars[0];
-    if (firstWithComp) select(firstWithComp.bar);
+    // A deep link's bar / event applies once, to the piece it was written for
+    // (not to a fallback fixture); anything that does not resolve falls back
+    // to the first comp bar, silently.
+    const request = requestedSelection;
+    requestedSelection = null;
+    const wanted = request && loadedName === name ? resolveRequestedSelection(state.analysis, request) : null;
+    if (wanted) select(wanted.bar, wanted.eventIndex);
+    else {
+      const firstWithComp = progression.bars.find(b => b.comp && b.comp.length) || progression.bars[0];
+      if (firstWithComp) select(firstWithComp.bar);
+    }
     renderPlayButton();
   }
 
-  /** Switch piece from the header: the URL keeps the choice (same param as a deep link), then load() as an explicit request. */
+  /** Switch piece from the header: the URL keeps the choice (same param as a deep link) and drops the old bar / event, then load() as an explicit request. */
   function switchPiece(name) {
     if (!/^[a-z0-9-]+$/.test(name)) return;
     const url = new URL(window.location.href);
     url.searchParams.set('piece', name);
+    url.searchParams.delete('bar');
+    url.searchParams.delete('event');
     history.replaceState(null, '', url);
     load(name, { explicit: true });
   }
@@ -1063,10 +1087,14 @@
   }
   loadPieceList();
 
-  const params = new URLSearchParams(window.location.search);
-  state.includeMelody = params.get('melody') === '1';
+  // ?piece=&bar=&event=&melody= (voicing-url.js). bar / event are a one-shot
+  // request consumed by load(); the raw piece name goes to load() unvalidated
+  // so an unknown name still gets its "No data" banner.
+  const params = parseVoicingsParams(window.location.search);
+  state.includeMelody = params.melody;
   renderMelodyToggle();
-  const requested = params.get('piece');
+  let requestedSelection = params.bar != null ? { bar: params.bar, event: params.event } : null;
+  const requested = new URLSearchParams(window.location.search).get('piece');
   load(requested || DEFAULT_PIECE, { explicit: !!requested });
 
   // Debug handle for the browser console (no behaviour depends on it).

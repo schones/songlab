@@ -62,3 +62,41 @@
 .learn-body th, .learn-body td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--border-subtle, #E8E2D2); vertical-align: top; }
 .learn-body th { font-weight: var(--font-weight-medium, 500); color: var(--text-secondary, #4A4339); font-size: var(--font-size-2xs, 0.8rem); text-transform: uppercase; letter-spacing: 0.05em; }
 .learn-body strong { font-weight: 700; }
+
+/* ── Example blocks (/learn pages; learn-example.js + learn-example-view.js) ── */
+.learn-example {
+  margin: 1.1em 0 1.3em; padding: var(--space-md, 12px) var(--space-md, 12px) var(--space-sm, 8px);
+  border: 1px solid var(--border-color, #D9D2C0); border-radius: var(--radius-xl, 12px);
+  background: var(--bg-surface, #FFFFFF); color: var(--text-primary, #1F1B16);
+  max-width: 100%; min-width: 0; box-sizing: border-box;
+}
+.learn-example--missing {
+  border-style: dashed; color: var(--text-muted, #8C8576); font-style: italic; font-size: var(--font-size-xs, 0.9rem);
+}
+.learn-example__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 8px; }
+.learn-example__label { flex: 1 1 12em; font-weight: var(--font-weight-medium, 500); font-size: var(--font-size-sm, 1rem); line-height: 1.3; }
+.learn-example__play {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px;
+  border-radius: var(--radius-md, 6px); border: 1px solid var(--border-strong, #BFB6A0);
+  background: var(--bg-raised, #FBF8EF); color: var(--text-primary, #1F1B16);
+  font: inherit; font-size: var(--font-size-xs, 0.9rem); cursor: pointer; white-space: nowrap;
+  transition: border-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease);
+}
+.learn-example__play:hover:not(:disabled) { border-color: var(--accent-gold, #D4A03C); }
+.learn-example__play:focus-visible { outline: 2px solid var(--accent-gold, #D4A03C); outline-offset: 2px; }
+.learn-example__play:disabled { opacity: 0.6; cursor: default; }
+.learn-example__play--playing { border-color: var(--accent-gold, #D4A03C); color: var(--accent-gold, #D4A03C); }
+/* The keyboard keeps its 28 px minimum keys and scrolls inside the card on narrow screens (voicing-keyboard.js .vk-wrap). */
+.learn-example__keyboard { max-width: 100%; }
+.learn-example__keyboard .vk-wrap { padding-bottom: 2px; }
+.learn-example__degrees { margin: 8px 0 10px; font-size: var(--font-size-xs, 0.9rem); color: var(--text-secondary, #4A4339); line-height: 1.5; }
+.learn-example__degrees b { font-weight: var(--font-weight-medium, 600); color: var(--text-primary, #1F1B16); }
+.learn-example__note--bass b { color: var(--accent-gold, #D4A03C); }
+.learn-example__note--voicing b { color: var(--accent-blue-bright, #3A8BC9); }
+.learn-example__sep { color: var(--text-ghost, #B3AC9D); }
+.learn-example__staff .vs-wrap { min-height: 96px; padding: 4px 8px; background: var(--bg-raised, #FBF8EF); }
+.learn-example .vs-svg svg { max-width: 300px; }
+.learn-example__hint { margin: 8px 0 0; font-size: var(--font-size-2xs, 0.8rem); color: var(--accent-coral, #E87461); }
+.learn-example__hint[hidden] { display: none; }
+.learn-example__link { margin: 8px 0 2px; font-size: var(--font-size-xs, 0.9rem); color: var(--text-muted, #8C8576); }
+@media (max-width: 700px) { .learn-example { padding: var(--space-sm, 8px) var(--space-sm, 8px) 6px; border-radius: var(--radius-lg, 8px); } }

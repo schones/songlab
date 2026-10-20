@@ -1,9 +1,11 @@
 # SongLab Project Status
 
-**Last updated:** 2026-10-16
-**Branch:** `voicing-explorer` (active — Voicing Explorer analysis
-arc, Sessions 1–6 landed 2026-10-14 → 16, 19 commits ahead of dev)
-· `dev` (Cantor v1 through 6B; MIDI multi-port fix `57afaa9`) ·
+**Last updated:** 2026-10-20
+**Branch:** `learn-examples` (active — instructional content Phase 0,
+example blocks + /voicings deep links, off `dev` after the Voicing
+Explorer merge `df0e2fc`; parts A–C built 2026-10-20, awaiting
+browser check + merge) · `dev` (Cantor v1 through 6B; MIDI multi-port
+fix `57afaa9`; Voicing Explorer Sessions 1–6.5 merged `df0e2fc`) ·
 `cantor` (presentational arc, Session 2 polish not resumed since
 2026-05-19) · on origin only: `archive/cantor-presentational-spike`
 (validated spike, known-good reference), `archive/skratch-integration`,
@@ -213,9 +215,18 @@ override layer with tie propagation; kept bars outlined green. First
 listening on bar 21 recorded in SESSION_LOG. Session 6.5 (explainer
 layer, Theory card, dominant rule, piece picker, rag fixes) landed
 2026-10-19 and the branch merged to dev (`df0e2fc`). Next:
-Instructional content — Phase 0 example block (see
-`docs/active-plans/instructional-content.md`). Plan:
-`docs/active-plans/voicing-explorer-build-plan.md`. Schema:
+Instructional content. Phase 0 (example blocks) landed 2026-10-20 on
+`learn-examples` in three build-then-STOP parts: A, the pure layer
+(`[[example <id>]]` block syntax through a `renderBlock` hook in
+mini-markdown, the `learn-example.js` registry with degrees derived
+by the engine, related / strict piece links); B, the page
+(`learn-example-view.js`: keyboard + degree line + staff + ▶ per
+block, one shared player, staff on viewport entry, piano on first ▶,
+`VoicingKeyboard` height / ariaLabel options); C, /voicings deep
+links (`voicing-url.js`: `?piece=&bar=&event=` with a 1-based event,
+selection mirrored back with `replaceState`). Next: Phase 1 theory
+stubs in dependency order (`docs/active-plans/instructional-content.md`).
+Plan: `docs/active-plans/voicing-explorer-build-plan.md`. Schema:
 `tools/voicings/schema.md`.
 
 Dev environment (since 2026-10-14): development runs on the Mac
@@ -237,7 +248,7 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 
 **Next priorities (active):**
 1. ~~**Voicing Explorer — tension option B**~~ — landed 2026-10-15 (`af3034b`): spans reduced mod 12, `OCTAVE_DISCOUNTS = {m2: 2/3, M2: 0, TT: 2/3, M7: 0}`; comp-only numbers inside one octave unchanged; compound minor 2nds and tritones now score (bar 26 0 → 1.333, bar 28 3 → 4.333), major 9ths/14ths do not (see SESSION_LOG).
-2. **Next: Instructional content — Phase 0 example block** (see `docs/active-plans/instructional-content.md`). ~~Voicing Explorer Session 6.5 (explainer layer, Theory card, dominant rule, piece picker, rag fixes)~~ landed 2026-10-19 and merged to dev (`df0e2fc`); Explore tuning items stay open in RADAR. ~~Session 6 (Explore first slice)~~ landed 2026-10-16 (`ad44437`, `7ccd8fb`, `ea7d7ff`). ~~Session 5 (playback + melody toggle)~~ landed 2026-10-16. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+2. **Next: Instructional content — Phase 1 theory stubs** (2–3 topics per session in dependency order; see `docs/active-plans/instructional-content.md`). ~~Phase 0 example block~~ landed 2026-10-20 on `learn-examples` (parts A–C; merge pending). ~~Voicing Explorer Session 6.5 (explainer layer, Theory card, dominant rule, piece picker, rag fixes)~~ landed 2026-10-19 and merged to dev (`df0e2fc`); Explore tuning items stay open in RADAR. ~~Session 6 (Explore first slice)~~ landed 2026-10-16 (`ad44437`, `7ccd8fb`, `ea7d7ff`). ~~Session 5 (playback + melody toggle)~~ landed 2026-10-16. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
 3. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
 4. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
 
@@ -651,11 +662,80 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   28, content 34, describe 61. Verified in headless Chrome at 2560 /
   1440 / 1100 / 390.
 
+**Landed on `learn-examples` (Instructional content Phase 0, 2026-10-20, parts A–C, merge pending):**
+- Example blocks for /learn pages. Syntax: a body block that is only
+  `[[example <id>]]` on one line (inline use stays literal text).
+  `mini-markdown.js` gained an optional `renderBlock(block, opts)` hook
+  tried before the built-in dispatch (null falls through; 28 → 33
+  tests, no output change without a hook).
+- `static/shared/learn-example.js` (pure, 34/34): `EXAMPLES` registry
+  authored as symbol + bass + either a spelled voicing or a shape
+  (`applyShape`); `resolveExample(id)` derives display, per-note
+  degrees (`namedVsPlayed`), `shapeKey`, and a synthetic one-bar
+  progression (key C, 4/4, whole-bar chord, `bassLine` carrying the
+  bass so a roll leads from it) that `buildBarModel` and
+  `buildPlaybackList` take unchanged. `exampleBlockHook` → placeholder
+  `<div class="learn-example" data-example>`; unknown ids render a
+  visible notice. Piece links: `related` (bar + 1-based event must
+  exist) or `strict` (`matches: true`: fixture event's bass + voicing
+  must equal the example's notes AND its `bassSource` must be `voice`
+  or `carried`, never `inferred`); `bassSource` authored on the link
+  and checked against the fixture; `PUBLIC_PIECES` allowlist
+  (maple-leaf-rag, fixture) with fixtures on disk. Four seed examples
+  (C7 shells both ways, a shape-built rootless A-form, an E♭7 shell
+  linked related to rag 16.2 — no rag E♭7 with a real bass is a
+  shell, bars 2/4 have the 5th in the bass). Two examples placed in
+  `guide-tones-and-shells`.
+- `static/shared/learn-example-view.js` (DOM): `mountExamples(root)`
+  after `body.innerHTML` on `templates/learn/topic.html`; each block =
+  label, `VoicingKeyboard` (C at/below the bass to B at/above the top,
+  ≥ 2 octaves, 84 px, scrolls inside the card on narrow screens and is
+  pre-scrolled to centre the voicing), degree line, `VoicingStaff`,
+  ▶, link line ("This exact voicing: …" / "Related: …, bar N",
+  "(bass inferred)"). One shared `VoicingPlayer` per page
+  (`Tone.Transport` is global): ▶ on another block stops the current
+  one and returns its button to idle. Lazy: staff renders when the
+  block comes within 200 px of the viewport (Verovio loads then);
+  Tone + Salamander load on the first ▶. Keyboard and staff follow
+  playback (same bar model ⇒ same notehead ids). Styles in
+  `learn.css` (light-theme card, tokens, 360 px: no page overflow).
+- `voicing-keyboard.js`: additive `height` and `ariaLabel` constructor
+  options; defaults unchanged, /voicings untouched.
+- `/voicings` deep links: `static/shared/voicing-url.js` (20/20) —
+  `parseVoicingsParams(search)` → `{ piece, melody, bar, event }`
+  (positive integers or null), `resolveRequestedSelection(analysis,
+  { bar, event })` → `{ bar, eventIndex }` | null (event − 1 clamped;
+  null bar / missing bar / no comp events → null), `voicingsUrl()`.
+  Page: one-shot request consumed by `load()` (only for the piece it
+  named; silent fallback to the first comp bar), `select()` mirrors
+  `bar` + 1-based `event` with `replaceState`, `switchPiece` drops
+  them, `setIncludeMelody` keeps them, `renderEmpty` clears them.
+- Suites: analysis 64, staff 70, playback 95, explore 89,
+  mini-markdown 33, content 41, describe 61, learn-example 34,
+  voicing-url 20; check_export 25/25, check_midi 0 mismatches.
+  Verified in headless Chrome over CDP (desktop + 360 px; playback
+  flow, take-over, deep links and fallbacks).
+
 **In progress:**
-- Session 7: merge `voicing-explorer` to `dev` (Dustin), clean-clone
-  check. dev has not moved since the branch point (`57afaa9`).
+- Phase 0 browser check by Dustin, then merge `learn-examples` to
+  `dev`. ~~Session 7 merge of `voicing-explorer`~~ landed 2026-10-19
+  (`df0e2fc`).
 
 **Open / deferred:**
+- Public pieces track (RADAR): I Got Rhythm, Body and Soul, Georgia on
+  My Mind (1930; US public domain since 2026-01-01). Needs original
+  1930 sheet-music scans as sources; melody + chords added by
+  analysis; comping constructed, recorded in a new provenance field
+  `voicingSource: "constructed"`. US-only status: Carmichael and Green
+  are not PD under life + 70. Just Friends (1931) becomes eligible
+  2027-01-01.
+- `/voicings` passes the raw `?piece=` name to `load()` unvalidated
+  (so an unknown name keeps its "No data" banner); the server regex
+  guards the route. Pairs with the private-data item below — resolve
+  both before any shared deploy (RADAR).
+- /learn example blocks: Verovio can load at page load on a tall
+  window (the staff's 200 px IntersectionObserver margin reaches the
+  first block); render on first ▶ instead if that matters (RADAR).
 - Explore tuning still open: register factor by degree; 0.5 ranking
   buckets create cliffs; piece ceiling self-limiting (RADAR). The
   dominant rule's "needs the ♭7" was decided by ear on one bar —
@@ -705,7 +785,12 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   stepPreview, nudgeTarget, revert, reset, copy, json, setTarget,
   setCountRange, setSourceFilter, trialProgression }`, plus
   `switchPiece(name)` and `pieces()`. `/voicings/pieces` lists what
-  `/voicings/data/<name>` can serve.
+  `/voicings/data/<name>` can serve. Deep link:
+  `/voicings?piece=<name>&bar=<written>&event=<1-based>&melody=1`
+  (`voicing-url.js`); the address bar mirrors the selection.
+- /learn example blocks: `[[example <id>]]` in a topic body; ids in
+  `EXAMPLES` (`learn-example.js`); `resolveExample(id)` in Node shows
+  the derived notes / degrees / progression.
 - Self-tests:
   `node --input-type=module -e "import('./static/shared/voicing-analysis.js').then(m => m.selfTest())"`
   `node --input-type=module -e "import('./static/shared/voicing-staff-model.js').then(m => m.selfTest())"`
@@ -714,6 +799,8 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   `node --input-type=module -e "import('./static/shared/mini-markdown.js').then(m => m.selfTest())"`
   `node --input-type=module -e "import('./static/shared/voicing-explainer-content.js').then(m => m.selfTest())"`
   `node --input-type=module -e "import('./static/shared/voicing-describe.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/learn-example.js').then(m => m.selfTest())"`
+  `node --input-type=module -e "import('./static/shared/voicing-url.js').then(m => m.selfTest())"`
   `python3 tools/voicings/check_export.py`
   `python3 tools/voicings/check_midi.py --fixture tests/fixtures/voicing-maple-leaf-rag.json`
 - Regenerate the rag: `python3 tools/voicings/ly_to_src.py --ly tests/fixtures/maple-leaf-rag.ly --out tests/fixtures/maple-leaf-rag.src.py && python3 tools/voicings/export_json.py --src tests/fixtures/maple-leaf-rag.src.py --out tests/fixtures/voicing-maple-leaf-rag.json`
