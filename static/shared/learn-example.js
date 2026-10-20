@@ -110,6 +110,19 @@ const EXAMPLES = {
     shape: { degrees: ['3', '13', '7', '9'], aboveBass: [16, 21, 22, 26] },
     label: 'C7 rootless A-form — 3, 13, ♭7, 9 over the bass',
   },
+  // T1 (chord-tones-and-roles): three close-position seventh chords over
+  // C3 that share root and 5th — only the 3rd and 7th change.
+  'cmaj7-close': { symbol: 'Cmaj7', bass: 'C3', voicing: ['E3', 'G3', 'B3'],   label: 'Cmaj7 — 1 3 5 7' },
+  'c7-close':    { symbol: 'C7',    bass: 'C3', voicing: ['E3', 'G3', 'B♭3'],  label: 'C7 — 1 3 5 ♭7' },
+  'cm7-close':   { symbol: 'Cm7',   bass: 'C3', voicing: ['E♭3', 'G3', 'B♭3'], label: 'Cm7 — 1 ♭3 5 ♭7' },
+  // T1: the rag's bar 2 as written — the 5th in the bass under a complete
+  // E♭7. The fixture event's bass is a real bass-voice note, so the link is
+  // strict: these are exactly the notes the rag plays.
+  'eb7-over-bb-rag': {
+    symbol: 'E♭7/B♭', bass: 'B♭2', voicing: ['E♭3', 'G3', 'D♭4'],
+    label: 'E♭7/B♭ — the 5th in the bass (Maple Leaf Rag, bar 2)',
+    piece: 'maple-leaf-rag', bar: 2, event: 1, matches: true, bassSource: 'voice',
+  },
   // The notes the rag plays at bar 16, second event — but the fixture's bass
   // there is inferred (the lowest chord note, no bass line under it), so the
   // link is related, not strict. No E♭7 event with a real bass is a shell:
@@ -301,7 +314,11 @@ async function selfTest() {
   }
   check('PUBLIC_PIECES: every piece has a committed fixture with the same title', !pieceProblems.length, pieceProblems.join('; '));
   const linked = R.filter(r => r.link);
-  check('seed links are related (no rag E♭7 shell has a real bass) and expose bassSource', linked.length >= 2 && linked.every(r => r.link.kind === 'related' && BASS_SOURCES.includes(r.link.bassSource)));
+  check('seed covers both link kinds and every link exposes bassSource', linked.some(r => r.link.kind === 'related') && linked.some(r => r.link.kind === 'strict') && linked.every(r => BASS_SOURCES.includes(r.link.bassSource)));
+  const t1 = ['cmaj7-close', 'c7-close', 'cm7-close'].map(id => resolved[id]);
+  check('T1 close voicings: C3 = R, degrees 3 5 7 / 3 5 ♭7 / ♭3 5 ♭7', t1.every(r => r && r.bassDegree === 'R') && t1.map(r => r.degrees.join(' ')).join(' | ') === '3 5 7 | 3 5 ♭7 | ♭3 5 ♭7');
+  const s5 = resolved['eb7-over-bb-rag'];
+  check('E♭7/B♭: bass B♭2 = 5, E♭3 = R, G3 = 3, D♭4 = ♭7, strict link to rag 2.1', s5 && s5.display === 'E♭7/B♭' && s5.bassDegree === '5' && s5.degrees.join(' ') === 'R 3 ♭7' && s5.link.kind === 'strict' && s5.link.bar === 2 && s5.link.event === 1);
   const linkProblems = [];
   for (const r of linked) {
     const { piece, bar, event, kind } = r.link;

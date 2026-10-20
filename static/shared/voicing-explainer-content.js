@@ -857,9 +857,101 @@ const TOPICS = {
       The rag bar 12 example was checked in code (namedVsPlayed: played R 3 ♭7, left out 5).`,
   },
 
-  'chord-tones-and-roles': stub('Chord tones, degrees and slash chords', 'theory',
-    ['guide-tones-and-shells', 'named-vs-played', 'roles-in-the-data', 'intro-chords'],
-    'Root, 3rd, 5th, 7th: what each chord tone does, how degrees are counted from the root, and what a slash chord says about the bass.'),
+  'chord-tones-and-roles': {
+    title: 'Chord tones, degrees and slash chords',
+    status: 'verified', category: 'theory', kind: 'fact',
+    see_also: ['guide-tones-and-shells', 'extensions', 'named-vs-played', 'roles-in-the-data', 'intro-chords'],
+    summary: 'Every note in a chord has a number — its distance from the chord’s root — and that number tells you what job the note is doing.',
+    body: `
+      ## What it is
+
+      A chord is built up from a root by stacking notes a third apart. Each
+      note is named by how far it sits above the root: the root is 1, then
+      3, 5 and 7. Go past the octave and the stack continues as 9, 11 and
+      13 — the same letters as 2, 4 and 6, an octave higher.
+
+      The number alone isn't the whole name. A flat sign marks a degree
+      that is a half step lower than in the major scale built on the root:
+
+      | Chord | Degrees | Spelled on C |
+      |---|---|---|
+      | Cmaj7 | 1 3 5 7 | C E G B |
+      | C7 | 1 3 5 ♭7 | C E G B♭ |
+      | Cm7 | 1 ♭3 5 ♭7 | C E♭ G B♭ |
+      | Cm7♭5 | 1 ♭3 ♭5 ♭7 | C E♭ G♭ B♭ |
+      | Cdim7 | 1 ♭3 ♭5 ♭♭7 | C E♭ G♭ B♭♭ |
+
+      Each degree also has a role:
+
+      - The **root** names the chord. It's often, but not always, in the bass.
+      - The **3rd and 7th** decide the chord's quality — major, minor or
+        dominant. Change either one and you have a different chord.
+      - The **5th**, when it's a perfect 5th, usually adds the least. In
+        practice it's the tone players most often leave out. An altered 5th
+        (♭5 or ♯5) is a different matter: it changes the chord's sound and is
+        usually kept. That's a rule of thumb, not a law.
+      - **9, 11 and 13** are colour. They're added on top of the basic chord
+        rather than defining it.
+
+      ## Hear it
+
+      These three chords share a root and a perfect 5th. Only the 3rd and
+      7th change.
+
+      [[example cmaj7-close]]
+
+      [[example c7-close]]
+
+      [[example cm7-close]]
+
+      ## In a real piece
+
+      In bar 2 of Maple Leaf Rag the bass plays B♭, but the chord is E♭7.
+      Counted from E♭, the bass note is the 5th, not the root. Degrees are
+      always counted from the chord's root, not from the lowest note.
+
+      [[example eb7-over-bb-rag]]
+
+      ## Common confusions
+
+      - **Degrees count from the chord, not the key.** In the key of C, a
+        D7 chord's 3rd is F♯. It's the 3rd of D, not the 3rd of the key.
+      - **"7" and "maj7" are different 7ths.** In a chord symbol, a plain 7
+        means ♭7 (C7 has B♭). Only "maj7" means the 7th a half step below the
+        root (Cmaj7 has B).
+      - **9 vs 2, 11 vs 4, 13 vs 6.** They're the same letter. With a 7th in
+        the chord, the higher numbers are the usual names. Over a plain triad
+        you'll see "add2" or "6" instead.
+      - **The degree fixes the letter name.** In A♭7 the ♭7 is G♭, not F♯,
+        because a 7th above A must be some kind of G. That's also why Cdim7
+        has B♭♭, not A.
+
+      ## Try it
+
+      - Play C7, then lower only the E to E♭. You've made Cm7.
+      - On /voicings, pick any bar and read the degree line in the Theory
+        card. Find a bar where the bass isn't the root.
+
+      ## Sources
+
+      Levine, *The Jazz Theory Book*.
+    `,
+    notes: `T1. Verified by Dustin from own knowledge, 2026-10-20. Claim 7 is a heuristic.
+      1. [x] Chords are built by stacking thirds above a root.
+      2. [x] Degrees past the octave are 9, 11, 13, the same letters as 2, 4, 6.
+      3. [x] ♭ on a degree means a half step below the major-scale degree on the root.
+      4. [x] Degree formulas and spellings for maj7, 7, m7, m7♭5, dim7 as tabled.
+      5. [x] Cdim7's 7th is spelled B♭♭. (𝄫 replaced by ♭♭ to match the engine's spelling and render in Nunito, 2026-10-20.)
+      6. [x] The 3rd and 7th determine chord quality.
+      7. [x] (heuristic) The perfect 5th is the chord tone most often omitted; an altered 5th is usually kept.
+      8. [x] 9, 11, 13 are extensions (colour tones).
+      9. [x] A plain "7" in a chord symbol means ♭7; "maj7" means the major 7th.
+      10. [x] With a 7th present, 9/11/13 are the usual names; over a triad, "add2" or "6" is common.
+      11. [x] Degrees are counted from the chord root, not the key or the bass.
+      Examples (learn-example.js): cmaj7-close, c7-close, cm7-close (close position over C3; degrees from namedVsPlayed),
+      eb7-over-bb-rag (E♭7/B♭ — strict link to rag bar 2 event 1, bassSource voice).
+      Adaptation from the draft: the table gained the |---| separator row mini-markdown needs; the text is otherwise verbatim.`,
+  },
   'extensions': stub('Extensions: 9, 11, 13 and their alterations', 'theory',
     ['guide-tones-and-shells', 'sharp-eleven-on-dominants', 'named-vs-played', 'explore-panel', 'intro-beyond-triads'],
     'Which chords take a 9th, an 11th or a 13th, which alterations (♭9, ♯9, ♯11, ♭13) belong where, and why they are colour rather than clash.'),
