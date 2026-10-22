@@ -29,6 +29,7 @@
   }
   .cos-column { max-width: 780px; margin: 0 auto; }
   .cos-page .game-title { font-size: 2rem; }
+  .cos-page .game-top-bar { margin-bottom: 0.25rem; }
   .cos-page .game-back-link { font-size: 1.1rem; }
 
   /* ── Start overlay ───────────────────────────────────────── */
@@ -55,16 +56,16 @@
     gap: 0.25rem 1rem;
     font-size: 1.35rem;
     color: var(--text-muted);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
   }
   .cos-home { font-weight: 800; color: var(--text-secondary); font-size: 1.5rem; }
 
   /* ── Target ──────────────────────────────────────────────── */
-  .cos-target { text-align: center; margin-bottom: 0.4rem; }
+  .cos-target { text-align: center; margin-bottom: 0.25rem; }
   .cos-symbol {
     font-size: 6rem;
     font-weight: 800;
-    line-height: 1.05;
+    line-height: 1;
     color: var(--text-primary);
     letter-spacing: -0.01em;
   }
@@ -85,24 +86,27 @@
     text-align: center;
     font-size: 1.5rem;
     color: var(--text-secondary);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
   }
   .cos-path--hidden { visibility: hidden; }
   .cos-path__voice + .cos-path__voice::before { content: ' · '; color: var(--text-muted); }
+  .cos-path__rule { display: block; font-size: 1.3rem; color: var(--text-muted); }   /* seam rule under the recipe on a new key's first chord */
   .cos-path__label { font-weight: 800; color: var(--text-muted); }
 
   /* ── Keyboard stage: full page width, guide overlay above the keys ── */
   .cos-kb-stage {
     position: relative;
     padding-top: 96px;           /* GUIDE_BAND in the page module: room for arrows and labels */
-    margin: 0 auto 0.75rem;
+    margin: 0 auto 0.5rem;
   }
   .cos-kb-stage .vk-wrap { overflow-y: visible; }
+  /* Middle C: red octave label so C4 stands out (#B02A14 on the key's #ECE8DC = 5.4:1); a lit C4 keeps its white note label. */
+  .cos-kb-stage .vk-key[data-midi="60"]:not(.vk-key--lit) .vk-key__label { color: #B02A14; opacity: 1; font-weight: 800; }
   .cos-guide { position: absolute; inset: 0; z-index: 3; /* above the keys (z 1–2) */ pointer-events: none; overflow: visible; font-family: var(--font-main, 'Nunito', system-ui, sans-serif); }
   .cos-kb-stage .vk-key__label { font-size: 12px; }
 
   /* ── Feedback ────────────────────────────────────────────── */
-  .cos-feedback { font-size: 1.7rem; min-height: 1.6em; margin: 0.5rem 0 0.1rem; }
+  .cos-feedback { font-size: 1.7rem; min-height: 1.6em; margin: 0.25rem 0 0; }
   .cos-coaching {
     min-height: 1.4em;
     text-align: center;
@@ -112,7 +116,7 @@
   }
 
   /* ── Controls ────────────────────────────────────────────── */
-  .cos-controls { flex-wrap: wrap; margin-top: 0.5rem; }
+  .cos-controls { flex-wrap: wrap; margin-top: 0.25rem; }
   .cos-controls .btn { font-size: 1.3rem; padding: 0.6em 1.3em; }
   .cos-controls .btn[hidden] { display: none !important; }   /* .btn sets display; keep [hidden] meaning hidden */
   .cos-pedal-hint {
@@ -122,15 +126,13 @@
     margin-top: 0.5rem;
   }
 
-  /* ── Settings row: settings panel beside the cycle indicator ── */
-  .cos-settings-row { display: flex; gap: 1.25rem; align-items: flex-start; margin-top: 1.5rem; }
-  .cos-settings { flex: 1 1 auto; min-width: 0; }
-  .cos-cycle-wrap { flex: 0 0 auto; }
-  .cos-cycle { width: 170px; height: 170px; display: block; }
+  /* ── Cycle indicator: its own row below the controls (below the fold at 1440×900 by design), settings beneath ── */
+  .cos-cycle-row { display: flex; justify-content: center; margin-top: 1.5rem; }
+  .cos-cycle { width: min(500px, 100%); height: auto; aspect-ratio: 1; display: block; }
   .cos-cycle__key { cursor: pointer; }
-  .cos-cycle__key:hover circle, .cos-cycle__key:focus-visible circle { stroke-width: 3; }
+  .cos-cycle__key:hover circle, .cos-cycle__key:focus-visible circle { stroke-width: 9; }
   .cos-cycle__key:focus { outline: none; }
-  @media (max-width: 600px) { .cos-settings-row { flex-direction: column-reverse; align-items: center; } }
+  .cos-settings { margin-top: 1.25rem; }
 
   .cos-settings {
     border: 1px solid var(--border);
@@ -226,8 +228,12 @@
       </div>
       <div class="cos-pedal-hint" id="cos-pedal-hint" hidden>Press the pedal to lock in your chord</div>
 
-      <!-- Settings + cycle indicator -->
-      <div class="cos-settings-row">
+      <!-- Cycle indicator -->
+      <div class="cos-cycle-row">
+        <svg class="cos-cycle" id="cos-cycle" role="group" aria-label="Cycle of keys"></svg>
+      </div>
+
+      <!-- Settings -->
         <details class="cos-settings" id="cos-settings">
           <summary>Settings</summary>
           <div class="cos-settings__grid">
@@ -258,10 +264,6 @@
             <select id="set-key"></select>
           </div>
         </details>
-        <div class="cos-cycle-wrap">
-          <svg class="cos-cycle" id="cos-cycle" role="group" aria-label="Cycle of keys"></svg>
-        </div>
-      </div>
     </div>
 
   </div>

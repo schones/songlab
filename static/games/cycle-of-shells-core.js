@@ -16,7 +16,11 @@
  *   describeMove(prevUpper, upper, opts?)         → { kind: 'step'|'replace', voices, summary }
  *   checkAnswer(target, heldMidis, prevPlayedUpper?) → { correct, errors, coaching, message, played }
  *   createSubmitDetector({ minNotes, settleMs, pedalSubmit }) → { noteOn, noteOff, pedal, reset, held }
- *   followUp(prevTarget, target)                  → { prompt, answerPC, answerName, explanation, accepts }
+ *   followUp(prevTarget, target, opts?)           → { prompt, answerPC, answerName, explanation, accepts }
+ *   noteLabel(name)                               → "C♭4 (B3)" for awkward spellings, else the name unchanged
+ *   phraseRecipe(target, opts?)                   → recipe line for a phrase's first chord, or null
+ *   moveRule(prevTarget, target, opts?)           → { kind: 'fall'|'seam'|'replace', ok, text } for every other chord
+ *   (checkAnswer, describeMove, followUp, phraseRecipe and moveRule take opts.dual to format note names with noteLabel)
  *   CYCLE, FORMS, PREFERRED_BAND, OUTER_BAND, BASS_OCTAVE, selfTest
  *
  * Decisions (Stage 1 prompt, 2026-10-22):
@@ -108,6 +112,28 @@ const other = form => (form === '3-below' ? '7-below' : '3-below');
 const sortNum = a => a.slice().sort((x, y) => x - y);
 /** "3rd", "♭7", "root" … for a namedVsPlayed degree label. */
 function degreeWord(degree) { return DEGREE_WORDS[degree] || degree; }
+const capitalize = str => (str ? str[0].toUpperCase() + str.slice(1) : str);
+
+const FLAT_NAMES  = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
+const SHARP_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const WHITE_PCS = new Set([0, 2, 4, 5, 7, 9, 11]);
+/**
+ * Display label for a note name: awkward spellings (C♭, F♭, E♯, B♯, any
+ * double accidental) become "C♭ (B)" — the correct spelling first, the key
+ * actually pressed in brackets, octaves kept when given ("C♭4 (B3)").
+ * Ordinary names come back unchanged.
+ */
+function noteLabel(name) {
+  const p = parseNote(name);
+  if (!p || !p.letter || p.acc === 0) return String(name);
+  const awkward = Math.abs(p.acc) >= 2 || WHITE_PCS.has(p.pc);
+  if (!awkward) return String(name);
+  const pressed = WHITE_PCS.has(p.pc) ? FLAT_NAMES[p.pc] : (p.acc < 0 ? FLAT_NAMES : SHARP_NAMES)[p.pc];
+  const octave = p.midi != null ? String(Math.floor(p.midi / 12) - 1) : '';
+  return `${p.name}${p.octave != null ? p.octave : ''} (${pressed}${octave})`;
+}
+/** Name formatter for the dual-label option. */
+const labeller = opts => (opts && opts.dual ? noteLabel : (n => n));
 /** Spelled name with octave for a midi against a chord (chord-relative letter, octave by the letter). */
 function spellAgainst(parsed, midi) {
   const nvp = namedVsPlayed(parsed, [midi]);
@@ -271,7 +297,8 @@ function describeMove(prevUpper, upper, opts = {}) {
   if (!vm) return { kind: 'step', voices: [], total: 0, summary: '' };
   if (vm.perVoice.every(v => Math.abs(v.delta) <= 2)) {
     const voices = vm.perVoice.map(v => ({ ...v, label: deltaLabel(v.delta) }));
-    const summary = voices.map(v => `${parseNote(v.from).name}${parseNote(v.from).octave} ${v.label}`).join(', ');
+    const nl = labeller(opts);
+    const summary = voices.map(v => `${nl(parseNote(v.from).name + parseNote(v.from).octave)} ${v.label}`).join(', ');
     return { kind: 'step', voices, total: vm.total, summary };
   }
   // Re-placement: pair by pitch class first, leftovers low-to-high.
@@ -291,9 +318,10 @@ function describeMove(prevUpper, upper, opts = {}) {
     ? degreeWord(DEGREE_CLASS[upper[0].degree] === '7' ? '7' : DEGREE_CLASS[upper[0].degree] === '3' ? '3' : upper[0].degree)
     : null;
   let summary;
-  if (samePCs) summary = `same notes, ${lowerDeg || parseNote(b[0]).name} now on the bottom`;
+  const nl = labeller(opts);
+  if (samePCs) summary = `same notes, ${lowerDeg || nl(parseNote(b[0]).name)} now on the bottom`;
   else if (opts.form) summary = `${opts.newPhrase === false ? 'new placement' : 'new phrase'}: start ${opts.form}`;
-  else summary = `new placement: ${b.map(m => parseNote(m).name + parseNote(m).octave).join(' ')}`;
+  else summary = `new placement: ${b.map(m => nl(parseNote(m).name + parseNote(m).octave)).join(' ')}`;
   return { kind: 'replace', voices, total: vm.total, summary };
 }
 
@@ -315,7 +343,8 @@ const QUALITY_WORDS = {
  * @param {Array<number|{midi}>} [prevPlayedUpper]  the right hand the player held on the previous chord (coaching)
  * @returns {{ correct:boolean, errors:Array<{code,message,…}>, coaching:Array<{code,message,…}>, message:string, played:{ bass, upper } }}
  */
-function checkAnswer(target, heldMidis, prevPlayedUpper = null) {
+function checkAnswer(target, heldMidis, prevPlayedUpper = null, opts = {}) {
+  const nl = labeller(opts);
   const tones = shellTones(target.symbol);
   const parsed = tones.parsed;
   const held = [...new Set(midisOf(heldMidis))].sort((a, b) => a - b);
@@ -331,8 +360,8 @@ function checkAnswer(target, heldMidis, prevPlayedUpper = null) {
   const rootPlayed = held.some(m => pcOf(m) === parsed.rootPC);
   if (bass != null && pcOf(bass) !== parsed.rootPC) {
     const b = sp(bass);
-    if (!rootPlayed) errors.push({ code: 'WRONG_ROOT', midi: bass, name: b.name, degree: b.degree, message: `${b.pcName} is the ${degreeWord(b.degree)} of ${display}, not the root — the bass should be ${tones.root.name}.` });
-    else errors.push({ code: 'ROOT_NOT_LOWEST', midi: bass, name: b.name, degree: b.degree, message: `${tones.root.name} is there but ${b.pcName} is underneath it — the root goes on the bottom.` });
+    if (!rootPlayed) errors.push({ code: 'WRONG_ROOT', midi: bass, name: b.name, degree: b.degree, message: `${nl(b.pcName)} is the ${degreeWord(b.degree)} of ${display}, not the root — the bass should be ${nl(tones.root.name)}.` });
+    else errors.push({ code: 'ROOT_NOT_LOWEST', midi: bass, name: b.name, degree: b.degree, message: `${nl(tones.root.name)} is there but ${nl(b.pcName)} is underneath it — the root goes on the bottom.` });
   }
 
   const nvp = namedVsPlayed(parsed, held);
@@ -343,14 +372,14 @@ function checkAnswer(target, heldMidis, prevPlayedUpper = null) {
     if ((cls === '3' || cls === '7') && omittedClass.has(cls)) {
       const need = cls === '3' ? tones.third : tones.seventh;
       const how = QUALITY_WORDS[`${a.degree}:${parsed.type}`] || `is the wrong ${degreeWord(cls)}`;
-      errors.push({ code: 'WRONG_QUALITY', pc: a.pc, name: a.name, degree: a.degree, needs: need.name, message: `${a.name} ${how} — ${display} needs ${need.name}.` });
+      errors.push({ code: 'WRONG_QUALITY', pc: a.pc, name: a.name, degree: a.degree, needs: need.name, message: `${nl(a.name)} ${how} — ${display} needs ${nl(need.name)}.` });
     }
   }
   // Missing guide tone (the omitted 5th is never an error).
   for (const t of [tones.third, tones.seventh]) {
     if (!upper.some(m => pcOf(m) === t.pc)) {
       if (errors.some(e => e.code === 'WRONG_QUALITY' && DEGREE_CLASS[e.degree] === DEGREE_CLASS[t.degree])) continue;
-      errors.push({ code: 'MISSING_GUIDE_TONE', pc: t.pc, name: t.name, degree: t.degree, message: `Missing the ${degreeWord(t.degree)} — ${display} needs ${t.name} above the bass.` });
+      errors.push({ code: 'MISSING_GUIDE_TONE', pc: t.pc, name: t.name, degree: t.degree, message: `Missing the ${degreeWord(t.degree)} — ${display} needs ${nl(t.name)} above the bass.` });
     }
   }
   // Extra notes: anything above the bass that is not the 3rd or 7th (root doublings and 5ths included).
@@ -360,17 +389,17 @@ function checkAnswer(target, heldMidis, prevPlayedUpper = null) {
   if (extras.length || guideCount > 2) {
     const dup = guideCount > 2 ? upper.filter((m, i) => upper.findIndex(n => pcOf(n) === pcOf(m)) !== i) : [];
     const list = [...extras, ...dup].map(sp);
-    const what = list.map(e => e.degree === 'R' ? `${e.pcName} doubles the root` : e.degree === '5' ? `${e.pcName} is the 5th` : `${e.pcName} is the ${degreeWord(e.degree)}`).join(', ');
+    const what = list.map(e => e.degree === 'R' ? `${nl(e.pcName)} doubles the root` : e.degree === '5' ? `${nl(e.pcName)} is the 5th` : `${nl(e.pcName)} is the ${degreeWord(e.degree)}`).join(', ');
     errors.push({ code: 'EXTRA_NOTE', notes: list, message: `${what} — leave it out; the shell is just root, ${degreeWord(tones.third.degree)} and ${degreeWord(tones.seventh.degree)}.` });
   }
   // Form and width: only meaningful once the right hand is exactly the two guide tones.
   if (upper.length === 2 && guideCount === 2 && !extras.length) {
     const [lo, hi] = upper;
     if (pcOf(lo) !== lowerTone.pc) {
-      errors.push({ code: 'WRONG_FORM', form: target.form, message: `Right notes, wrong order — ${target.form} puts the ${degreeWord(lowerTone.degree)} (${lowerTone.name}) under the ${degreeWord(higherTone.degree)} (${higherTone.name}).` });
+      errors.push({ code: 'WRONG_FORM', form: target.form, message: `Right notes, wrong order — ${target.form} puts the ${degreeWord(lowerTone.degree)} (${nl(lowerTone.name)}) under the ${degreeWord(higherTone.degree)} (${nl(higherTone.name)}).` });
     }
     if (hi - lo >= 12) {
-      errors.push({ code: 'TOO_WIDE', span: hi - lo, message: `${sp(lo).pcName} and ${sp(hi).pcName} are ${hi - lo === 12 ? 'an octave' : 'more than an octave'} apart — keep the ${degreeWord(tones.third.degree)} and ${degreeWord(tones.seventh.degree)} within an octave.` });
+      errors.push({ code: 'TOO_WIDE', span: hi - lo, message: `${nl(sp(lo).pcName)} and ${nl(sp(hi).pcName)} are ${hi - lo === 12 ? 'an octave' : 'more than an octave'} apart — keep the ${degreeWord(tones.third.degree)} and ${degreeWord(tones.seventh.degree)} within an octave.` });
     }
   }
 
@@ -381,13 +410,13 @@ function checkAnswer(target, heldMidis, prevPlayedUpper = null) {
       const was = prevMidis.find(m => pcOf(m) === t.pc);
       const now = upper.find(m => pcOf(m) === t.pc);
       if (was != null && now != null && was !== now) {
-        coaching.push({ code: 'COMMON_TONE_MOVED', pc: t.pc, name: t.name, from: was, to: now, message: `Right shell. ${t.name} could have stayed — it's in both chords.` });
+        coaching.push({ code: 'COMMON_TONE_MOVED', pc: t.pc, name: t.name, from: was, to: now, message: `Right shell. ${nl(t.name)} could have stayed — it's in both chords.` });
       }
     }
   }
   const played = { bass: bass != null ? sp(bass).name : null, upper: upper.map(m => sp(m).name) };
   const message = errors.length ? errors[0].message : coaching.length ? coaching[0].message
-    : `${display} ✓ ${played.upper.join(' ')} over ${played.bass}.`;
+    : `${display} ✓ ${played.upper.map(nl).join(' ')} over ${nl(played.bass)}.`;
   return { correct, errors, coaching, message, played };
 }
 
@@ -482,7 +511,8 @@ function createSubmitDetector({ minNotes = 3, settleMs = 150, pedalSubmit = fals
  * the new chord; answered by playing that pitch class in any octave.
  * @returns {{ prompt, answerPC, answerName, answerDegree, movedTo:{name,degree}, held:{name,degree}|null, explanation, accepts(midi):boolean }}
  */
-function followUp(prevTarget, target) {
+function followUp(prevTarget, target, opts = {}) {
+  const nl = labeller(opts);
   const p = shellTones(prevTarget.symbol), c = shellTones(target.symbol);
   const prevGuides = [p.third, p.seventh], curGuides = [c.third, c.seventh];
   const moved = prevGuides.find(t => !curGuides.some(u => u.pc === t.pc)) || null;
@@ -491,8 +521,8 @@ function followUp(prevTarget, target) {
   const movedTo = moved ? curGuides.find(u => !prevGuides.some(t => t.pc === u.pc)) : null;
   const semis = moved && movedTo ? ((movedTo.pc - moved.pc + 6 + 12) % 12) - 6 : 0;
   const explanation = moved
-    ? `${moved.name}, the ${degreeWord(moved.degree)} of ${p.parsed.display}, ${semis < 0 ? 'falls' : 'rises'} ${Math.abs(semis) === 1 ? 'a half step' : Math.abs(semis) + ' half steps'} to ${movedTo.name}, the ${degreeWord(movedTo.degree)} of ${c.parsed.display}.`
-      + (held ? ` ${held.name} holds — it's the ${degreeWord(held.degree)} of ${p.parsed.display} and the ${degreeWord(heldNow.degree)} of ${c.parsed.display}.` : '')
+    ? `${nl(moved.name)}, the ${degreeWord(moved.degree)} of ${p.parsed.display}, ${semis < 0 ? 'falls' : 'rises'} ${Math.abs(semis) === 1 ? 'a half step' : Math.abs(semis) + ' half steps'} to ${nl(movedTo.name)}, the ${degreeWord(movedTo.degree)} of ${c.parsed.display}.`
+      + (held ? ` ${nl(held.name)} holds — it's the ${degreeWord(held.degree)} of ${p.parsed.display} and the ${degreeWord(heldNow.degree)} of ${c.parsed.display}.` : '')
     : `Both guide tones hold from ${p.parsed.display} to ${c.parsed.display}.`;
   return {
     prompt: `Which note moved from ${p.parsed.display} to ${c.parsed.display}?`,
@@ -505,11 +535,60 @@ function followUp(prevTarget, target) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+// RECIPE AND RULE LINES
+// ════════════════════════════════════════════════════════════════════
+
+const FORM_WORD = { '3-below': '3rd below', '7-below': '7th below' };
+
+/**
+ * Recipe for a phrase's first chord (the ii), or null for any other chord.
+ * The ii's guide tones are the home key's 1 and 4 (its 7th and 3rd), and its
+ * root is a whole step above home. A second phrase in the same key ('both'
+ * mode) is the same notes the other way up.
+ * @returns {{ kind:'home'|'again', text, one?, four?, root? }|null}
+ */
+function phraseRecipe(target, opts = {}) {
+  if (!target || target.role !== 'ii') return null;
+  const nl = labeller(opts);
+  if (target.formSlot === 2) return { kind: 'again', text: `Again in ${target.keyDisplay}, ${FORM_WORD[target.form]}: same notes, the other way up` };
+  const tones = shellTones(target.symbol);
+  return {
+    kind: 'home',
+    text: `Home ${target.keyDisplay}: start on ${nl(tones.seventh.name)} and ${nl(tones.third.name)} (1 and 4) · root ${nl(tones.root.name)}`,
+    one: tones.seventh.name, four: tones.third.name, root: tones.root.name,
+  };
+}
+
+/**
+ * The voice-leading rule from one target to the next, as a line of text.
+ *   inside a phrase   'fall'    the previous chord's 7th falls a half step to the new 3rd; the other note holds
+ *   between keys      'seam'    the I's 3rd rises a half step (to the new 7th), its 7th falls a half step (to the new 3rd)
+ *   same key, new phrase ('both' mode)  'replace'  describeMove's summary
+ * `ok` reports whether the rule actually holds for the pair (by pitch class).
+ * @returns {{ kind:'fall'|'seam'|'replace', ok:boolean, text:string }}
+ */
+function moveRule(prevTarget, target, opts = {}) {
+  const nl = labeller(opts);
+  const p = shellTones(prevTarget.symbol), c = shellTones(target.symbol);
+  if (prevTarget.phrase === target.phrase) {
+    const ok = pcOf(p.seventh.pc - 1) === c.third.pc && p.third.pc === c.seventh.pc;
+    return { kind: 'fall', ok, text: `The 7th falls: ${nl(p.seventh.name)} → ${nl(c.third.name)} · ${nl(c.seventh.name)} stays` };
+  }
+  if (prevTarget.key !== target.key) {
+    const ok = pcOf(p.third.pc + 1) === c.seventh.pc && pcOf(p.seventh.pc - 1) === c.third.pc;
+    return { kind: 'seam', ok, text: `3rd up, 7th down: ${nl(p.third.name)} → ${nl(c.seventh.name)} · ${nl(p.seventh.name)} → ${nl(c.third.name)}` };
+  }
+  const move = describeMove(prevTarget.upper, target.upper, { form: FORM_WORD[target.form], dual: !!opts.dual });
+  return { kind: 'replace', ok: true, text: capitalize(move.summary) };
+}
+
+// ════════════════════════════════════════════════════════════════════
 // EXPORTS
 // ════════════════════════════════════════════════════════════════════
 
 export {
   buildLap, describeMove, checkAnswer, createSubmitDetector, followUp, shellTones,
+  noteLabel, phraseRecipe, moveRule,
   CYCLE, FORMS, PREFERRED_BAND, OUTER_BAND, BASS_OCTAVE, selfTest,
 };
 
@@ -679,6 +758,43 @@ async function selfTest() {
   assert('F♯7 → Bmaj7: E moved to D♯, A♯ holds', [fu2.answerName, fu2.movedTo.name, fu2.held.name], ['E', 'D♯', 'A♯']);
   const fu3 = followUp(T('Db7'), T('Gbmaj7'));
   assert('D♭7 → G♭maj7: C♭ moved to B♭, F holds', [fu3.answerName, fu3.movedTo.name, fu3.held.name], ['C♭', 'B♭', 'F']);
+
+  // ── noteLabel and dual labels ────────────────────────────────────
+  assert('noteLabel: C♭4 → C♭4 (B3); C♭ → C♭ (B); E♯ → E♯ (F); B♯3 → B♯3 (C4); F♭ → F♭ (E)', ['C♭4', 'C♭', 'E♯', 'B♯3', 'F♭'].map(noteLabel), ['C♭4 (B3)', 'C♭ (B)', 'E♯ (F)', 'B♯3 (C4)', 'F♭ (E)']);
+  assert('noteLabel: ordinary names unchanged; double accidentals labelled', ['B♭', 'F♯3', 'C', 'D♭♭', 'C♭♭', 'G𝄪'].map(noteLabel), ['B♭', 'F♯3', 'C', 'D♭♭ (C)', 'C♭♭ (B♭)', 'G𝄪']);
+  assert('noteLabel: non-notes pass through', [noteLabel('stays'), noteLabel(null)], ['stays', 'null']);
+  const db7 = single.find(t => t.symbol === 'Db7'), abm7 = single.find(t => t.symbol === 'Abm7');
+  const wqCb = checkAnswer(db7, [n('D♭2'), n('F3'), n('C4')]);
+  const wqCbDual = checkAnswer(db7, [n('D♭2'), n('F3'), n('C4')], null, { dual: true });
+  assert('checkAnswer: default output unchanged; dual option labels C♭ (B)', [wqCb.message, wqCbDual.message], ['C makes it a major 7th — D♭7 needs C♭.', 'C makes it a major 7th — D♭7 needs C♭ (B).']);
+  const okCb = checkAnswer(db7, [n('D♭2'), n('F3'), n('B3')], null, { dual: true });
+  assert('checkAnswer dual: confirmation spells the pressed B as C♭4 (B3)', [okCb.correct, okCb.message, okCb.played.upper], [true, 'D♭7 ✓ F3 C♭4 (B3) over D♭2.', ['F3', 'C♭4']]);
+  assert('followUp dual: explanation labels C♭ (B); answerName stays raw', (f => [f.explanation.includes('C♭ (B)'), f.answerName])(followUp(db7, T('Gbmaj7'), { dual: true })), [true, 'C♭']);
+
+  // ── phraseRecipe ─────────────────────────────────────────────────
+  assert('phraseRecipe Dm7 (C): Home C: start on C and F (1 and 4) · root D', phraseRecipe(single[0]).text, 'Home C: start on C and F (1 and 4) · root D');
+  assert('phraseRecipe Cm7 (B♭)', phraseRecipe(single.find(t => t.symbol === 'Cm7')).text, 'Home B♭: start on B♭ and E♭ (1 and 4) · root C');
+  assert('phraseRecipe A♭m7 (G♭) dual: C♭ (B)', phraseRecipe(abm7, { dual: true }).text, 'Home G♭: start on G♭ and C♭ (B) (1 and 4) · root A♭');
+  assert('phraseRecipe: second phrase in a key → "Again in C, 7th below: same notes, the other way up"', phraseRecipe(both[3]).text, 'Again in C, 7th below: same notes, the other way up');
+  assert('phraseRecipe: null for V and I', [phraseRecipe(single[1]), phraseRecipe(single[2])], [null, null]);
+  assert('every ii: 7th is home\'s 1 and 3rd is home\'s 4 (by pitch class, all 12 keys)',
+    single.filter(t => t.role === 'ii').every(t => { const r = phraseRecipe(t); const home = parseNote(t.key).pc; return parseNote(r.one).pc === home && parseNote(r.four).pc === (home + 5) % 12; }), true);
+
+  // ── moveRule: every transition in both lap modes ──────────────────
+  assert('moveRule Dm7 → G7: The 7th falls: C → B · F stays', moveRule(single[0], single[1]).text, 'The 7th falls: C → B · F stays');
+  assert('moveRule Cmaj7 → Gm7 (seam): 3rd up, 7th down: E → F · B → B♭', moveRule(single[2], single[3]).text, '3rd up, 7th down: E → F · B → B♭');
+  assert('moveRule Cmaj7 → Dm7 (both, same key): replace with the describeMove summary', [moveRule(both[2], both[3]).kind, moveRule(both[2], both[3]).text], ['replace', 'New phrase: start 7th below']);
+  assert('moveRule A♭m7 → D♭7 dual: C♭ (B) stays', moveRule(abm7, db7, { dual: true }).text, 'The 7th falls: G♭ → F · C♭ (B) stays');
+  for (const [name, ts] of [['single', single], ['both', both]]) {
+    const kinds = { fall: 0, seam: 0, replace: 0 }, broken = [];
+    for (let i = 1; i < ts.length; i++) {
+      const r = moveRule(ts[i - 1], ts[i]);
+      const expected = ts[i - 1].phrase === ts[i].phrase ? 'fall' : ts[i - 1].key !== ts[i].key ? 'seam' : 'replace';
+      kinds[r.kind]++;
+      if (r.kind !== expected || !r.ok) broken.push(`${ts[i - 1].display} → ${ts[i].display}: ${r.kind}${r.ok ? '' : ' (rule broken)'}`);
+    }
+    assert(`moveRule ${name} lap from C: every in-phrase move is one 7th falling a half step with the other note held, every seam is 3rd up / 7th down (${ts.length - 1} transitions)`, [broken, kinds], [[], name === 'single' ? { fall: 24, seam: 11, replace: 0 } : { fall: 48, seam: 11, replace: 12 }]);
+  }
 
   const passed = results.filter(Boolean).length;
   console.log(`\n─── ${passed}/${results.length} passed ───\n`);

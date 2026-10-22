@@ -8,7 +8,7 @@
  * cycle-of-shells-core.js; this file only wires and renders.
  *
  * Depends on:
- *   - cycle-of-shells-core.js   → buildLap, describeMove, checkAnswer, createSubmitDetector, CYCLE
+ *   - cycle-of-shells-core.js   → buildLap, describeMove, checkAnswer, createSubmitDetector, noteLabel, phraseRecipe, moveRule, CYCLE
  *   - cycle-of-shells-input.js  → createShellInput (MIDI)
  *   - voicing-keyboard.js       → VoicingKeyboard (display + on-screen input via onKeyClick, minKeyWidth)
  *   - voicing-player.js         → VoicingPlayer (Hear it), loadSampler (live echo); one piano on the page
@@ -23,7 +23,10 @@
  * Hints (setting 'hints'): 'guided' draws the move from the previous
  * target to the current one over the keyboard (ghosted origins, lit
  * destinations, arrows, labels in the target's spelling) and shows the
- * text path line; 'names' shows the text line only; 'none' shows neither.
+ * recipe line (a phrase's first chord) or the rule line (every other
+ * chord) from the core; 'names' shows the text path line only; 'none'
+ * shows neither. Awkward spellings are shown as "C♭ (B)" everywhere a
+ * note name appears (core noteLabel, dual option on the core formatters).
  * The overlay is an SVG positioned over the keyboard, reading key
  * rectangles through data-midi; held notes are drawn as rings on top.
  *
@@ -38,7 +41,7 @@
  * and /learn links.
  */
 
-import { buildLap, describeMove, checkAnswer, createSubmitDetector, CYCLE } from './cycle-of-shells-core.js';
+import { buildLap, describeMove, checkAnswer, createSubmitDetector, noteLabel, phraseRecipe, moveRule, CYCLE } from './cycle-of-shells-core.js';
 import { createShellInput } from './cycle-of-shells-input.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
 import { VoicingPlayer, loadSampler } from '../shared/voicing-player.js';
@@ -69,6 +72,8 @@ const GUIDE_FONT = 17;            // label font size in px
 const GUIDE_BAND = 96;            // space above the keys for arrows and labels
 /** Circle of fifths clockwise from the top: pitch classes C G D A E B G♭ D♭ A♭ E♭ B♭ F. */
 const FIFTHS = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];
+const CYCLE_SIZE = 500;           // px; the SVG scales with the viewBox below this on narrow screens
+const DUAL = { dual: true };      // core formatters: show awkward spellings as "C♭ (B)"
 
 // ════════════════════════════════════════════════════════════════════
 // STATE
@@ -209,7 +214,7 @@ function submit(midis, source) {
   const t = target();
   if (!t || lapComplete) return;
   const sorted = [...new Set(midis)].sort((a, b) => a - b);
-  const result = checkAnswer(t, sorted, prevAccepted);
+  const result = checkAnswer(t, sorted, prevAccepted, DUAL);
   if (result.correct) {
     // The core's message already is the coaching line when there is one; the second line carries any further coaching.
     setFeedback(result.message, 'success');
@@ -290,10 +295,29 @@ function renderPath() {
   el.classList.toggle('cos-path--hidden', settings.hints === 'none');
   el.innerHTML = '';
   const t = target();
+  if (!t) return;
+  if (settings.hints === 'guided') {
+    // Recipe on a phrase's first chord, the voice-leading rule on the others (core text, dual labels).
+    // A new key's first chord gets both: the recipe, then the seam rule beneath it.
+    const prev = index > 0 ? lap[index - 1] : null;
+    if (t.role === 'ii' || !prev) {
+      const recipe = phraseRecipe(t, DUAL);
+      el.textContent = recipe ? recipe.text : '';
+      if (prev && prev.key !== t.key) {
+        const rule = document.createElement('span');
+        rule.className = 'cos-path__rule';
+        rule.textContent = moveRule(prev, t, DUAL).text;
+        el.appendChild(rule);
+      }
+    } else {
+      el.textContent = moveRule(prev, t, DUAL).text;
+    }
+    return;
+  }
   const cm = currentMove();
-  if (!t || !cm) return;
+  if (!cm) return;
   const { prev, move } = cm;
-  if (move.kind === 'replace') { el.textContent = capitalize(move.summary); return; }
+  if (move.kind === 'replace') { el.textContent = capitalize(describeMove(prev.upper, t.upper, { form: FORM_SHORT[t.form], dual: true }).summary); return; }
   const degreeOf = midi => { const u = prev.upper.find(x => x.midi === midi); return u ? (u.degree.includes('3') ? '3rd' : '7th') : ''; };
   for (const v of move.voices) {
     const span = document.createElement('span');
@@ -302,8 +326,8 @@ function renderPath() {
     label.className = 'cos-path__label';
     label.textContent = `${degreeOf(v.from)}: `;
     span.appendChild(label);
-    const from = pcName((prev.upper.find(x => x.midi === v.from) || {}).name || noteName(v.from));
-    const to = pcName((t.upper.find(x => x.midi === v.to) || {}).name || noteName(v.to));
+    const from = noteLabel(pcName((prev.upper.find(x => x.midi === v.from) || {}).name || noteName(v.from)));
+    const to = noteLabel(pcName((t.upper.find(x => x.midi === v.to) || {}).name || noteName(v.to)));
     span.appendChild(document.createTextNode(v.delta === 0 ? `${from} stays` : `${from} → ${to}, ${v.label}`));
     el.appendChild(span);
   }
@@ -367,9 +391,9 @@ function drawGuide() {
       for (const u of t.upper) items.push({ kind: 'tag', midi: u.midi, label: u.degree, color: GUIDE.voicing });
     } else {
       const { prev, move } = cm;
-      const nameAt = (list, midi) => pcName((list.find(x => x.midi === midi) || {}).name || noteName(midi));
-      if (prev.bass.midi === t.bass.midi) items.push({ kind: 'stay', midi: t.bass.midi, label: `${t.bass.name.replace(/\d+$/, '')} stays`, color: GUIDE.bass });
-      else items.push({ kind: 'move', from: prev.bass.midi, to: t.bass.midi, label: `${pcName(prev.bass.name)} → ${pcName(t.bass.name)}`, color: GUIDE.bass });
+      const nameAt = (list, midi) => noteLabel(pcName((list.find(x => x.midi === midi) || {}).name || noteName(midi)));
+      if (prev.bass.midi === t.bass.midi) items.push({ kind: 'stay', midi: t.bass.midi, label: `${noteLabel(pcName(t.bass.name))} stays`, color: GUIDE.bass });
+      else items.push({ kind: 'move', from: prev.bass.midi, to: t.bass.midi, label: `${noteLabel(pcName(prev.bass.name))} → ${noteLabel(pcName(t.bass.name))}`, color: GUIDE.bass });
       for (const v of move.voices) {
         if (v.delta === 0) items.push({ kind: 'stay', midi: v.to, label: `${nameAt(t.upper, v.to)} stays`, color: GUIDE.voicing });
         else items.push({ kind: 'move', from: v.from, to: v.to, label: `${nameAt(prev.upper, v.from)} → ${nameAt(t.upper, v.to)}`, color: GUIDE.voicing });
@@ -443,12 +467,13 @@ function renderCycle() {
   const t = target();
   if (!svg || !t) return;
   while (svg.firstChild) svg.removeChild(svg.firstChild);
-  const size = 170, c = size / 2, ring = 66, r = 15;
+  const size = CYCLE_SIZE, c = size / 2, ring = size * 0.39, r = size * 0.088;
+  const font = size * 0.074, badgeFont = size * 0.058, stroke = size / 170;
   svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
   const pos = positionText(t);
   svg.setAttribute('aria-label', `Key ${pos.keyNo} of ${pos.total}, ${t.keyDisplay}${pos.phraseText ? ', ' + pos.phraseText : ''}`);
   const lastIndexOfKey = key => lap.map((x, i) => (x.key === key ? i : -1)).reduce((m, i) => Math.max(m, i), -1);
-  svg.appendChild(svgEl('circle', { cx: c, cy: c, r: ring, fill: 'none', stroke: '#C9C3B4', 'stroke-width': 1.5 }));
+  svg.appendChild(svgEl('circle', { cx: c, cy: c, r: ring, fill: 'none', stroke: '#C9C3B4', 'stroke-width': 1.5 * stroke }));
   FIFTHS.forEach((pc, i) => {
     const key = CYCLE.find(k => parseNote(k.key).pc === pc);
     const label = parseNote(key.key).name;
@@ -457,11 +482,11 @@ function renderCycle() {
     const current = key.key === t.key;
     const done = !current && lastIndexOfKey(key.key) < index;
     const g = svgEl('g', { class: `cos-cycle__key${current ? ' cos-cycle__key--current' : ''}${done ? ' cos-cycle__key--done' : ''}`, role: 'button', tabindex: 0, 'aria-label': `Go to ${label}${done ? ' (done)' : current ? ' (current)' : ''}` });
-    g.appendChild(svgEl('circle', { cx: x, cy: y, r, fill: current ? '#2D5F8A' : done ? '#E3F2DF' : '#FFFFFF', stroke: current ? '#2D5F8A' : done ? '#1E7B34' : '#8E877A', 'stroke-width': done || current ? 2 : 1.25 }));
-    g.appendChild(svgEl('text', { x, y: y + 4.5, 'text-anchor': 'middle', 'font-size': 12.5, 'font-weight': 800, fill: current ? '#FFFFFF' : done ? '#155F27' : '#2B2824', 'font-family': 'inherit' }, label));
+    g.appendChild(svgEl('circle', { cx: x, cy: y, r, fill: current ? '#2D5F8A' : done ? '#E3F2DF' : '#FFFFFF', stroke: current ? '#2D5F8A' : done ? '#1E7B34' : '#8E877A', 'stroke-width': (done || current ? 2 : 1.25) * stroke }));
+    g.appendChild(svgEl('text', { x, y: y + font * 0.36, 'text-anchor': 'middle', 'font-size': font, 'font-weight': 800, fill: current ? '#FFFFFF' : done ? '#155F27' : '#2B2824', 'font-family': 'inherit' }, label));
     if (current && pos.phrases > 1) {
-      const bx = c + (ring + 24) * Math.cos(ang), by = c + (ring + 24) * Math.sin(ang);
-      g.appendChild(svgEl('text', { x: bx, y: by + 4, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 800, fill: '#2D5F8A', 'font-family': 'inherit', class: 'cos-cycle__phrase' }, `${t.formSlot}/${pos.phrases}`));
+      const bx = c + (ring + r + badgeFont * 0.9) * Math.cos(ang), by = c + (ring + r + badgeFont * 0.9) * Math.sin(ang);
+      g.appendChild(svgEl('text', { x: bx, y: by + badgeFont * 0.36, 'text-anchor': 'middle', 'font-size': badgeFont, 'font-weight': 800, fill: '#2D5F8A', 'font-family': 'inherit', class: 'cos-cycle__phrase' }, `${t.formSlot}/${pos.phrases}`));
     }
     const go = () => { if (key.key === t.key && index === lap.findIndex(x => x.key === key.key)) return; if (window.confirm(`Jump to ${label}? The current key is left where it is.`)) jumpToKey(key.key); };
     g.addEventListener('click', go);
@@ -658,7 +683,7 @@ export function init(params = null) {
 
   $('btn-hear').addEventListener('click', hearIt);
   $('btn-check').addEventListener('click', () => submit([...staged], 'screen'));
-  $('btn-show').addEventListener('click', () => { showMe = true; renderKeyboard(); setFeedback(`${target().display}: ${target().bass.name} under ${target().upper.map(u => u.name).join(' ')}. Now you play it.`, 'info'); });
+  $('btn-show').addEventListener('click', () => { showMe = true; renderKeyboard(); setFeedback(`${target().display}: ${noteLabel(target().bass.name)} under ${target().upper.map(u => noteLabel(u.name)).join(' ')}. Now you play it.`, 'info'); });
   $('btn-restart').addEventListener('click', () => startLap());
 
   $('start-overlay').addEventListener('click', async () => {
