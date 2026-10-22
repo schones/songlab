@@ -110,6 +110,30 @@ const EXAMPLES = {
     shape: { degrees: ['3', '13', '7', '9'], aboveBass: [16, 21, 22, 26] },
     label: 'C7 rootless A-form — 3, 13, ♭7, 9 over the bass',
   },
+  // T1 (chord-tones-and-roles): three close-position seventh chords over
+  // C3 that share root and 5th — only the 3rd and 7th change.
+  'cmaj7-close': { symbol: 'Cmaj7', bass: 'C3', voicing: ['E3', 'G3', 'B3'],   label: 'Cmaj7 — 1 3 5 7' },
+  'c7-close':    { symbol: 'C7',    bass: 'C3', voicing: ['E3', 'G3', 'B♭3'],  label: 'C7 — 1 3 5 ♭7' },
+  'cm7-close':   { symbol: 'Cm7',   bass: 'C3', voicing: ['E♭3', 'G3', 'B♭3'], label: 'Cm7 — 1 ♭3 5 ♭7' },
+  // T1: the rag's bar 2 as written — the 5th in the bass under a complete
+  // E♭7. The fixture event's bass is a real bass-voice note, so the link is
+  // strict: these are exactly the notes the rag plays.
+  'eb7-over-bb-rag': {
+    symbol: 'E♭7/B♭', bass: 'B♭2', voicing: ['E♭3', 'G3', 'D♭4'],
+    label: 'E♭7/B♭ — the 5th in the bass (Maple Leaf Rag, bar 2)',
+    piece: 'maple-leaf-rag', bar: 2, event: 1, matches: true, bassSource: 'voice',
+  },
+  // T2 (tritone): G7's tritone with the ♭7 on the bottom (an augmented 4th,
+  // F3–B3), its outward resolution to C, and the same two keys respelled as
+  // D♭7's 3rd and ♭7 (C♭4, not B3 — the letters follow the chord).
+  'g7-shell-tritone':  { symbol: 'G7',  bass: 'G2',  voicing: ['F3', 'B3'],  label: 'G7 — ♭7 and 3: the tritone' },
+  'c-resolution':      { symbol: 'C',   bass: 'C3',  voicing: ['E3', 'C4'],  label: 'C — where the tritone lands', doubled: true },   // the root is doubled on purpose
+  'db7-shell-tritone': { symbol: 'D♭7', bass: 'D♭3', voicing: ['F3', 'C♭4'], label: 'D♭7 — the same tritone, respelled' },
+  // T2 (shells): the ii and I shells of a ii–V–I in C, alternating 3rd-below
+  // and 7th-below around g7-shell-tritone so the guide tones hold or move a
+  // half step (checked in selfTest).
+  'dm7-shell-3-below-7':   { symbol: 'Dm7',   bass: 'D2', voicing: ['F3', 'C4'], label: 'Dm7 shell — 3rd below the 7th' },
+  'cmaj7-shell-3-below-7': { symbol: 'Cmaj7', bass: 'C2', voicing: ['E3', 'B3'], label: 'Cmaj7 shell — 3rd below the 7th' },
   // The notes the rag plays at bar 16, second event — but the fixture's bass
   // there is inferred (the lowest chord note, no bass line under it), so the
   // link is related, not strict. No E♭7 event with a real bass is a shell:
@@ -301,7 +325,22 @@ async function selfTest() {
   }
   check('PUBLIC_PIECES: every piece has a committed fixture with the same title', !pieceProblems.length, pieceProblems.join('; '));
   const linked = R.filter(r => r.link);
-  check('seed links are related (no rag E♭7 shell has a real bass) and expose bassSource', linked.length >= 2 && linked.every(r => r.link.kind === 'related' && BASS_SOURCES.includes(r.link.bassSource)));
+  check('seed covers both link kinds and every link exposes bassSource', linked.some(r => r.link.kind === 'related') && linked.some(r => r.link.kind === 'strict') && linked.every(r => BASS_SOURCES.includes(r.link.bassSource)));
+  const t1 = ['cmaj7-close', 'c7-close', 'cm7-close'].map(id => resolved[id]);
+  check('T1 close voicings: C3 = R, degrees 3 5 7 / 3 5 ♭7 / ♭3 5 ♭7', t1.every(r => r && r.bassDegree === 'R') && t1.map(r => r.degrees.join(' ')).join(' | ') === '3 5 7 | 3 5 ♭7 | ♭3 5 ♭7');
+  const g7 = resolved['g7-shell-tritone'], db7 = resolved['db7-shell-tritone'], cres = resolved['c-resolution'];
+  check('G7 and D♭7 tritone examples: identical midis, different spellings, F3 = ♭7 / B3 = 3 vs F3 = 3 / C♭4 = ♭7',
+    g7 && db7 && g7.midis.join() === db7.midis.join() && g7.voicing.join(' ') === 'F3 B3' && db7.voicing.join(' ') === 'F3 C♭4'
+    && g7.degrees.join(' ') === '♭7 3' && db7.degrees.join(' ') === '3 ♭7' && g7.bassDegree === 'R' && db7.bassDegree === 'R');
+  check('C resolution: C3 = R, E3 = 3, C4 = R (the tritone resolved outward)', cres && cres.bassDegree === 'R' && cres.degrees.join(' ') === '3 R' && cres.midis.join() === '52,60');
+  const ii = resolved['dm7-shell-3-below-7'], V = resolved['g7-shell-tritone'], I = resolved['cmaj7-shell-3-below-7'];
+  const line = (i) => [ii, V, I].map(r => r && r.midis[i]), degs = (i) => [ii, V, I].map(r => r && r.degrees[i]).join(' → ');
+  const steps = l => l.slice(1).every((m, i) => Math.abs(m - l[i]) <= 1);
+  check('ii–V–I guide-tone lines: F3 → F3 → E3 (♭3 → ♭7 → 3) and C4 → B3 → B3 (♭7 → 3 → 7), every step 0 or 1 semitone',
+    ii && V && I && line(0).join() === '53,53,52' && degs(0) === '♭3 → ♭7 → 3' && line(1).join() === '60,59,59' && degs(1) === '♭7 → 3 → 7' && steps(line(0)) && steps(line(1))
+    && [ii, V, I].every(r => r.bassDegree === 'R' && r.voicing.length === 2));
+  const s5 = resolved['eb7-over-bb-rag'];
+  check('E♭7/B♭: bass B♭2 = 5, E♭3 = R, G3 = 3, D♭4 = ♭7, strict link to rag 2.1', s5 && s5.display === 'E♭7/B♭' && s5.bassDegree === '5' && s5.degrees.join(' ') === 'R 3 ♭7' && s5.link.kind === 'strict' && s5.link.bar === 2 && s5.link.event === 1);
   const linkProblems = [];
   for (const r of linked) {
     const { piece, bar, event, kind } = r.link;

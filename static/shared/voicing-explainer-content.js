@@ -773,93 +773,195 @@ const TOPICS = {
 
   'guide-tones-and-shells': {
     title: 'Guide tones and shells: the two notes that say what a chord is',
-    status: 'claude-draft', category: 'theory', kind: 'fact',
+    status: 'verified', category: 'theory', kind: 'fact',
     see_also: ['chord-tones-and-roles', 'extensions', 'omitting-tones', 'rootless-voicings', 'tritone', 'named-vs-played', 'intro-beyond-triads'],
-    summary: 'A seventh chord’s 3rd and 7th carry its identity; the root and 5th are shared by most chord types. Bass plus 3rd and 7th is a shell voicing: the smallest voicing that still says the chord.',
+    summary: 'The 3rd and 7th — the guide tones — carry a seventh chord’s identity. Root in the bass plus those two notes is a shell voicing: the smallest voicing that still says the chord.',
     body: `
-      ## Guide tones
+      ## What it is
 
-      A seventh chord has four notes: root, 3rd, 5th and 7th. They don't all
-      carry the same information.
+      [Chord tones and roles](chord-tones-and-roles) showed that the 3rd and
+      7th decide a seventh chord's quality. Those two notes are called the
+      **guide tones**.
 
-      The **root** and **5th** are shared by most common seventh chords.
-      C major 7, C7 and C minor 7 all have C and G. Hear just those two and
-      you can't tell which chord it is.
+      A **shell voicing** keeps just the root in the bass and the two guide
+      tones above it, in either order. The 5th is left out. The result is
+      three notes that still say exactly which chord it is, with room left
+      over for a melody on top and for [extensions](extensions) as colour.
+      Shells are closely associated with bebop pianists, Bud Powell in
+      particular.
 
-      The **3rd** and **7th** are what change. Together they spell out the
-      chord's quality:
-
-      | Chord | 3rd | 7th | Sound |
-      |---|---|---|---|
-      | Major 7 (Cmaj7) | major (E) | major (B) | settled, bright |
-      | Dominant 7 (C7) | major (E) | minor (B♭) | restless, wants to move |
-      | Minor 7 (Cm7) | minor (E♭) | minor (B♭) | mellow, darker |
-
-      These two notes are called **guide tones**. In a dominant chord they
-      form a [tritone](tritone) (E to B♭ in C7), the tension that makes the
-      chord want to resolve.
-
-      ## Shells: the smallest voicing that still says the chord
-
-      Because the guide tones carry the chord's identity, you can play just
-      them over the bass and the chord comes through. This is a **shell
-      voicing**: root in the bass, then 3rd and 7th above, in either order:
-
-      - C2 bass, E3 and B♭3 above (3rd below the 7th)
-      - C2 bass, B♭3 and E4 above (7th below the 3rd)
-
-      Here is the first one to hear: the bass, then the 3rd and the 7th above it.
-
-      [[example c7-shell-3-below-7]]
-
-      And the same two notes the other way up.
-
-      [[example c7-shell-7-below-3]]
-
-      The 5th is left out, and it's rarely missed. That economy is the point:
-      a shell leaves room for a melody on top and for
-      [extensions](extensions) (9ths, 13ths) to be added as colour.
-
-      ## What happens when a guide tone goes missing
-
-      Dropping the 5th is almost always safe. Dropping a guide tone is
-      different: without its 7th, C7 can stop sounding like a dominant at
-      all. Leaving out the 3rd is often fine when the 7th is there; the chord
-      turns more open and ambiguous, but it keeps its character. See
-      [omitting tones](omitting-tones).
+      In a dominant chord the guide tones form a [tritone](tritone), which
+      is where its pull to resolve comes from.
 
       ## Hear it
 
-      The textbook case: play C2 in the bass, then E3 and B♭3 above it. That
-      is a C7 shell — root, 3rd, 7th, no 5th — and it already sounds like a
-      dominant waiting to resolve. Swap the two upper notes for B♭3 and E4
-      and it is the same shell the other way up. Now take the B♭ away: what
-      is left (C and E) could be any C chord. Take the E away instead: C and
-      B♭ still lean towards F.
+      A C7 shell with the 3rd below the 7th, then the 7th below the 3rd:
 
-      The same thing in a real piece: load the Maple Leaf Rag and select bar
-      12's second event (E♭7, bass E♭4, voicing G4 D♭5). That is a shell, 3rd
-      below the 7th, with the 5th left out — the panel shows B♭ (5) as the
-      only tone left out. In the Explore panel, compare it with a candidate
-      that drops the D♭ instead and listen for the dominant quality going.
+      [[example c7-shell-3-below-7]]
+
+      [[example c7-shell-7-below-3]]
+
+      Guide tones really earn the name in a progression. Through Dm7 – G7 –
+      Cmaj7, play shells that alternate 3rd-below and 7th-below, and the
+      guide tones barely move:
+
+      [[example dm7-shell-3-below-7]]
+
+      [[example g7-shell-tritone]]
+
+      [[example cmaj7-shell-3-below-7]]
+
+      One line goes F → F → E: the ♭3 of Dm7 holds as the ♭7 of G7, then
+      falls to the 3rd of Cmaj7. The other goes C → B → B: the ♭7 of Dm7
+      falls to the 3rd of G7, then holds as the 7th of Cmaj7. Each guide
+      tone either stays put or moves a half step.
+
+      ## In a real piece
+
+      Bar 16 of Maple Leaf Rag has a textbook E♭7 shell: E♭ in the bass, G
+      and D♭ above — root, 3rd, ♭7, no 5th. The E♭ is in the score, but no
+      bass line sounds under this bar, so reading it as the bass — and the
+      E♭7 symbol itself — come from the analysis. Treat it as a reasonable
+      reading rather than the score.
+
+      [[example eb7-shell-in-the-rag]]
+
+      ## Common confusions
+
+      - **Guide tones vs shells.** Guide tones are two notes, the 3rd and
+        7th. A shell is a voicing: root in the bass plus those guide tones.
+      - **Two-note shells.** Some books also call root-plus-7th or
+        root-plus-3rd a shell. It's the same idea taken one note further.
+      - **Dropping a guide tone loses information.** Without the 7th, root
+        and 3rd tell you major or minor but not what kind of seventh chord.
+        Without the 3rd, root and ♭7 could be C7 or Cm7. See
+        [omitting tones](omitting-tones).
+      - **Half-diminished needs its 5th.** A shell of Cm7♭5 (C, E♭, B♭) is
+        identical to a shell of Cm7. To say m7♭5, the ♭5 has to be there —
+        an altered 5th is usually kept.
+
+      ## Try it
+
+      - Play the three ii–V–I shells above in a loop with your left hand
+        and sing either guide-tone line.
+      - Move the progression to another key, keeping the same alternation:
+        3rd-below, 7th-below, 3rd-below.
+
+      ## Sources
+
+      Levine, *The Jazz Theory Book*; Levine, *The Jazz Piano Book*.
     `,
-    notes: `Moved from docs/active-plans/explainer-content.md (T2 draft). Claims to verify against Levine
-      (The Jazz Theory Book for qualities and extensions; The Jazz Piano Book for shells and register):
-      1. [ ] The 3rd and 7th define a seventh chord's quality; the root and 5th are shared across chord types.
-      2. [ ] The 3rd and 7th are called "guide tones".
-      3. [ ] In a dominant 7th, the 3rd and 7th form a tritone, and that tritone is the source of its pull to resolve.
-      4. [ ] A shell voicing is the root plus 3rd and 7th, in either order, with the 5th omitted. (Likely in The Jazz Piano Book.)
-      5. [ ] The 5th is the most expendable chord tone.
-      6. [ ] Omitting the 7th can change a dominant's identity, while omitting the 3rd (7th present) keeps more of the chord's character. Least certain.
-      7. [ ] Shells leave room for melody and extensions. Framing; check it matches Levine's reasoning.
-      Possible additions if Levine covers them: shells' association with Bud Powell; guide tones moving by step through a
-      ii–V–I (Dm7–G7–Cmaj7: F→F→E and C→B→B). Cite the book as further reading after verification; never copy its text.
-      The rag bar 12 example was checked in code (namedVsPlayed: played R 3 ♭7, left out 5).`,
+    notes: `T2 (shells). Verified by Dustin from own knowledge, 2026-10-20. Revised: quality table and tritone detail moved to
+      chord-tones-and-roles and tritone; rag example moved from bar 12 to bar 16.
+      1. [x] The 3rd and 7th are called guide tones.
+      2. [x] A shell voicing is root in the bass plus the 3rd and 7th, in either order, with the 5th omitted.
+      3. [x] (heuristic, framing) Shells leave room for melody and extensions.
+      4. [x] (historical) Shells are closely associated with Bud Powell.
+      5. [x] In a dominant 7th, the guide tones form a tritone, the source of its pull.
+      6. [x] Through Dm7–G7–Cmaj7 with alternating shells, the guide-tone lines are F→F→E and C→B→B, each holding or moving by half step.
+      7. [x] Some sources call two-note voicings (root + 7th, or root + 3rd) shells.
+      8. [x] Without the 7th, root + 3rd doesn't specify the seventh-chord type; without the 3rd, root + ♭7 doesn't distinguish C7 from Cm7.
+      9. [x] Cm7♭5 and Cm7 have identical shells, so the ♭5 must be kept to say m7♭5.
+      The rag bar 16 example was checked in code (namedVsPlayed on event 2: played R 3 ♭7, left out 5; the fixture's bassSource there
+      is "inferred" — the lowest chord note, no bass line under it — and the chord symbols are "derived").
+      Examples (learn-example.js): dm7-shell-3-below-7, cmaj7-shell-3-below-7; reused c7-shell-3-below-7, c7-shell-7-below-3,
+      g7-shell-tritone, eb7-shell-in-the-rag. The ii–V–I guide-tone lines are a learn-example self-test check. Text verbatim.`,
   },
+  'chord-tones-and-roles': {
+    title: 'Chord tones, degrees and slash chords',
+    status: 'verified', category: 'theory', kind: 'fact',
+    see_also: ['guide-tones-and-shells', 'extensions', 'named-vs-played', 'roles-in-the-data', 'intro-chords'],
+    summary: 'Every note in a chord has a number — its distance from the chord’s root — and that number tells you what job the note is doing.',
+    body: `
+      ## What it is
 
-  'chord-tones-and-roles': stub('Chord tones, degrees and slash chords', 'theory',
-    ['guide-tones-and-shells', 'named-vs-played', 'roles-in-the-data', 'intro-chords'],
-    'Root, 3rd, 5th, 7th: what each chord tone does, how degrees are counted from the root, and what a slash chord says about the bass.'),
+      A chord is built up from a root by stacking notes a third apart. Each
+      note is named by how far it sits above the root: the root is 1, then
+      3, 5 and 7. Go past the octave and the stack continues as 9, 11 and
+      13 — the same letters as 2, 4 and 6, an octave higher.
+
+      The number alone isn't the whole name. A flat sign marks a degree
+      that is a half step lower than in the major scale built on the root:
+
+      | Chord | Degrees | Spelled on C |
+      |---|---|---|
+      | Cmaj7 | 1 3 5 7 | C E G B |
+      | C7 | 1 3 5 ♭7 | C E G B♭ |
+      | Cm7 | 1 ♭3 5 ♭7 | C E♭ G B♭ |
+      | Cm7♭5 | 1 ♭3 ♭5 ♭7 | C E♭ G♭ B♭ |
+      | Cdim7 | 1 ♭3 ♭5 ♭♭7 | C E♭ G♭ B♭♭ |
+
+      Each degree also has a role:
+
+      - The **root** names the chord. It's often, but not always, in the bass.
+      - The **3rd and 7th** decide the chord's quality — major, minor or
+        dominant. Change either one and you have a different chord.
+      - The **5th**, when it's a perfect 5th, usually adds the least. In
+        practice it's the tone players most often leave out. An altered 5th
+        (♭5 or ♯5) is a different matter: it changes the chord's sound and is
+        usually kept. That's a rule of thumb, not a law.
+      - **9, 11 and 13** are colour. They're added on top of the basic chord
+        rather than defining it.
+
+      ## Hear it
+
+      These three chords share a root and a perfect 5th. Only the 3rd and
+      7th change.
+
+      [[example cmaj7-close]]
+
+      [[example c7-close]]
+
+      [[example cm7-close]]
+
+      ## In a real piece
+
+      In bar 2 of Maple Leaf Rag the bass plays B♭, but the chord is E♭7.
+      Counted from E♭, the bass note is the 5th, not the root. Degrees are
+      always counted from the chord's root, not from the lowest note.
+
+      [[example eb7-over-bb-rag]]
+
+      ## Common confusions
+
+      - **Degrees count from the chord, not the key.** In the key of C, a
+        D7 chord's 3rd is F♯. It's the 3rd of D, not the 3rd of the key.
+      - **"7" and "maj7" are different 7ths.** In a chord symbol, a plain 7
+        means ♭7 (C7 has B♭). Only "maj7" means the 7th a half step below the
+        root (Cmaj7 has B).
+      - **9 vs 2, 11 vs 4, 13 vs 6.** They're the same letter. With a 7th in
+        the chord, the higher numbers are the usual names. Over a plain triad
+        you'll see "add2" or "6" instead.
+      - **The degree fixes the letter name.** In A♭7 the ♭7 is G♭, not F♯,
+        because a 7th above A must be some kind of G. That's also why Cdim7
+        has B♭♭, not A.
+
+      ## Try it
+
+      - Play C7, then lower only the E to E♭. You've made Cm7.
+      - On /voicings, pick any bar and read the degree line in the Theory
+        card. Find a bar where the bass isn't the root.
+
+      ## Sources
+
+      Levine, *The Jazz Theory Book*.
+    `,
+    notes: `T1. Verified by Dustin from own knowledge, 2026-10-20. Claim 7 is a heuristic.
+      1. [x] Chords are built by stacking thirds above a root.
+      2. [x] Degrees past the octave are 9, 11, 13, the same letters as 2, 4, 6.
+      3. [x] ♭ on a degree means a half step below the major-scale degree on the root.
+      4. [x] Degree formulas and spellings for maj7, 7, m7, m7♭5, dim7 as tabled.
+      5. [x] Cdim7's 7th is spelled B♭♭. (𝄫 replaced by ♭♭ to match the engine's spelling and render in Nunito, 2026-10-20.)
+      6. [x] The 3rd and 7th determine chord quality.
+      7. [x] (heuristic) The perfect 5th is the chord tone most often omitted; an altered 5th is usually kept.
+      8. [x] 9, 11, 13 are extensions (colour tones).
+      9. [x] A plain "7" in a chord symbol means ♭7; "maj7" means the major 7th.
+      10. [x] With a 7th present, 9/11/13 are the usual names; over a triad, "add2" or "6" is common.
+      11. [x] Degrees are counted from the chord root, not the key or the bass.
+      Examples (learn-example.js): cmaj7-close, c7-close, cm7-close (close position over C3; degrees from namedVsPlayed),
+      eb7-over-bb-rag (E♭7/B♭ — strict link to rag bar 2 event 1, bassSource voice).
+      Adaptation from the draft: the table gained the |---| separator row mini-markdown needs; the text is otherwise verbatim.`,
+  },
   'extensions': stub('Extensions: 9, 11, 13 and their alterations', 'theory',
     ['guide-tones-and-shells', 'sharp-eleven-on-dominants', 'named-vs-played', 'explore-panel', 'intro-beyond-triads'],
     'Which chords take a 9th, an 11th or a 13th, which alterations (♭9, ♯9, ♯11, ♭13) belong where, and why they are colour rather than clash.'),
@@ -884,9 +986,102 @@ const TOPICS = {
   'melody-against-harmony': stub('Melody against harmony', 'theory',
     ['melody-toggle', 'explore-panel', 'tension-scoring'],
     'The top voice is what the ear follows; solo piano versus a separate melody instrument; when a rub against the tune is the point.'),
-  'tritone': stub('The tritone', 'theory',
-    ['guide-tones-and-shells', 'intervals-that-rub', 'intro-intervals-scales'],
-    'Six semitones: the interval inside every dominant seventh, and why it pulls.'),
+  'tritone': {
+    title: 'The tritone',
+    status: 'verified', category: 'theory', kind: 'fact',
+    see_also: ['chord-tones-and-roles', 'guide-tones-and-shells', 'intervals-that-rub', 'intro-intervals-scales'],
+    summary: 'The tritone is the interval of three whole steps — exactly half an octave. It’s the tense core of every dominant 7th chord.',
+    body: `
+      ## What it is
+
+      A tritone spans six half steps: three whole steps, hence the name. It
+      splits the octave exactly in half, which makes it unusual in two ways:
+
+      - **Flip it and it's still a tritone.** Six half steps up, six more to
+        the octave. Every other interval turns into something different when
+        inverted.
+      - **It has two spellings.** C up to F♯ is an augmented 4th. C up to G♭
+        is a diminished 5th. Same keys, different letter names, and the
+        letters depend on the chord it belongs to.
+
+      [Intro chapter 4](intro-beyond-triads) introduces the tritone inside C7. This page
+      picks up from there.
+
+      ## Where it lives
+
+      In a dominant 7th chord, the 3rd and the ♭7 are a tritone apart. In C7
+      that's E and B♭. This is what gives a dominant chord its pull: the
+      tritone sounds unstable and wants to move.
+
+      Of the five common seventh chords, only the dominant 7th has its
+      tritone between the 3rd and 7th. Cmaj7 and Cm7 have no tritone at all.
+      Cm7♭5 has one between the root and the ♭5, and Cdim7 has two.
+
+      ## Hear it
+
+      The two notes of C7's tritone, first with the 3rd on the bottom, then
+      flipped. Either way up, it's the same unstable sound.
+
+      [[example c7-shell-3-below-7]]
+
+      [[example c7-shell-7-below-3]]
+
+      The tritone resolves by half steps. In G7 the tritone is B and F. Move
+      B up to C and F down to E, and you've landed on C major.
+
+      [[example g7-shell-tritone]]
+
+      [[example c-resolution]]
+
+      ## In a real piece
+
+      In bar 2 of Maple Leaf Rag the E♭7 chord has G and D♭ in the middle of
+      the voicing. That's its 3rd and ♭7, a tritone apart.
+
+      [[example eb7-over-bb-rag]]
+
+      ## Common confusions
+
+      - **Augmented 4th or diminished 5th?** Both are tritones, and they
+        sound identical — they're enharmonic intervals. The name follows the
+        letters: if the upper note is a 4th letter above (C to F♯), it's an
+        augmented 4th; if it's a 5th letter above (C to G♭), it's a
+        diminished 5th.
+      - **A tritone doesn't name one chord.** B and F are the 3rd and ♭7 of
+        G7, but also the ♭7 and 3rd of D♭7, where B is spelled C♭. B and C♭
+        are *enharmonic*: the same key on the piano, written with different
+        letter names. This shared tritone is the basis of tritone
+        substitution, covered later.
+
+      [[example db7-shell-tritone]]
+
+      ## Try it
+
+      - Play B and F together, then move B up to C and F down to E. The
+        tension drains away.
+      - Now play F below B and do the same moves. This time the notes move
+        apart instead of together, and land on E and C.
+
+      ## Sources
+
+      Levine, *The Jazz Theory Book*.
+    `,
+    notes: `T2. Verified by Dustin from own knowledge, 2026-10-20.
+      1. [x] A tritone is six half steps (three whole steps).
+      2. [x] It divides the octave exactly in half.
+      3. [x] An inverted tritone is still a tritone; no other interval inverts to itself.
+      4. [x] Augmented 4th and diminished 5th are the two spellings, named by the letters; they are enharmonic intervals.
+      5. [x] In a dominant 7th, the 3rd and ♭7 form a tritone.
+      6. [x] Cmaj7 and Cm7 contain no tritone; Cm7♭5 has one between root and ♭5; Cdim7 has two.
+      7. [x] In G7 → C, B resolves up to C and F down to E.
+      8. [x] A diminished 5th resolves inward, an augmented 4th outward.
+      9. [x] G7 and D♭7 share the same tritone (B/C♭ and F). B and C♭ are enharmonic: the same pitch with different letter names.
+      Engine check 2026-10-20: tritone pairs from the parser's interval sets — Cmaj7 none, C7 3–♭7, Cm7 none, Cm7♭5 R–♭5,
+      Cdim7 R–♭5 and ♭3–♭♭7; D♭7 with C♭4 spells F = 3, C♭ = ♭7 (midi 53, 59 — the same keys as G7's F3 B3).
+      Examples (learn-example.js): g7-shell-tritone, c-resolution, db7-shell-tritone; reused c7-shell-3-below-7,
+      c7-shell-7-below-3, eb7-over-bb-rag. Adaptation from the draft: the Intro chapter 4 link targets the EXTERNAL key
+      intro-beyond-triads (resolves to /intro/4 with its title) instead of the bare path; text otherwise verbatim.`,
+  },
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -904,6 +1099,7 @@ const GLOSSARY = {
   'A-form':             'rootless-voicings',
   'B-form':             'rootless-voicings',
   'tritone':            'tritone',
+  'enharmonic':         'tritone',
   'minor 2nd':          'register-and-low-interval-limits',
   'minor 9th':          'register-and-low-interval-limits',
   'low interval limit': 'register-and-low-interval-limits',
@@ -1104,9 +1300,12 @@ async function selfTest() {
   check('glossary lookup case-insensitive', glossaryLookup('Guide Tones')?.slug === 'guide-tones-and-shells');
   check('glossary lookup external', glossaryLookup('tonnetz')?.url === '/intro/5');
   check('glossary unknown', glossaryLookup('zzz') === null);
-  check('stub links carry the stub class', renderInline('[x](tritone)', { resolveLink }).includes('learn-link--stub'));
+  check('stub links carry the stub class', renderInline('[x](extensions)', { resolveLink }).includes('learn-link--stub'));
   check('topicsForPanel', topicsForPanel('chart').includes('tension-scoring') && PANELS.every(p => topicsForPanel(p).length >= 1));
-  check('rendered stub has disclaimer', renderTopic('tritone').disclaimer === DISCLAIMER.stub);
+  check('rendered stub has disclaimer', renderTopic('extensions').disclaimer === DISCLAIMER.stub);
+  check('verified topics carry no disclaimer', ['chord-tones-and-roles', 'tritone', 'guide-tones-and-shells'].every(s => renderTopic(s).status === 'verified' && renderTopic(s).disclaimer === null));
+  check('glossary: tritone and enharmonic → the tritone topic', glossaryLookup('tritone')?.slug === 'tritone' && glossaryLookup('Enharmonic')?.slug === 'tritone');
+  check('tritone topic links Intro chapter 4 through EXTERNAL', renderTopic('tritone').html.includes('<a href="/intro/4" title="Fundamentals 4 — Beyond Triads" class="learn-link">Intro chapter 4</a>'));
 
   const counts = {}; for (const s of slugs) counts[TOPICS[s].status] = (counts[TOPICS[s].status] || 0) + 1;
   console.log(`\n${slugs.length} topics: ${Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(', ')}; ${Object.keys(EXTERNAL).length} external targets; ${Object.keys(GLOSSARY).length} glossary terms`);

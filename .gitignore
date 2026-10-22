@@ -6,3 +6,8 @@ venv/
 *.wav
 docs/songlab.code-workspace
 static/private/
+
+# Public-domain sheet music scans (see sources/SOURCES.md, which is committed)
+sources/*.pdf
+!sources/SOURCES.md
+sources/work/
