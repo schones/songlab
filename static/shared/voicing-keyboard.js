@@ -12,6 +12,7 @@
  *   const kb = new VoicingKeyboard('vp-keyboard', { low: 'C2', high: 'B5' });
  *   //   options.height     white-key height in px (default 112; black keys keep the 70/112 ratio)
  *   //   options.ariaLabel  the keyboard's aria-label (default 'Keyboard showing the selected bar')
+ *   //   options.onKeyClick (midi) => void: makes the keys clickable (default none: display only)
  *   kb.setRange(24, 95);                 // midi or spelled; rebuilds the keys
  *   kb.render({ bass: 'D3', voicing: ['F♯3', 'G3', 'A3', 'D4'], melody: [] });
  *   kb.setHighlight(62);                 // ring one key, or a Set/array of midis; null clears
@@ -51,14 +52,16 @@ const CSS = /* css */ `
 .vk-key--black.vk-key--voicing { background: ${ROLE_COLORS.voicing}; }
 .vk-key--black.vk-key--melody  { background: ${ROLE_COLORS.melody}; }
 .vk-key--hit { outline: 3px solid #fff; outline-offset: -3px; }
+.vk--clickable .vk-key { cursor: pointer; }
 `;
 
 class VoicingKeyboard {
   /**
    * @param {string|Element} container
-   * @param {{ low?: string, high?: string, height?: number, ariaLabel?: string }} [options]
+   * @param {{ low?: string, high?: string, height?: number, ariaLabel?: string, onKeyClick?: (midi: number) => void }} [options]
    *   low / high: spelled notes with octave; default C2–B5.
    *   height: white-key height in px; omitted = the stylesheet's WHITE_H. ariaLabel: default 'Keyboard showing the selected bar'.
+   *   onKeyClick: called with the key's midi on click; omitted = display only (no listener, no pointer cursor).
    */
   constructor(container, options = {}) {
     this._container = typeof container === 'string' ? document.getElementById(container) : container;
@@ -67,6 +70,7 @@ class VoicingKeyboard {
     this._high = high.midi;
     this._height = Number(options.height) > 0 ? Number(options.height) : null;   // null: CSS defaults apply
     this._ariaLabel = options.ariaLabel || 'Keyboard showing the selected bar';
+    this._onKeyClick = typeof options.onKeyClick === 'function' ? options.onKeyClick : null;
     this._keys = new Map();   // midi → element
     this._roles = {};         // last render() roles, restored after setPlaying(null)
     this._wrap = null;
@@ -184,6 +188,13 @@ class VoicingKeyboard {
     kb.setAttribute('role', 'img');
     kb.setAttribute('aria-label', this._ariaLabel);
     if (this._height) kb.style.height = `${this._height}px`;
+    if (this._onKeyClick) {
+      kb.classList.add('vk--clickable');
+      kb.addEventListener('click', e => {
+        const key = e.target.closest('.vk-key');
+        if (key && kb.contains(key)) this._onKeyClick(Number(key.dataset.midi));
+      });
+    }
 
     let whiteIdx = 0;
     let whites = 0;
