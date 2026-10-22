@@ -148,6 +148,7 @@ const EXTERNAL = {
   'theory-tonal-centers':     { kind: 'page', url: '/theory/tonal-centers', title: 'Tonal Centers & Keys' },
   'theory-chord-progressions': { kind: 'page', url: '/theory/chord-progressions', title: 'Chord Progressions' },
   'theory-modes':             { kind: 'page', url: '/theory/modes', title: 'Modes' },
+  'game-cycle-of-shells':     { kind: 'page', url: '/games/cycle-of-shells', title: 'Cycle of Shells' },
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -846,6 +847,7 @@ const TOPICS = {
         and sing either guide-tone line.
       - Move the progression to another key, keeping the same alternation:
         3rd-below, 7th-below, 3rd-below.
+      - Practise this round the whole cycle in [Cycle of Shells](game-cycle-of-shells).
 
       ## Sources
 
@@ -1305,6 +1307,7 @@ async function selfTest() {
   check('rendered stub has disclaimer', renderTopic('extensions').disclaimer === DISCLAIMER.stub);
   check('verified topics carry no disclaimer', ['chord-tones-and-roles', 'tritone', 'guide-tones-and-shells'].every(s => renderTopic(s).status === 'verified' && renderTopic(s).disclaimer === null));
   check('glossary: tritone and enharmonic → the tritone topic', glossaryLookup('tritone')?.slug === 'tritone' && glossaryLookup('Enharmonic')?.slug === 'tritone');
+  check('guide-tones topic links the Cycle of Shells game through EXTERNAL', renderTopic('guide-tones-and-shells').html.includes('<a href="/games/cycle-of-shells" title="Cycle of Shells" class="learn-link">Cycle of Shells</a>'));
   check('tritone topic links Intro chapter 4 through EXTERNAL', renderTopic('tritone').html.includes('<a href="/intro/4" title="Fundamentals 4 — Beyond Triads" class="learn-link">Intro chapter 4</a>'));
 
   const counts = {}; for (const s of slugs) counts[TOPICS[s].status] = (counts[TOPICS[s].status] || 0) + 1;

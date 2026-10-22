@@ -21,6 +21,10 @@
  *   phraseRecipe(target, opts?)                   → recipe line for a phrase's first chord, or null
  *   moveRule(prevTarget, target, opts?)           → { kind: 'fall'|'seam'|'replace', ok, text } for every other chord
  *   (checkAnswer, describeMove, followUp, phraseRecipe and moveRule take opts.dual to format note names with noteLabel)
+ *   checkFollowUp(question, midi, opts?)          → { correct, message } for one played note against followUp()'s question
+ *   chordEntry({...}) / followUpEntry({...})      → ResultDetail envelopes (gameId 'cycle-of-shells') for the result log
+ *   summarizeLap(entries)                         → { chords, attempts, firstTryPct, followUps, followUpPct, worstKeys, topErrors }
+ *   ERROR_WORDS                                   → error code → plain words ("wrong quality")
  *   CYCLE, FORMS, PREFERRED_BAND, OUTER_BAND, BASS_OCTAVE, selfTest
  *
  * Decisions (Stage 1 prompt, 2026-10-22):
@@ -526,9 +530,10 @@ function followUp(prevTarget, target, opts = {}) {
     : `Both guide tones hold from ${p.parsed.display} to ${c.parsed.display}.`;
   return {
     prompt: `Which note moved from ${p.parsed.display} to ${c.parsed.display}?`,
+    from: p.parsed.display, to: c.parsed.display, fromParsed: p.parsed,
     answerPC: moved ? moved.pc : null, answerName: moved ? moved.name : null, answerDegree: moved ? moved.degree : null,
-    movedTo: movedTo ? { name: movedTo.name, degree: movedTo.degree } : null,
-    held: held ? { name: held.name, degree: held.degree } : null,
+    movedTo: movedTo ? { name: movedTo.name, degree: movedTo.degree, pc: movedTo.pc } : null,
+    held: held ? { name: held.name, degree: held.degree, pc: held.pc } : null,
     explanation,
     accepts: midi => moved != null && pcOf(midi) === moved.pc,
   };
@@ -583,6 +588,95 @@ function moveRule(prevTarget, target, opts = {}) {
   return { kind: 'replace', ok: true, text: capitalize(move.summary) };
 }
 
+/**
+ * Judge one played note against a followUp() question (any octave).
+ * @returns {{ correct:boolean, message:string }}  on a right answer the message is the explanation;
+ *   on the held tone "B stayed — it's in both chords."; otherwise "D isn't one of G7's guide tones."
+ */
+function checkFollowUp(question, midi, opts = {}) {
+  const nl = labeller(opts);
+  if (!question || question.answerPC == null) return { correct: false, message: question ? question.explanation : 'No question.' };
+  const pc = pcOf(midi);
+  if (pc === question.answerPC) return { correct: true, message: question.explanation };
+  const heldPC = question.held ? (question.held.pc ?? parseNote(question.held.name).pc) : null;
+  if (heldPC != null && pc === heldPC) return { correct: false, message: `${nl(question.held.name)} stayed — it's in both chords.` };
+  const name = question.fromParsed ? spellAgainst(question.fromParsed, midi).pcName : parseNote(midi).name;
+  return { correct: false, message: `${nl(name)} isn't one of ${question.from}'s guide tones.` };
+}
+
+// ════════════════════════════════════════════════════════════════════
+// RESULT LOG ENTRIES AND LAP SUMMARY
+// ════════════════════════════════════════════════════════════════════
+
+const GAME_ID = 'cycle-of-shells';
+/** Error code → plain words for summaries. */
+const ERROR_WORDS = {
+  TOO_FEW_NOTES: 'too few notes', WRONG_ROOT: 'wrong root', ROOT_NOT_LOWEST: 'root not on the bottom', WRONG_QUALITY: 'wrong quality',
+  MISSING_GUIDE_TONE: 'missing 3rd or 7th', EXTRA_NOTE: 'extra note', WRONG_FORM: 'wrong form (3rd and 7th swapped)', TOO_WIDE: 'too wide',
+};
+
+/** The ResultDetail envelope shared with Polyrhythm's persistResult. */
+function resultEnvelope({ timestamp, mode, difficulty, duration, correct, detail }) {
+  return { gameId: GAME_ID, timestamp: timestamp || new Date().toISOString(), mode, difficulty, duration: Math.max(0, Math.round(duration || 0)), correct: !!correct, detail };
+}
+const difficultyOf = settings => ({ lapMode: settings.mode, hints: settings.hints, pedalSubmit: !!settings.pedalSubmit });
+
+/**
+ * One chord submission as a log entry.
+ * @param {{ target, result, played:number[], attempt:number, source:'lift'|'pedal'|'check', device?:string|null, showMeUsed?:boolean, settings, duration?:number, timestamp?:string }} a
+ */
+function chordEntry({ target, result, played, attempt, source, device = null, showMeUsed = false, settings, duration = 0, timestamp }) {
+  return resultEnvelope({
+    timestamp, mode: 'practice', difficulty: difficultyOf(settings), duration, correct: result.correct,
+    detail: {
+      kind: 'chord', key: target.key, symbol: target.display, role: target.role, form: target.form, band: target.band,
+      target: { bass: target.bass.midi, upper: target.upper.map(u => u.midi) },
+      played: sortNum([...played]), errors: result.errors.map(e => e.code), coaching: result.coaching.map(c => c.code),
+      attempt, source, device, showMeUsed: !!showMeUsed,
+    },
+  });
+}
+
+/**
+ * One follow-up answer (or skip) as a log entry.
+ * @param {{ prevTarget, target, question, played:number|null, attempt:number, skipped?:boolean, correct?:boolean, settings, duration?:number, timestamp?:string }} a
+ */
+function followUpEntry({ prevTarget, target, question, played = null, attempt, skipped = false, correct = false, settings, duration = 0, timestamp }) {
+  return resultEnvelope({
+    timestamp, mode: 'practice', difficulty: difficultyOf(settings), duration, correct: !skipped && !!correct,
+    detail: { kind: 'followUp', key: target.key, from: prevTarget.display, to: target.display, answer: question ? question.answerName : null, played, attempt, skipped: !!skipped },
+  });
+}
+
+/**
+ * Summary of one lap's entries (chord and follow-up entries, any order).
+ * @returns {{ chords:number, attempts:number, firstTryPct:number|null, followUps:number, followUpPct:number|null,
+ *             worstKeys:Array<{key, misses}>, topErrors:Array<{code, label, count}> }}
+ *   chords = targets answered correctly; firstTryPct = share of those answered on attempt 1;
+ *   followUpPct = share of follow-ups (skips included) answered correctly; worstKeys = up to three keys with the most
+ *   wrong chord submissions; topErrors = up to five error codes by count over wrong submissions, in plain words.
+ */
+function summarizeLap(entries) {
+  const chordsAll = (entries || []).filter(e => e && e.detail && e.detail.kind === 'chord');
+  const correct = chordsAll.filter(e => e.correct);
+  const wrong = chordsAll.filter(e => !e.correct);
+  const fus = (entries || []).filter(e => e && e.detail && e.detail.kind === 'followUp');
+  const pct = (n, d) => (d ? Math.round((100 * n) / d) : null);
+  const missesByKey = new Map(), errors = new Map();
+  for (const e of wrong) {
+    missesByKey.set(e.detail.key, (missesByKey.get(e.detail.key) || 0) + 1);
+    for (const code of e.detail.errors || []) errors.set(code, (errors.get(code) || 0) + 1);
+  }
+  const worstKeys = [...missesByKey].map(([key, misses]) => ({ key, misses })).sort((a, b) => b.misses - a.misses || a.key.localeCompare(b.key)).slice(0, 3);
+  const topErrors = [...errors].map(([code, count]) => ({ code, label: ERROR_WORDS[code] || code.toLowerCase().replace(/_/g, ' '), count })).sort((a, b) => b.count - a.count || a.code.localeCompare(b.code)).slice(0, 5);
+  return {
+    chords: correct.length, attempts: chordsAll.length,
+    firstTryPct: pct(correct.filter(e => e.detail.attempt === 1).length, correct.length),
+    followUps: fus.length, followUpPct: pct(fus.filter(e => e.correct).length, fus.length),
+    worstKeys, topErrors,
+  };
+}
+
 // ════════════════════════════════════════════════════════════════════
 // EXPORTS
 // ════════════════════════════════════════════════════════════════════
@@ -590,6 +684,7 @@ function moveRule(prevTarget, target, opts = {}) {
 export {
   buildLap, describeMove, checkAnswer, createSubmitDetector, followUp, shellTones,
   noteLabel, phraseRecipe, moveRule,
+  checkFollowUp, chordEntry, followUpEntry, summarizeLap, ERROR_WORDS, GAME_ID,
   CYCLE, FORMS, PREFERRED_BAND, OUTER_BAND, BASS_OCTAVE, selfTest,
 };
 
@@ -796,6 +891,32 @@ async function selfTest() {
     }
     assert(`moveRule ${name} lap from C: every in-phrase move is one 7th falling a half step with the other note held, every seam is 3rd up / 7th down (${ts.length - 1} transitions)`, [broken, kinds], [[], name === 'single' ? { fall: 24, seam: 11, replace: 0 } : { fall: 48, seam: 11, replace: 12 }]);
   }
+
+  // ── Stage 4: follow-up judging, log entries, lap summary ─────────
+  const fuq = followUp(g7, cmaj7);
+  assert('followUp carries from/to', [fuq.from, fuq.to], ['G7', 'Cmaj7']);
+  assert('checkFollowUp: F in any octave is right and returns the explanation', [checkFollowUp(fuq, n('F2')).correct, checkFollowUp(fuq, n('F5')).message === fuq.explanation], [true, true]);
+  assert('checkFollowUp: the held tone', checkFollowUp(fuq, n('B4')), { correct: false, message: "B stayed — it's in both chords." });
+  assert('checkFollowUp: another note, spelled against the V chord', checkFollowUp(fuq, n('D3')).message, "D isn't one of G7's guide tones.");
+  assert('checkFollowUp dual: D♭7 → G♭maj7, held F, wrong B spelled C♭ (B)', checkFollowUp(followUp(db7, T('Gbmaj7'), { dual: true }), n('F3'), { dual: true }).message, "F stayed — it's in both chords.");
+  const st = { mode: 'both', hints: 'guided', pedalSubmit: false };
+  const okEntry = chordEntry({ target: dm7, result: ok1, played: [60, 38, 53], attempt: 1, source: 'lift', device: 'RD-2000', settings: st, duration: 1234.6, timestamp: '2026-10-22T10:00:00.000Z' });
+  assert('chordEntry: envelope + detail', okEntry, { gameId: 'cycle-of-shells', timestamp: '2026-10-22T10:00:00.000Z', mode: 'practice', difficulty: { lapMode: 'both', hints: 'guided', pedalSubmit: false }, duration: 1235, correct: true,
+    detail: { kind: 'chord', key: 'C', symbol: 'Dm7', role: 'ii', form: '3-below', band: 'preferred', target: { bass: 38, upper: [53, 60] }, played: [38, 53, 60], errors: [], coaching: [], attempt: 1, source: 'lift', device: 'RD-2000', showMeUsed: false } });
+  const wrongEntry = chordEntry({ target: dm7, result: wq, played: [38, 54, 60], attempt: 2, source: 'check', settings: st, showMeUsed: true });
+  assert('chordEntry: wrong answer carries the codes, showMeUsed, a fresh ISO timestamp', [wrongEntry.correct, wrongEntry.detail.errors, wrongEntry.detail.showMeUsed, wrongEntry.detail.device, /^\d{4}-\d{2}-\d{2}T/.test(wrongEntry.timestamp)], [false, ['WRONG_QUALITY'], true, null, true]);
+  const fuEntry = followUpEntry({ prevTarget: g7, target: cmaj7, question: fuq, played: 65, attempt: 1, correct: true, settings: st, duration: 800 });
+  assert('followUpEntry: detail', [fuEntry.correct, fuEntry.detail], [true, { kind: 'followUp', key: 'C', from: 'G7', to: 'Cmaj7', answer: 'F', played: 65, attempt: 1, skipped: false }]);
+  const skipEntry = followUpEntry({ prevTarget: g7, target: cmaj7, question: fuq, attempt: 1, skipped: true, settings: st });
+  assert('followUpEntry: a skip is never correct', [skipEntry.correct, skipEntry.detail.skipped, skipEntry.detail.played], [false, true, null]);
+  const sumIn = [okEntry, wrongEntry, chordEntry({ target: dm7, result: ok1, played: [38, 53, 60], attempt: 2, source: 'lift', settings: st }),
+    chordEntry({ target: gm7, result: checkAnswer(gm7, [n('C3'), n('B♭3'), n('F4')]), played: [48, 58, 65], attempt: 1, source: 'lift', settings: st }),
+    chordEntry({ target: gm7, result: checkAnswer(gm7, [n('G2'), n('F3'), n('B♭3')]), played: [43, 53, 58], attempt: 1, source: 'lift', settings: st }),
+    fuEntry, skipEntry];
+  assert('summarizeLap: counts, percentages, worst keys, errors in plain words', summarizeLap(sumIn),
+    { chords: 3, attempts: 5, firstTryPct: 67, followUps: 2, followUpPct: 50, worstKeys: [{ key: 'C', misses: 1 }, { key: 'F', misses: 1 }],
+      topErrors: [{ code: 'WRONG_FORM', label: 'wrong form (3rd and 7th swapped)', count: 1 }, { code: 'WRONG_QUALITY', label: 'wrong quality', count: 1 }, { code: 'WRONG_ROOT', label: 'wrong root', count: 1 }] });
+  assert('summarizeLap: empty lap → nulls', summarizeLap([]), { chords: 0, attempts: 0, firstTryPct: null, followUps: 0, followUpPct: null, worstKeys: [], topErrors: [] });
 
   const passed = results.filter(Boolean).length;
   console.log(`\n─── ${passed}/${results.length} passed ───\n`);

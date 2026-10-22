@@ -30,6 +30,10 @@ import { WALKTHROUGHS } from './walkthroughs.js';
 // CONCEPT → GAME LINK MAP
 // ════════════════════════════════════════════════════════════════════
 
+// A concept maps to one entry or an array of entries. An entry gets the
+// step's chord root as `root`, unless it names `homeKeyParam`: then it gets
+// the walkthrough's home key (its `key`) under that query key instead, and
+// no root at all. A walkthrough without a key adds nothing.
 const CONCEPT_GAME_MAP = {
   // PLR transforms → Chord Walks tier 3
   P_transform:           { label: 'Chord Walks',       href: '/games/chord-walks',     params: { tier: 3, transform: 'P' } },
@@ -41,7 +45,10 @@ const CONCEPT_GAME_MAP = {
   chromatic_bass:        { label: 'Harmony Trainer',    href: '/harmony',               params: { mode: 'practice' } },
 
   // Progressions → Chord Identification
-  ii_V_I:                { label: 'Chord Spotter',      href: '/chord-identification',  params: { progression: 'ii-V-I' } },
+  ii_V_I:                [
+    { label: 'Chord Spotter',      href: '/chord-identification',  params: { progression: 'ii-V-I' } },
+    { label: 'Cycle of Shells',    href: '/games/cycle-of-shells', params: {}, homeKeyParam: 'key' },   // the game's bootstrap reads ?key= as the lap's start key
+  ],
   deceptive_cadence:     { label: 'Chord Spotter',      href: '/chord-identification',  params: { progression: 'V-vi' } },
   V_vi:                  { label: 'Chord Spotter',      href: '/chord-identification',  params: { progression: 'V-vi' } },
   I_IV_V:                { label: 'Chord Spotter',      href: '/chord-identification',  params: { progression: 'I-IV-V' } },
@@ -57,29 +64,31 @@ const CONCEPT_GAME_MAP = {
   parallel_major_minor:  { label: 'Chord Walks',       href: '/games/chord-walks',     params: { tier: 3, transform: 'P' } },
 };
 
-function buildGameLinks(step) {
+function buildGameLinks(step, walkthrough = null) {
   const specifics = step && step.concept_specifics;
   if (!specifics || !specifics.length) return [];
 
   // Deduplicate by href; merge params; keep first label seen.
   const byHref = new Map();
   for (const concept of specifics) {
-    const entry = CONCEPT_GAME_MAP[concept];
-    if (!entry) continue;
-    if (byHref.has(entry.href)) {
-      const existing = byHref.get(entry.href);
-      existing.params = { ...entry.params, ...existing.params };
-    } else {
-      byHref.set(entry.href, { label: entry.label, href: entry.href, params: { ...entry.params } });
+    for (const entry of [].concat(CONCEPT_GAME_MAP[concept] || [])) {
+      if (byHref.has(entry.href)) {
+        const existing = byHref.get(entry.href);
+        existing.params = { ...entry.params, ...existing.params };
+      } else {
+        byHref.set(entry.href, { label: entry.label, href: entry.href, params: { ...entry.params }, homeKeyParam: entry.homeKeyParam || null });
+      }
     }
   }
   if (!byHref.size) return [];
 
-  // Add root from current chord, if parseable.
+  // Add root from current chord, if parseable; home-key entries take the walkthrough's key instead.
   const parsed = parseChordName(step.chord);
-  if (parsed && parsed.root) {
-    for (const entry of byHref.values()) {
-      if (entry.params.root == null) entry.params.root = parsed.root;
+  for (const entry of byHref.values()) {
+    if (entry.homeKeyParam) {
+      if (walkthrough && walkthrough.key && entry.params[entry.homeKeyParam] == null) entry.params[entry.homeKeyParam] = walkthrough.key;
+    } else if (parsed && parsed.root && entry.params.root == null) {
+      entry.params.root = parsed.root;
     }
   }
 
@@ -462,7 +471,7 @@ class WalkthroughSidebar {
 
     // "Try this" contextual game pills
     if (this._tryThisEl) {
-      const games = buildGameLinks(step);
+      const games = buildGameLinks(step, wt);
       if (games.length) {
         this._tryThisEl.innerHTML = games.map(g =>
           `<a class="wts-game-pill" href="${g.url}" title="Practice this concept">
@@ -558,4 +567,4 @@ class WalkthroughSidebar {
   }
 }
 
-export { WalkthroughSidebar };
+export { WalkthroughSidebar, buildGameLinks, CONCEPT_GAME_MAP };

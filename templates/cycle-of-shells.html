@@ -29,6 +29,27 @@
   }
   .cos-column { max-width: 780px; margin: 0 auto; }
   .cos-page .game-title { font-size: 2rem; }
+  .cos-why { font-size: 1.15rem; font-weight: 700; color: var(--accent-blue); text-decoration: none; margin-left: 1rem; border-bottom: 2px solid var(--accent-soft); }
+  .cos-why:hover { border-bottom-color: var(--accent-blue); }
+  .cos-title-group { display: flex; align-items: baseline; gap: 0.25rem; flex-wrap: wrap; }
+
+  /* ── Lap summary ─────────────────────────────────────────── */
+  .cos-summary {
+    margin: 0.5rem auto 0;
+    max-width: 780px;
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    font-size: 1.35rem;
+    color: var(--text-secondary);
+  }
+  .cos-summary__title { font-size: 1.75rem; font-weight: 800; color: var(--text-primary); margin: 0 0 0.5rem; }
+  .cos-summary__grid { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1.25rem; align-items: baseline; }
+  .cos-summary__grid dt { font-weight: 700; color: var(--text-muted); }
+  .cos-summary__grid dd { margin: 0; }
+  .cos-summary .game-btn-row { margin-top: 1rem; }
+  .cos-summary .btn { font-size: 1.4rem; }
   .cos-page .game-top-bar { margin-bottom: 0.25rem; }
   .cos-page .game-back-link { font-size: 1.1rem; }
 
@@ -193,7 +214,10 @@
   <div class="cos-column">
     <!-- Top bar -->
     <div class="game-top-bar">
-      <h1 class="game-title">Cycle of Shells</h1>
+      <div class="cos-title-group">
+        <h1 class="game-title">Cycle of Shells</h1>
+        <a class="cos-why" id="cos-why" href="/learn/guide-tones-and-shells">Why shells?</a>
+      </div>
       <a href="/" class="game-back-link">&larr; Back</a>
     </div>
 
@@ -237,6 +261,21 @@
       <div class="game-feedback cos-feedback" id="cos-feedback"></div>
       <div class="cos-coaching" id="cos-coaching"></div>
 
+      <!-- Lap summary (shown when a lap finishes) -->
+      <section class="cos-summary" id="cos-summary" hidden aria-live="polite">
+        <h2 class="cos-summary__title">Lap complete</h2>
+        <dl class="cos-summary__grid">
+          <dt>Chords played</dt><dd id="sum-chords"></dd>
+          <dt>First-try correct</dt><dd id="sum-first"></dd>
+          <dt>Follow-ups correct</dt><dd id="sum-followup"></dd>
+          <dt>Most misses</dt><dd id="sum-keys"></dd>
+          <dt>Common errors</dt><dd id="sum-errors"></dd>
+        </dl>
+        <div class="game-btn-row">
+          <button class="btn game-btn--primary" id="btn-another">&#8635; Another lap</button>
+          <button class="btn game-btn--secondary" id="btn-startfrom">Start from&hellip;</button>
+        </div>
+      </section>
     </div>
 
     <!-- 6. Controls beside the cycle indicator -->
@@ -246,6 +285,7 @@
           <button class="btn game-btn--secondary" id="btn-hear">&#9654; Hear it</button>
           <button class="btn game-btn--primary" id="btn-check">Check</button>
           <button class="btn game-btn--secondary" id="btn-show" hidden>Show me</button>
+          <button class="btn game-btn--secondary" id="btn-skip" hidden>Skip</button>
           <button class="btn game-btn--secondary" id="btn-restart">&#8635; Restart lap</button>
         </div>
         <div class="cos-pedal-hint" id="cos-pedal-hint" hidden>Press the pedal to lock in your chord</div>
@@ -269,6 +309,9 @@
 
             <label for="set-pedal">Pedal submits</label>
             <span class="cos-settings__check"><input type="checkbox" id="set-pedal"> <span>Lock in a chord with the sustain pedal</span></span>
+
+            <label for="set-followup">Follow-up questions</label>
+            <span class="cos-settings__check"><input type="checkbox" id="set-followup"> <span>Ask which note moved after each phrase</span></span>
 
             <label for="set-hints">Hints</label>
             <select id="set-hints">

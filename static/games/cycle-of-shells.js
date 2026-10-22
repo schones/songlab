@@ -8,7 +8,9 @@
  * cycle-of-shells-core.js; this file only wires and renders.
  *
  * Depends on:
- *   - cycle-of-shells-core.js   → buildLap, describeMove, checkAnswer, createSubmitDetector, noteLabel, phraseRecipe, moveRule, CYCLE
+ *   - cycle-of-shells-core.js   → buildLap, describeMove, checkAnswer, createSubmitDetector, noteLabel, phraseRecipe, moveRule,
+ *                                 followUp, checkFollowUp, chordEntry, followUpEntry, summarizeLap, CYCLE
+ *   - cycle-of-shells-log.js    → createResultLog (ResultDetail entries in localStorage)
  *   - cycle-of-shells-input.js  → createShellInput (MIDI)
  *   - voicing-keyboard.js       → VoicingKeyboard (display + on-screen input via onKeyClick, minKeyWidth)
  *   - voicing-player.js         → VoicingPlayer (Hear it), loadSampler (live echo); one piano on the page
@@ -35,13 +37,24 @@
  * the MIDI device name is kept by the input wrapper under
  * 'cycleOfShells.midiDevice'. A legacy hidePath value migrates to hints.
  *
- * Stage 4 hooks: `hooks.onAccepted(target, result, submission)` and
- * `hooks.onLapComplete(lap)` are called when set; `getState()` exposes the
- * current target and counters for the follow-up question, result logging
- * and /learn links.
+ * Follow-up question (setting 'followUp', default on): after each correct
+ * I chord the page asks which note moved from V to I (core followUp); the
+ * guide is hidden while the question is open, one played note answers it
+ * (a second submit detector with minNotes 1), two tries, Skip always
+ * available; the lap never blocks and chord misses are untouched.
+ *
+ * Result log: every chord submission and follow-up answer becomes a
+ * ResultDetail entry (core chordEntry / followUpEntry) appended through
+ * cycle-of-shells-log.js; the entries of the current lap also feed the
+ * lap summary (core summarizeLap) shown when the lap finishes.
+ *
+ * Hooks: `hooks.onAccepted(target, result, submission)` and
+ * `hooks.onLapComplete(lap, summary)` are called when set; `getState()`
+ * exposes the current target, counters and open question.
  */
 
-import { buildLap, describeMove, checkAnswer, createSubmitDetector, noteLabel, phraseRecipe, moveRule, CYCLE } from './cycle-of-shells-core.js';
+import { buildLap, describeMove, checkAnswer, createSubmitDetector, noteLabel, phraseRecipe, moveRule, followUp, checkFollowUp, chordEntry, followUpEntry, summarizeLap, CYCLE } from './cycle-of-shells-core.js';
+import { createResultLog } from './cycle-of-shells-log.js';
 import { createShellInput } from './cycle-of-shells-input.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
 import { VoicingPlayer, loadSampler } from '../shared/voicing-player.js';
@@ -81,7 +94,7 @@ const DUAL = { dual: true };      // core formatters: show awkward spellings as 
 
 const $ = id => document.getElementById(id);
 
-const settings = { mode: 'both', startKey: 'C', hints: 'guided', pedalSubmit: false };
+const settings = { mode: 'both', startKey: 'C', hints: 'guided', pedalSubmit: false, followUp: true };
 let lap = [];
 let index = 0;
 let misses = 0;
@@ -100,8 +113,13 @@ let sampler = null;
 let playing = null;               // Map midi → role while Hear it sounds (keyboard follow)
 const echoing = new Set();        // midis currently echoed on the sampler
 let guideObserver = null;
+let question = null;              // open follow-up: { prev, target, q, attempt, openedAt }
+let fuDetector = null;            // single-note submit detector while a question is open
+let lapEntries = [];              // this lap's log entries, for the summary
+let targetShownAt = 0;            // performance.now() when the current target appeared
+const log = createResultLog();
 
-/** Stage 4 hooks (follow-up question, result logging, /learn links). */
+/** Hooks for anything built on top (the page itself uses the same paths). */
 const hooks = { onAccepted: null, onLapComplete: null };
 
 // ════════════════════════════════════════════════════════════════════
@@ -165,6 +183,8 @@ function muted() { return !!(window.AudioToggle && window.AudioToggle.isMuted())
 
 function startLap({ resumeIndex = 0 } = {}) {
   lap = buildLap({ mode: settings.mode, startKey: settings.startKey });
+  lapEntries = [];
+  $('cos-summary').hidden = true;
   goTo(Math.min(Math.max(0, resumeIndex), lap.length - 1));
   setFeedback('', null);
   $('cos-coaching').textContent = '';
@@ -175,7 +195,9 @@ function goTo(i) {
   index = i;
   misses = 0; showMe = false; prevAccepted = null; lapComplete = false;
   staged.clear();
+  question = null; fuDetector = null;
   if (detector) detector.reset();
+  targetShownAt = now();
   saveResume();
   render();
 }
@@ -185,15 +207,27 @@ function saveResume() { store.set('resume', { index, mode: settings.mode, startK
 function advance() {
   misses = 0; showMe = false; staged.clear();
   index++;
+  targetShownAt = now();
   if (index >= lap.length) {
     index = lap.length - 1;
     lapComplete = true;
     store.set('resume', { index: 0, mode: settings.mode, startKey: settings.startKey });
-    if (hooks.onLapComplete) hooks.onLapComplete(lap.slice());
+    const summary = summarizeLap(lapEntries);
+    renderSummary(summary);
+    if (hooks.onLapComplete) hooks.onLapComplete(lap.slice(), summary);
   } else {
     saveResume();
   }
   render();
+}
+
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+/** Append an entry to the result log and to this lap's list. */
+function record(entry) {
+  lapEntries.push(entry);
+  log.append(entry);
+  return entry;
 }
 
 /** First target of a key in the current lap (cycle indicator click). */
@@ -210,23 +244,27 @@ function jumpToKey(key) {
 // ════════════════════════════════════════════════════════════════════
 
 /** Check a set of midis against the current target. `source` is 'midi' or 'screen'. */
+/** Check a set of midis against the current target. `source` is 'lift', 'pedal' or 'check'. */
 function submit(midis, source) {
   const t = target();
-  if (!t || lapComplete) return;
+  if (!t || lapComplete || question) return;
   const sorted = [...new Set(midis)].sort((a, b) => a - b);
   const result = checkAnswer(t, sorted, prevAccepted, DUAL);
+  if (!result.correct && result.errors[0].code === 'TOO_FEW_NOTES' && source !== 'check') {
+    // A lone tap or two notes from the keyboard is not an attempt at the shell: say what is needed, no miss counted, not logged.
+    setFeedback(result.message, 'info');
+    return;
+  }
+  const attempt = misses + 1;
+  record(chordEntry({ target: t, result, played: sorted, attempt, source, device: input ? input.deviceName : null, showMeUsed: showMe, settings, duration: now() - targetShownAt }));
   if (result.correct) {
     // The core's message already is the coaching line when there is one; the second line carries any further coaching.
     setFeedback(result.message, 'success');
     $('cos-coaching').textContent = result.coaching.slice(1).map(c => c.message).join(' ');
     prevAccepted = sorted.slice(1);
-    if (hooks.onAccepted) hooks.onAccepted(t, result, { midis: sorted, source });
-    advance();
-    return;
-  }
-  if (result.errors[0].code === 'TOO_FEW_NOTES' && source === 'midi') {
-    // A lone tap or two notes from the keyboard is not an attempt at the shell: say what is needed, no miss counted.
-    setFeedback(result.message, 'info');
+    if (hooks.onAccepted) hooks.onAccepted(t, result, { midis: sorted, source, attempt });
+    if (t.role === 'I' && settings.followUp && index > 0) openQuestion(lap[index - 1], t);
+    else advance();
     return;
   }
   misses++;
@@ -234,6 +272,50 @@ function submit(midis, source) {
   $('cos-coaching').textContent = '';
   renderControls();
   renderKeyboard();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// FOLLOW-UP QUESTION
+// ════════════════════════════════════════════════════════════════════
+
+function openQuestion(prev, t) {
+  question = { prev, target: t, q: followUp(prev, t, DUAL), attempt: 0, openedAt: now() };
+  staged.clear();
+  fuDetector = createSubmitDetector({ minNotes: 1, settleMs: SETTLE_MS, pedalSubmit: settings.pedalSubmit });
+  detector.reset();
+  $('cos-coaching').textContent = `${question.q.prompt} Play that note.`;
+  renderControls();
+  renderKeyboard();
+}
+
+/** One played note (or a staged click) answers the open question. `source` is 'lift', 'pedal' or 'check'. */
+function answerQuestion(midis, source) {
+  if (!question) return;
+  const list = [...new Set(midis)];
+  if (list.length !== 1) { $('cos-coaching').textContent = `${question.q.prompt} Play just one note.`; return; }
+  const midi = list[0];
+  question.attempt++;
+  const r = checkFollowUp(question.q, midi, DUAL);
+  record(followUpEntry({ prevTarget: question.prev, target: question.target, question: question.q, played: midi, attempt: question.attempt, correct: r.correct, settings, duration: now() - question.openedAt }));
+  if (r.correct) { closeQuestion(`✓ ${question.q.explanation}`); return; }
+  if (question.attempt >= 2) { closeQuestion(`${r.message} ${question.q.explanation}`); return; }
+  $('cos-coaching').textContent = `${r.message} One more try.`;
+  staged.clear();
+  renderKeyboard();
+}
+
+function skipQuestion() {
+  if (!question) return;
+  record(followUpEntry({ prevTarget: question.prev, target: question.target, question: question.q, attempt: question.attempt + 1, skipped: true, settings, duration: now() - question.openedAt }));
+  closeQuestion(question.q.explanation);
+}
+
+/** Close the question, leave its explanation on the second line, and move on. */
+function closeQuestion(text) {
+  question = null; fuDetector = null;
+  staged.clear();
+  advance();
+  $('cos-coaching').textContent = text;
 }
 
 function setFeedback(text, kind) {
@@ -277,9 +359,20 @@ function render() {
 }
 
 function renderControls() {
-  $('btn-show').hidden = !(misses >= MISSES_BEFORE_SHOW_ME && !lapComplete);
+  $('btn-show').hidden = !(misses >= MISSES_BEFORE_SHOW_ME && !lapComplete && !question);
+  $('btn-skip').hidden = !question;
   $('btn-check').disabled = lapComplete;
   $('cos-pedal-hint').hidden = !settings.pedalSubmit;
+}
+
+function renderSummary(sum) {
+  const keyName = k => parseNote(k).name;
+  $('sum-chords').textContent = sum.chords ? `${sum.chords} (${sum.attempts} attempts)` : '0';
+  $('sum-first').textContent = sum.firstTryPct == null ? '—' : `${sum.firstTryPct}%`;
+  $('sum-followup').textContent = sum.followUpPct == null ? (sum.followUps ? '0%' : 'none asked') : `${sum.followUpPct}% of ${sum.followUps}`;
+  $('sum-keys').textContent = sum.worstKeys.length ? sum.worstKeys.map(k => `${keyName(k.key)} (${k.misses})`).join(' · ') : 'none — clean lap';
+  $('sum-errors').textContent = sum.topErrors.length ? sum.topErrors.map(e => `${e.label}: ${e.count}`).join(' · ') : 'none';
+  $('cos-summary').hidden = false;
 }
 
 /** The move from the previous target to the current one, or null on a lap's first chord. */
@@ -339,8 +432,8 @@ function renderKeyboard() {
   const t = target();
   if (playing) return;   // setPlaying() owns the keys during Hear it
   const live = [...new Set([...held, ...staged])].sort((a, b) => a - b);
-  const guideOn = settings.hints === 'guided' && !lapComplete;
-  if ((guideOn || showMe) && t) {
+  const guideOn = settings.hints === 'guided' && !lapComplete && !question;
+  if ((guideOn || (showMe && !question)) && t) {
     keyboard.render({ bass: t.bass.name, voicing: t.upper.map(u => u.name) });
   } else {
     keyboard.render(live.length ? { bass: spellForTarget(live[0]), voicing: live.slice(1).map(m => spellForTarget(m)) } : {});
@@ -384,7 +477,7 @@ function drawGuide() {
   svg.setAttribute('height', s.height);
   const t = target();
   const items = [];   // { kind: 'stay'|'move'|'tag', midi|from/to, label, color }
-  if (t && settings.hints === 'guided' && !lapComplete) {
+  if (t && settings.hints === 'guided' && !lapComplete && !question) {
     const cm = currentMove();
     if (!cm) {
       items.push({ kind: 'tag', midi: t.bass.midi, label: 'root', color: GUIDE.bass });
@@ -542,22 +635,26 @@ function makeDetector() {
   detector = createSubmitDetector({ minNotes: MIN_NOTES, settleMs: SETTLE_MS, pedalSubmit: settings.pedalSubmit });
 }
 
+const activeDetector = () => (question ? fuDetector : detector);
+function onSubmission(sub) {
+  if (!sub) return;
+  if (question) answerQuestion(sub.midis, sub.source); else submit(sub.midis, sub.source);
+}
 function onMidiNoteOn(midi, t) {
   held.add(midi);
   echoOn(midi);
-  detector.noteOn(midi, t);
+  activeDetector().noteOn(midi, t);
   renderKeyboard();
 }
 function onMidiNoteOff(midi, t) {
   held.delete(midi);
   echoOff(midi);
-  const sub = detector.noteOff(midi, t);
+  const sub = activeDetector().noteOff(midi, t);
   renderKeyboard();
-  if (sub) submit(sub.midis, 'midi');
+  onSubmission(sub);
 }
 function onPedal(value, t) {
-  const sub = detector.pedal(value, t);
-  if (sub) submit(sub.midis, 'midi');
+  onSubmission(activeDetector().pedal(value, t));
 }
 
 function onKeyClick(midi) {
@@ -608,6 +705,7 @@ function loadSettings(params) {
   settings.mode = store.get('mode', 'both') === 'single' ? 'single' : 'both';
   settings.startKey = normaliseKey(store.get('startKey', 'C')) || 'C';
   settings.pedalSubmit = !!store.get('pedalSubmit', false);
+  settings.followUp = store.get('followUp', true) !== false;
   // Hints, with migration from the Stage 3 hidePath flag (true → none, false → guided), then dropped.
   let hints = store.get('hints', null);
   const legacy = store.get('hidePath', null);
@@ -636,7 +734,9 @@ function wireSettings() {
   $('set-mode').value = settings.mode;
   $('set-hints').value = settings.hints;
   $('set-pedal').checked = settings.pedalSubmit;
+  $('set-followup').checked = settings.followUp;
 
+  $('set-followup').addEventListener('change', e => { settings.followUp = e.target.checked; store.set('followUp', settings.followUp); });
   $('cos-settings').addEventListener('toggle', () => { if ($('cos-settings').open) { refreshDeviceList(); refreshEchoControl(); } });
   $('set-device').addEventListener('change', e => { if (input && e.target.value) { input.selectDevice(e.target.value); refreshEchoControl(); } });
   $('set-echo').addEventListener('change', e => { setEcho(e.target.checked); if (!e.target.checked) for (const m of [...echoing]) echoOff(m); });
@@ -644,6 +744,7 @@ function wireSettings() {
     settings.pedalSubmit = e.target.checked;
     store.set('pedalSubmit', settings.pedalSubmit);
     makeDetector();
+    if (question) fuDetector = createSubmitDetector({ minNotes: 1, settleMs: SETTLE_MS, pedalSubmit: settings.pedalSubmit });
     renderControls();
   });
   $('set-hints').addEventListener('change', e => {
@@ -682,7 +783,10 @@ export function init(params = null) {
   if (wrap) wrap.addEventListener('scroll', () => drawGuide(), { passive: true });
 
   $('btn-hear').addEventListener('click', hearIt);
-  $('btn-check').addEventListener('click', () => submit([...staged], 'screen'));
+  $('btn-check').addEventListener('click', () => (question ? answerQuestion([...staged], 'check') : submit([...staged], 'check')));
+  $('btn-skip').addEventListener('click', skipQuestion);
+  $('btn-another').addEventListener('click', () => startLap());
+  $('btn-startfrom').addEventListener('click', () => { $('cos-settings').open = true; $('set-key').focus(); $('set-key').scrollIntoView({ block: 'center' }); });
   $('btn-show').addEventListener('click', () => { showMe = true; renderKeyboard(); setFeedback(`${target().display}: ${noteLabel(target().bass.name)} under ${target().upper.map(u => noteLabel(u.name)).join(' ')}. Now you play it.`, 'info'); });
   $('btn-restart').addEventListener('click', () => startLap());
 
@@ -703,7 +807,8 @@ export function init(params = null) {
 
 /** Current state for Stage 4 (follow-up question, logging, links) and tests. */
 export function getState() {
-  return { index, target: target(), lapLength: lap.length, misses, showMe, lapComplete, settings: { ...settings }, held: [...held], staged: [...staged], deviceName: input ? input.deviceName : null };
+  return { index, target: target(), lapLength: lap.length, misses, showMe, lapComplete, settings: { ...settings }, held: [...held], staged: [...staged], deviceName: input ? input.deviceName : null,
+    question: question ? { prompt: question.q.prompt, attempt: question.attempt, answer: question.q.answerName } : null, lapEntries: lapEntries.length };
 }
 
 export { hooks };
