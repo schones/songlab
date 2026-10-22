@@ -108,15 +108,28 @@
   /* ── Feedback ────────────────────────────────────────────── */
   .cos-feedback { font-size: 1.7rem; min-height: 1.6em; margin: 0.25rem 0 0; }
   .cos-coaching {
-    min-height: 1.4em;
+    min-height: 0;               /* a second coaching line is rare; no space reserved, so the action row sits higher */
     text-align: center;
     font-size: 1.3rem;
     color: var(--text-secondary);
     margin-bottom: 0.25rem;
   }
 
-  /* ── Controls ────────────────────────────────────────────── */
-  .cos-controls { flex-wrap: wrap; margin-top: 0.25rem; }
+  /* ── Action row: buttons on the left, cycle on the right, centred as a group under the feedback ──
+     The cycle is 420 px here (its viewBox stays 500 units, so everything scales): with the buttons
+     vertically centred against it, 420 px is about the largest size that keeps the buttons above the
+     fold at 1440×900. At narrow widths the cycle wraps below the buttons. */
+  .cos-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 0.75rem 2.5rem;
+    max-width: 1200px;           /* four buttons (Show me visible) + gap + the 420 px cycle still fit on one line at 1440 */
+    margin: 0.25rem auto 0;
+  }
+  .cos-action-row__buttons { display: flex; flex-direction: column; align-items: center; flex: 0 1 auto; }
+  .cos-controls { flex-wrap: wrap; margin-top: 0; }
   .cos-controls .btn { font-size: 1.3rem; padding: 0.6em 1.3em; }
   .cos-controls .btn[hidden] { display: none !important; }   /* .btn sets display; keep [hidden] meaning hidden */
   .cos-pedal-hint {
@@ -126,13 +139,13 @@
     margin-top: 0.5rem;
   }
 
-  /* ── Cycle indicator: its own row below the controls (below the fold at 1440×900 by design), settings beneath ── */
-  .cos-cycle-row { display: flex; justify-content: center; margin-top: 1.5rem; }
-  .cos-cycle { width: min(500px, 100%); height: auto; aspect-ratio: 1; display: block; }
+  /* ── Cycle indicator (in the action row), settings beneath the row ── */
+  .cos-cycle-row { flex: 0 0 auto; width: 420px; max-width: 100%; }
+  .cos-cycle { width: 100%; height: auto; aspect-ratio: 1; display: block; }
   .cos-cycle__key { cursor: pointer; }
   .cos-cycle__key:hover circle, .cos-cycle__key:focus-visible circle { stroke-width: 9; }
   .cos-cycle__key:focus { outline: none; }
-  .cos-settings { margin-top: 1.25rem; }
+  .cos-settings { margin-top: 1rem; }
 
   .cos-settings {
     border: 1px solid var(--border);
@@ -219,20 +232,25 @@
       <div class="game-feedback cos-feedback" id="cos-feedback"></div>
       <div class="cos-coaching" id="cos-coaching"></div>
 
-      <!-- 6. Controls -->
-      <div class="game-btn-row cos-controls">
-        <button class="btn game-btn--secondary" id="btn-hear">&#9654; Hear it</button>
-        <button class="btn game-btn--primary" id="btn-check">Check</button>
-        <button class="btn game-btn--secondary" id="btn-show" hidden>Show me</button>
-        <button class="btn game-btn--secondary" id="btn-restart">&#8635; Restart lap</button>
-      </div>
-      <div class="cos-pedal-hint" id="cos-pedal-hint" hidden>Press the pedal to lock in your chord</div>
+    </div>
 
-      <!-- Cycle indicator -->
+    <!-- 6. Controls beside the cycle indicator -->
+    <div class="cos-action-row">
+      <div class="cos-action-row__buttons">
+        <div class="game-btn-row cos-controls">
+          <button class="btn game-btn--secondary" id="btn-hear">&#9654; Hear it</button>
+          <button class="btn game-btn--primary" id="btn-check">Check</button>
+          <button class="btn game-btn--secondary" id="btn-show" hidden>Show me</button>
+          <button class="btn game-btn--secondary" id="btn-restart">&#8635; Restart lap</button>
+        </div>
+        <div class="cos-pedal-hint" id="cos-pedal-hint" hidden>Press the pedal to lock in your chord</div>
+      </div>
       <div class="cos-cycle-row">
         <svg class="cos-cycle" id="cos-cycle" role="group" aria-label="Cycle of keys"></svg>
       </div>
+    </div>
 
+    <div class="cos-column">
       <!-- Settings -->
         <details class="cos-settings" id="cos-settings">
           <summary>Settings</summary>
