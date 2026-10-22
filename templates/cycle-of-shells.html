@@ -122,20 +122,21 @@
   .cos-kb-stage {
     position: relative;
     padding-top: 96px;           /* GUIDE_BAND in the page module: room for arrows and labels */
+    padding-bottom: 36px;        /* C4_MARK band in the page module: the middle C marker under the keys */
     margin: 0 auto 0;
   }
   .cos-kb-stage .vk-wrap { overflow-y: visible; }
-  /* Middle C: red octave label so C4 stands out (#B02A14 on the key's #ECE8DC = 5.4:1); a lit C4 keeps its white note label. */
-  .cos-kb-stage .vk-key[data-midi="60"]:not(.vk-key--lit) .vk-key__label { color: #B02A14; opacity: 1; font-weight: 800; }
+  /* Middle C: the red "C4" marker under the key is drawn in the guide overlay (drawGuide), so it shows whether or not C4 is lit; the in-key octave label stays the shared default. */
   .cos-guide { position: absolute; inset: 0; z-index: 3; /* above the keys (z 1–2) */ pointer-events: none; overflow: visible; font-family: var(--font-main, 'Nunito', system-ui, sans-serif); }
   .cos-kb-stage .vk-key__label { font-size: 12px; }
 
   /* ── Feedback ────────────────────────────────────────────── */
-  .cos-feedback { font-size: 1.7rem; min-height: 1.3em; margin: 0; }
+  .cos-feedback { font-size: 1.7rem; line-height: 1.2; min-height: 1.2em; margin: 0; }   /* 1.2 line height: the C4 marker band under the keys is paid for here and by the shorter keys */
   .cos-coaching {
     min-height: 0;               /* a second coaching line is rare; no space reserved, so the action row sits higher */
     text-align: center;
     font-size: 1.3rem;
+    line-height: 1.2;
     color: var(--text-secondary);
     margin-bottom: 0.25rem;
   }

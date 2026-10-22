@@ -67,7 +67,7 @@ import { spellMidi } from '../shared/voicing-explore.js';
 
 const STORAGE_PREFIX = 'cycleOfShells.';
 const KEYBOARD_RANGE = { low: 'C1', high: 'C6' };
-const KEYBOARD_HEIGHT = 150;      // white-key height in px (black keys keep the shared ratio)
+const KEYBOARD_HEIGHT = 128;      // white-key height in px (black keys keep the shared ratio); 128 (was 150) pays for the C4 marker band below the keys
 const KEYBOARD_MIN_KEY = 24;      // narrowest white key before the keyboard scrolls sideways (C1–C6 = 36 white keys)
 const SETTLE_MS = 150;
 const MIN_NOTES = 3;
@@ -81,8 +81,11 @@ const PHRASES_PER_KEY = { both: 2, single: 1 };
 const HINT_LEVELS = ['guided', 'names', 'none'];
 /** Overlay colours: AA text contrast on the page background (#FCFBF8). */
 const GUIDE = { bass: '#7A5607', voicing: '#2D5F8A', ring: '#141210', halo: '#FCFBF8' };
-const GUIDE_FONT = 19;            // label font size in px
-const GUIDE_BAND = 96;            // space above the keys for arrows and labels
+const GUIDE_FONT = 26;            // label font size in px, bold; colliding labels stagger up a row (GUIDE_ROW) rather than shrink
+const GUIDE_ROW = GUIDE_FONT + 8; // vertical step between staggered label rows
+const GUIDE_BAND = 96;            // space above the keys for arrows and labels: two rows of labels
+/** Middle C marker under the keys: always drawn, lit or not. #B02A14 on the page's #FCFBF8 = 6.4:1 (AA). */
+const C4_MARK = { midi: 60, color: '#B02A14', font: 22, band: 36 };   // band: the stage's padding-bottom in the template
 /** Circle of fifths clockwise from the top: pitch classes C G D A E B G♭ D♭ A♭ E♭ B♭ F. */
 const FIFTHS = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];
 const CYCLE_SIZE = 500;           // px; the SVG scales with the viewBox below this on narrow screens
@@ -527,13 +530,14 @@ function drawGuide() {
       labels.push({ x: q.x, y: q.y - 28, text: it.label, color: it.color, leader: q });
     }
   }
-  // Labels: estimate widths, lift any that would overlap an earlier one.
+  // Labels: estimate widths; a label that would collide with one already placed moves up a row, never shrinks.
   labels.sort((a, b) => a.x - b.x);
   const placed = [];
   for (const lb of labels) {
     const w = lb.text.length * GUIDE_FONT * 0.6 + 12;
     let y = lb.y;
-    for (const p of placed) if (Math.abs(p.x - lb.x) < (p.w + w) / 2 && Math.abs(p.y - y) < GUIDE_FONT + 6) y = p.y - (GUIDE_FONT + 8);
+    const collides = yy => placed.some(p => Math.abs(p.x - lb.x) < (p.w + w) / 2 && Math.abs(p.y - yy) < GUIDE_FONT + 6);
+    for (let row = 0; row < 3 && collides(y); row++) y -= GUIDE_ROW;
     y = Math.max(GUIDE_FONT, y);
     if (lb.leader) {
       svg.appendChild(svgEl('line', { x1: lb.x, y1: y + 6, x2: lb.leader.x, y2: lb.leader.y - 2, stroke: lb.color, 'stroke-width': 2, 'stroke-dasharray': lb.text.endsWith('stays') ? '' : '3 3' }));
@@ -549,6 +553,18 @@ function drawGuide() {
     svg.appendChild(svgEl('rect', { x: r.x + 3, y: r.y + 3, width: r.w - 6, height: r.h - 6, rx: 5, fill: 'none', stroke: GUIDE.halo, 'stroke-width': 6, 'class': 'cos-ring' }));
     svg.appendChild(svgEl('rect', { x: r.x + 3, y: r.y + 3, width: r.w - 6, height: r.h - 6, rx: 5, fill: 'none', stroke: GUIDE.ring, 'stroke-width': 3, 'class': 'cos-ring' }));
   }
+  drawMiddleC(svg);
+}
+
+/** Middle C marker in the band under the keys: a triangle pointing up at C4 and a bold red "C4". Drawn whatever the hint level or key state. */
+function drawMiddleC(svg) {
+  const r = keyRect(C4_MARK.midi);
+  if (!r || !r.w) return;
+  const cx = r.x + r.w / 2, top = r.y + r.h + 2;   // triangle 2–8 px under the key, a 4 px gap, then the label (cap height ≈ 0.73 em); its baseline sits 8 px above the band's end
+  const g = svgEl('g', { class: 'cos-c4', 'aria-hidden': 'true' });
+  g.appendChild(svgEl('polygon', { points: `${cx},${top} ${cx - 5},${top + 6} ${cx + 5},${top + 6}`, fill: C4_MARK.color }));
+  g.appendChild(svgEl('text', { x: cx, y: top + 6 + 4 + C4_MARK.font * 0.73, 'text-anchor': 'middle', 'font-size': C4_MARK.font, 'font-weight': 800, fill: C4_MARK.color, 'font-family': 'inherit' }, 'C4'));
+  svg.appendChild(g);
 }
 
 // ════════════════════════════════════════════════════════════════════
