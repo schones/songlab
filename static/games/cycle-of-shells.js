@@ -68,7 +68,7 @@ const PHRASES_PER_KEY = { both: 2, single: 1 };
 const HINT_LEVELS = ['guided', 'names', 'none'];
 /** Overlay colours: AA text contrast on the page background (#FCFBF8). */
 const GUIDE = { bass: '#7A5607', voicing: '#2D5F8A', ring: '#141210', halo: '#FCFBF8' };
-const GUIDE_FONT = 17;            // label font size in px
+const GUIDE_FONT = 19;            // label font size in px
 const GUIDE_BAND = 96;            // space above the keys for arrows and labels
 /** Circle of fifths clockwise from the top: pitch classes C G D A E B G♭ D♭ A♭ E♭ B♭ F. */
 const FIFTHS = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];

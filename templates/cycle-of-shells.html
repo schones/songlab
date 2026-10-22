@@ -54,22 +54,22 @@
     align-items: baseline;
     flex-wrap: wrap;
     gap: 0.25rem 1rem;
-    font-size: 1.35rem;
+    font-size: 2rem;             /* 32 px, bench-readable */
     color: var(--text-muted);
-    margin-bottom: 0.25rem;
+    margin-bottom: 0;
   }
-  .cos-home { font-weight: 800; color: var(--text-secondary); font-size: 1.5rem; }
+  .cos-home { font-weight: 800; color: var(--text-secondary); font-size: 2rem; }
 
   /* ── Target ──────────────────────────────────────────────── */
-  .cos-target { text-align: center; margin-bottom: 0.25rem; }
+  .cos-target { text-align: center; margin-bottom: 0; }
   .cos-symbol {
-    font-size: 6rem;
+    font-size: 5.25rem;          /* 84 px (was 96): room for the larger lines below */
     font-weight: 800;
     line-height: 1;
     color: var(--text-primary);
     letter-spacing: -0.01em;
   }
-  .cos-meta { font-size: 1.6rem; color: var(--text-secondary); font-weight: 700; margin-top: 0.1rem; }
+  .cos-meta { font-size: 2.25rem; color: var(--text-secondary); font-weight: 700; margin-top: 0; line-height: 1.2; }
   .cos-meta .cos-role {
     display: inline-block;
     min-width: 2em;
@@ -82,22 +82,26 @@
 
   /* ── Path line ───────────────────────────────────────────── */
   .cos-path {
-    min-height: 1.5em;
+    min-height: 1.25em;
     text-align: center;
-    font-size: 1.5rem;
+    font-size: 2.125rem;         /* 34 px; long lines wrap to two centred lines */
+    line-height: 1.2;
+    text-wrap: balance;
     color: var(--text-secondary);
-    margin-bottom: 0.25rem;
+    margin: 0 auto 0.25rem;
+    padding: 0 1rem;
+    max-width: 1100px;           /* a wider measure than the text column: most rule lines fit on one line at 1440 */
   }
   .cos-path--hidden { visibility: hidden; }
   .cos-path__voice + .cos-path__voice::before { content: ' · '; color: var(--text-muted); }
-  .cos-path__rule { display: block; font-size: 1.3rem; color: var(--text-muted); }   /* seam rule under the recipe on a new key's first chord */
+  .cos-path__rule { display: block; font-size: 1.75rem; color: var(--text-muted); }   /* 28 px */   /* seam rule under the recipe on a new key's first chord */
   .cos-path__label { font-weight: 800; color: var(--text-muted); }
 
   /* ── Keyboard stage: full page width, guide overlay above the keys ── */
   .cos-kb-stage {
     position: relative;
     padding-top: 96px;           /* GUIDE_BAND in the page module: room for arrows and labels */
-    margin: 0 auto 0.5rem;
+    margin: 0 auto 0;
   }
   .cos-kb-stage .vk-wrap { overflow-y: visible; }
   /* Middle C: red octave label so C4 stands out (#B02A14 on the key's #ECE8DC = 5.4:1); a lit C4 keeps its white note label. */
@@ -106,7 +110,7 @@
   .cos-kb-stage .vk-key__label { font-size: 12px; }
 
   /* ── Feedback ────────────────────────────────────────────── */
-  .cos-feedback { font-size: 1.7rem; min-height: 1.6em; margin: 0.25rem 0 0; }
+  .cos-feedback { font-size: 1.7rem; min-height: 1.3em; margin: 0; }
   .cos-coaching {
     min-height: 0;               /* a second coaching line is rare; no space reserved, so the action row sits higher */
     text-align: center;
@@ -116,9 +120,9 @@
   }
 
   /* ── Action row: buttons on the left, cycle on the right, centred as a group under the feedback ──
-     The cycle is 420 px here (its viewBox stays 500 units, so everything scales): with the buttons
-     vertically centred against it, 420 px is about the largest size that keeps the buttons above the
-     fold at 1440×900. At narrow widths the cycle wraps below the buttons. */
+     The cycle is 360 px here (its viewBox stays 500 units, so everything scales): with the buttons
+     vertically centred against it and the bench-size text above, 360 px keeps the buttons above the
+     fold at 1440×900 on one-line rule chords. At narrow widths the cycle wraps below the buttons. */
   .cos-action-row {
     display: flex;
     flex-wrap: wrap;
@@ -126,11 +130,11 @@
     align-items: center;
     gap: 0.75rem 2.5rem;
     max-width: 1200px;           /* four buttons (Show me visible) + gap + the 420 px cycle still fit on one line at 1440 */
-    margin: 0.25rem auto 0;
+    margin: 0 auto 0;
   }
   .cos-action-row__buttons { display: flex; flex-direction: column; align-items: center; flex: 0 1 auto; }
   .cos-controls { flex-wrap: wrap; margin-top: 0; }
-  .cos-controls .btn { font-size: 1.3rem; padding: 0.6em 1.3em; }
+  .cos-controls .btn { font-size: 1.75rem; padding: 0.5em 1.1em; }   /* 28 px text */
   .cos-controls .btn[hidden] { display: none !important; }   /* .btn sets display; keep [hidden] meaning hidden */
   .cos-pedal-hint {
     text-align: center;
@@ -140,7 +144,7 @@
   }
 
   /* ── Cycle indicator (in the action row), settings beneath the row ── */
-  .cos-cycle-row { flex: 0 0 auto; width: 420px; max-width: 100%; }
+  .cos-cycle-row { flex: 0 0 auto; width: 360px; max-width: 100%; }   /* 360 px: the floor, to keep the larger text above the fold */
   .cos-cycle { width: 100%; height: auto; aspect-ratio: 1; display: block; }
   .cos-cycle__key { cursor: pointer; }
   .cos-cycle__key:hover circle, .cos-cycle__key:focus-visible circle { stroke-width: 9; }
@@ -217,9 +221,10 @@
         <div class="cos-meta"><span class="cos-role" id="cos-role"></span><span id="cos-form"></span></div>
       </div>
 
-      <!-- 3. Path line -->
-      <div class="cos-path" id="cos-path"></div>
     </div>
+
+    <!-- 3. Path line: outside the text column so long rule lines get a wider measure -->
+    <div class="cos-path" id="cos-path"></div>
 
     <!-- 4. Keyboard, full width, with the guide overlay -->
     <div class="cos-kb-stage" id="cos-kb-stage">
