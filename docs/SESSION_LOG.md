@@ -68,6 +68,9 @@ report file under /tmp. Nothing merged to dev yet.
   the step's chord root.
 - Commits `52f43bd` … `48cd94c` (the last one includes the walkthrough
   home-key fix).
+- Evening: bigger guide labels, middle C marker, grand staff beside
+  controls (pure staff module, no shared edits), cycle moved left; RADAR:
+  held non-chord tones can show double accidentals on the staff.
 
 ### Diagnosed / decided
 - Range: a single E♭3–F4 band cannot hold both forms in eight of the

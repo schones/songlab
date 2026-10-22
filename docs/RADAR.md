@@ -17,6 +17,14 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-22] Held non-chord tones can show double accidentals on the
+  staff.** Cycle of Shells spells held notes against the current target
+  (`spellForTarget` → `namedVsPlayed`), so a non-chord tone takes the
+  chord-relative spelling: A against D♭7 is B𝄫2, D against D♭7 is E𝄫4.
+  The key labels already did this; the staff makes it visible. Decide
+  whether non-chord tones should fall back to the key's plain spelling.
+  See: `static/games/cycle-of-shells.js` `spellForTarget`; `static/games/cycle-of-shells-staff.js` `heldChord`.
+
 - **[2026-10-22] VoicingKeyboard clickable mode is mouse/touch only.**
   `onKeyClick` adds a delegated click listener; the keys stay
   `role="img"` and are not focusable, so Cycle of Shells' on-screen
