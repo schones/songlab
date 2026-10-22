@@ -13,6 +13,7 @@
  *   //   options.height     white-key height in px (default 112; black keys keep the 70/112 ratio)
  *   //   options.ariaLabel  the keyboard's aria-label (default 'Keyboard showing the selected bar')
  *   //   options.onKeyClick (midi) => void: makes the keys clickable (default none: display only)
+ *   //   options.minKeyWidth narrowest white key in px before the wrap scrolls (default 28)
  *   kb.setRange(24, 95);                 // midi or spelled; rebuilds the keys
  *   kb.render({ bass: 'D3', voicing: ['F♯3', 'G3', 'A3', 'D4'], melody: [] });
  *   kb.setHighlight(62);                 // ring one key, or a Set/array of midis; null clears
@@ -58,10 +59,11 @@ const CSS = /* css */ `
 class VoicingKeyboard {
   /**
    * @param {string|Element} container
-   * @param {{ low?: string, high?: string, height?: number, ariaLabel?: string, onKeyClick?: (midi: number) => void }} [options]
+   * @param {{ low?: string, high?: string, height?: number, ariaLabel?: string, onKeyClick?: (midi: number) => void, minKeyWidth?: number }} [options]
    *   low / high: spelled notes with octave; default C2–B5.
    *   height: white-key height in px; omitted = the stylesheet's WHITE_H. ariaLabel: default 'Keyboard showing the selected bar'.
    *   onKeyClick: called with the key's midi on click; omitted = display only (no listener, no pointer cursor).
+   *   minKeyWidth: narrowest white key in px before the wrap scrolls sideways; omitted = WHITE_W (28).
    */
   constructor(container, options = {}) {
     this._container = typeof container === 'string' ? document.getElementById(container) : container;
@@ -71,6 +73,7 @@ class VoicingKeyboard {
     this._height = Number(options.height) > 0 ? Number(options.height) : null;   // null: CSS defaults apply
     this._ariaLabel = options.ariaLabel || 'Keyboard showing the selected bar';
     this._onKeyClick = typeof options.onKeyClick === 'function' ? options.onKeyClick : null;
+    this._minUnit = Number(options.minKeyWidth) > 0 ? Number(options.minKeyWidth) : WHITE_W;
     this._keys = new Map();   // midi → element
     this._roles = {};         // last render() roles, restored after setPlaying(null)
     this._wrap = null;
@@ -161,13 +164,13 @@ class VoicingKeyboard {
 
   destroy() { if (this._observer) this._observer.disconnect(); this._wrap.remove(); }
 
-  /** Lay the keys out from the white-key unit that fills the wrap (never below WHITE_W, never above MAX_UNIT). */
+  /** Lay the keys out from the white-key unit that fills the wrap (never below minKeyWidth / WHITE_W, never above MAX_UNIT). */
   _layout() {
     if (!this._wrap) return;
     const kb = this._wrap.firstElementChild;
     const whites = Number(kb.dataset.whites) || 1;
     const avail = this._wrap.clientWidth;
-    const unit = Math.max(WHITE_W, Math.min(MAX_UNIT, Math.floor(avail / whites)));
+    const unit = Math.max(this._minUnit, Math.min(MAX_UNIT, Math.floor(avail / whites)));
     if (unit === this._unit && kb.style.width) return;
     this._unit = unit;
     kb.style.width = `${whites * unit}px`;

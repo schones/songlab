@@ -7,6 +7,30 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
 <style>
+  /* ── Page: sized for reading from a piano bench, near-black on near-white ──
+     Tokens are re-set on .cos-page only; the site header and nav keep the theme.
+     Accent shades meet WCAG AA on #FCFBF8: text ≥ 4.5:1, key fills ≥ 3:1. */
+  .cos-page {
+    --text-primary:        #141210;   /* 18.1:1 */
+    --text-secondary:      #2B2824;   /* 14.2:1 */
+    --text-muted:          #4E4A43;   /*  8.5:1 */
+    --accent-gold:         #8F6600;   /* bass key fill */
+    --accent-blue-bright:  #2B6FA3;   /* voicing key fill */
+    --accent-blue:         #2D5F8A;   /* info text 6.5:1 */
+    --accent-green:        #1E7B34;   /* correct text 5.2:1 */
+    --accent-coral:        #B9341F;   /* miss text 5.7:1 */
+    --cos-gold-text:       #7A5607;   /* 6.4:1 */
+    --cos-bg:              #FCFBF8;
+    max-width: none;
+    background: var(--cos-bg);
+    color: var(--text-primary);
+    padding: 1rem 1rem 3rem;
+    font-size: 1.2rem;
+  }
+  .cos-column { max-width: 780px; margin: 0 auto; }
+  .cos-page .game-title { font-size: 2rem; }
+  .cos-page .game-back-link { font-size: 1.1rem; }
+
   /* ── Start overlay ───────────────────────────────────────── */
   #start-overlay {
     display: flex;
@@ -18,9 +42,9 @@
     text-align: center;
     cursor: pointer;
   }
-  .cos-start-icon { font-size: 3rem; line-height: 1; }
-  .cos-start-text { font-size: 1.2rem; font-weight: 700; color: var(--text-primary); }
-  .cos-start-sub { font-size: 0.85rem; color: var(--text-muted); }
+  .cos-start-icon { font-size: 3.5rem; line-height: 1; }
+  .cos-start-text { font-size: 1.6rem; font-weight: 800; color: var(--text-primary); }
+  .cos-start-sub { font-size: 1.15rem; color: var(--text-muted); }
 
   /* ── Header line ─────────────────────────────────────────── */
   .cos-header {
@@ -29,86 +53,95 @@
     align-items: baseline;
     flex-wrap: wrap;
     gap: 0.25rem 1rem;
-    font-size: 0.85rem;
+    font-size: 1.35rem;
     color: var(--text-muted);
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
   }
-  .cos-home { font-weight: 800; color: var(--text-secondary); font-size: 0.95rem; }
+  .cos-home { font-weight: 800; color: var(--text-secondary); font-size: 1.5rem; }
 
   /* ── Target ──────────────────────────────────────────────── */
-  .cos-target { text-align: center; margin-bottom: 0.5rem; }
+  .cos-target { text-align: center; margin-bottom: 0.4rem; }
   .cos-symbol {
-    font-size: 3rem;
+    font-size: 6rem;
     font-weight: 800;
-    line-height: 1.1;
+    line-height: 1.05;
     color: var(--text-primary);
     letter-spacing: -0.01em;
   }
-  .cos-meta { font-size: 0.95rem; color: var(--text-secondary); font-weight: 700; margin-top: 0.15rem; }
+  .cos-meta { font-size: 1.6rem; color: var(--text-secondary); font-weight: 700; margin-top: 0.1rem; }
   .cos-meta .cos-role {
     display: inline-block;
     min-width: 2em;
     padding: 0 0.4em;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--accent-soft);
-    color: var(--accent);
-    margin-right: 0.35em;
+    color: var(--accent-blue);
+    margin-right: 0.4em;
   }
 
   /* ── Path line ───────────────────────────────────────────── */
   .cos-path {
-    min-height: 1.4rem;
+    min-height: 1.5em;
     text-align: center;
-    font-size: 0.9rem;
+    font-size: 1.5rem;
     color: var(--text-secondary);
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
   }
   .cos-path--hidden { visibility: hidden; }
   .cos-path__voice + .cos-path__voice::before { content: ' · '; color: var(--text-muted); }
-  .cos-path__label { font-weight: 700; color: var(--text-muted); }
+  .cos-path__label { font-weight: 800; color: var(--text-muted); }
 
-  /* ── Keyboard ────────────────────────────────────────────── */
-  /* C2–C5 is 37 white keys; the shared keyboard never shrinks them below 28px,
-     so the game column is wider than the default 640px to fit it on a laptop.
-     Narrower screens scroll the keyboard sideways. */
-  .cos-page { max-width: 1080px; }
-  .cos-target, .cos-path, .cos-feedback, .cos-coaching, .cos-controls, .cos-settings { max-width: 640px; margin-left: auto; margin-right: auto; }
-  .cos-header { max-width: 640px; margin-left: auto; margin-right: auto; }
-  #cos-keyboard { margin: 0 auto 0.75rem; }
+  /* ── Keyboard stage: full page width, guide overlay above the keys ── */
+  .cos-kb-stage {
+    position: relative;
+    padding-top: 96px;           /* GUIDE_BAND in the page module: room for arrows and labels */
+    margin: 0 auto 0.75rem;
+  }
+  .cos-kb-stage .vk-wrap { overflow-y: visible; }
+  .cos-guide { position: absolute; inset: 0; z-index: 3; /* above the keys (z 1–2) */ pointer-events: none; overflow: visible; font-family: var(--font-main, 'Nunito', system-ui, sans-serif); }
+  .cos-kb-stage .vk-key__label { font-size: 12px; }
 
   /* ── Feedback ────────────────────────────────────────────── */
-  .cos-feedback { font-size: 1.05rem; min-height: 1.6em; margin: 0.5rem 0 0.1rem; }
-  /* game-shell's --info reads --accent-blue, which the warm theme maps to coral; info lines here are blue. */
-  .cos-feedback.game-feedback--info { color: var(--text-info, #2D5F8A); }
+  .cos-feedback { font-size: 1.7rem; min-height: 1.6em; margin: 0.5rem 0 0.1rem; }
   .cos-coaching {
-    min-height: 1.3em;
+    min-height: 1.4em;
     text-align: center;
-    font-size: 0.88rem;
+    font-size: 1.3rem;
     color: var(--text-secondary);
     margin-bottom: 0.25rem;
   }
 
   /* ── Controls ────────────────────────────────────────────── */
   .cos-controls { flex-wrap: wrap; margin-top: 0.5rem; }
+  .cos-controls .btn { font-size: 1.3rem; padding: 0.6em 1.3em; }
+  .cos-controls .btn[hidden] { display: none !important; }   /* .btn sets display; keep [hidden] meaning hidden */
   .cos-pedal-hint {
     text-align: center;
-    font-size: 0.82rem;
+    font-size: 1.2rem;
     color: var(--text-muted);
     margin-top: 0.5rem;
   }
 
-  /* ── Settings ────────────────────────────────────────────── */
+  /* ── Settings row: settings panel beside the cycle indicator ── */
+  .cos-settings-row { display: flex; gap: 1.25rem; align-items: flex-start; margin-top: 1.5rem; }
+  .cos-settings { flex: 1 1 auto; min-width: 0; }
+  .cos-cycle-wrap { flex: 0 0 auto; }
+  .cos-cycle { width: 170px; height: 170px; display: block; }
+  .cos-cycle__key { cursor: pointer; }
+  .cos-cycle__key:hover circle, .cos-cycle__key:focus-visible circle { stroke-width: 3; }
+  .cos-cycle__key:focus { outline: none; }
+  @media (max-width: 600px) { .cos-settings-row { flex-direction: column-reverse; align-items: center; } }
+
   .cos-settings {
-    margin-top: 1.5rem;
     border: 1px solid var(--border);
     border-radius: 10px;
-    background: var(--bg-card);
-    padding: 0.5rem 0.9rem;
+    background: #FFFFFF;
+    padding: 0.6rem 1rem;
   }
   .cos-settings > summary {
     cursor: pointer;
     font-weight: 800;
-    font-size: 0.85rem;
+    font-size: 1.15rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--text-secondary);
@@ -120,15 +153,16 @@
   .cos-settings__grid {
     display: grid;
     grid-template-columns: max-content 1fr;
-    gap: 0.6rem 1rem;
+    gap: 0.7rem 1rem;
     align-items: center;
     margin-top: 0.75rem;
-    font-size: 0.88rem;
+    font-size: 1.25rem;
     color: var(--text-secondary);
   }
   .cos-settings__grid label { font-weight: 700; }
-  .cos-settings__grid select { max-width: 100%; }
-  .cos-settings__status { grid-column: 1 / -1; font-size: 0.8rem; color: var(--text-muted); }
+  .cos-settings__grid select { max-width: 100%; font-size: 1.15rem; padding: 0.3em 0.5em; }
+  .cos-settings__grid input[type="checkbox"] { width: 1.2em; height: 1.2em; }
+  .cos-settings__status { grid-column: 1 / -1; font-size: 1.1rem; color: var(--text-muted); }
   .cos-settings__check { display: flex; align-items: center; gap: 0.5rem; font-weight: 400; }
   @media (max-width: 480px) { .cos-settings__grid { grid-template-columns: 1fr; } }
 </style>
@@ -137,80 +171,98 @@
 {% block content %}
 <div class="cos-page game-page">
 
-  <!-- Top bar -->
-  <div class="game-top-bar">
-    <h1 class="game-title">Cycle of Shells</h1>
-    <a href="/" class="game-back-link">&larr; Back</a>
-  </div>
+  <div class="cos-column">
+    <!-- Top bar -->
+    <div class="game-top-bar">
+      <h1 class="game-title">Cycle of Shells</h1>
+      <a href="/" class="game-back-link">&larr; Back</a>
+    </div>
 
-  <!-- Start overlay (Tone.js needs a user gesture) -->
-  <div id="start-overlay">
-    <div class="cos-start-icon">&#9654;</div>
-    <div class="cos-start-text">Start</div>
-    <div class="cos-start-sub">Click to begin (enables audio and MIDI)</div>
+    <!-- Start overlay (Tone.js needs a user gesture) -->
+    <div id="start-overlay">
+      <div class="cos-start-icon">&#9654;</div>
+      <div class="cos-start-text">Start</div>
+      <div class="cos-start-sub">Click to begin (enables audio and MIDI)</div>
+    </div>
   </div>
 
   <!-- Main content (hidden until audio starts) -->
   <div id="main-content" style="display: none;">
 
-    <!-- 1. Header line -->
-    <div class="cos-header">
-      <span class="cos-home" id="cos-home"></span>
-      <span class="cos-progress" id="cos-progress"></span>
-    </div>
-
-    <!-- 2. Target -->
-    <div class="cos-target">
-      <div class="cos-symbol" id="cos-symbol"></div>
-      <div class="cos-meta"><span class="cos-role" id="cos-role"></span><span id="cos-form"></span></div>
-    </div>
-
-    <!-- 3. Path line -->
-    <div class="cos-path" id="cos-path"></div>
-
-    <!-- 4. Keyboard -->
-    <div id="cos-keyboard"></div>
-
-    <!-- 5. Feedback -->
-    <div class="game-feedback cos-feedback" id="cos-feedback"></div>
-    <div class="cos-coaching" id="cos-coaching"></div>
-
-    <!-- 6. Controls -->
-    <div class="game-btn-row cos-controls">
-      <button class="btn game-btn--secondary" id="btn-hear">&#9654; Hear it</button>
-      <button class="btn game-btn--primary" id="btn-check">Check</button>
-      <button class="btn game-btn--secondary" id="btn-show" hidden>Show me</button>
-      <button class="btn game-btn--secondary" id="btn-restart">&#8635; Restart lap</button>
-    </div>
-    <div class="cos-pedal-hint" id="cos-pedal-hint" hidden>Press the pedal to lock in your chord</div>
-
-    <!-- Settings -->
-    <details class="cos-settings" id="cos-settings">
-      <summary>Settings</summary>
-      <div class="cos-settings__grid">
-        <label for="set-device">MIDI device</label>
-        <select id="set-device"><option value="">(none)</option></select>
-        <div class="cos-settings__status" id="set-device-status"></div>
-
-        <label for="set-echo">Sound for my notes</label>
-        <span class="cos-settings__check"><input type="checkbox" id="set-echo"> <span id="set-echo-note"></span></span>
-
-        <label for="set-pedal">Pedal submits</label>
-        <span class="cos-settings__check"><input type="checkbox" id="set-pedal"> <span>Lock in a chord with the sustain pedal</span></span>
-
-        <label for="set-mode">Lap</label>
-        <select id="set-mode">
-          <option value="both">Both forms per key</option>
-          <option value="single">One phrase per key</option>
-        </select>
-
-        <label for="set-key">Start key</label>
-        <select id="set-key"></select>
-
-        <label for="set-hidepath">Hide path</label>
-        <span class="cos-settings__check"><input type="checkbox" id="set-hidepath"> <span>Don't show the voice-leading line</span></span>
+    <div class="cos-column">
+      <!-- 1. Header line -->
+      <div class="cos-header">
+        <span class="cos-home" id="cos-home"></span>
+        <span class="cos-progress" id="cos-progress"></span>
       </div>
-    </details>
+
+      <!-- 2. Target -->
+      <div class="cos-target">
+        <div class="cos-symbol" id="cos-symbol"></div>
+        <div class="cos-meta"><span class="cos-role" id="cos-role"></span><span id="cos-form"></span></div>
+      </div>
+
+      <!-- 3. Path line -->
+      <div class="cos-path" id="cos-path"></div>
+    </div>
+
+    <!-- 4. Keyboard, full width, with the guide overlay -->
+    <div class="cos-kb-stage" id="cos-kb-stage">
+      <div id="cos-keyboard"></div>
+      <svg class="cos-guide" id="cos-guide" aria-hidden="true"></svg>
+    </div>
+
+    <div class="cos-column">
+      <!-- 5. Feedback -->
+      <div class="game-feedback cos-feedback" id="cos-feedback"></div>
+      <div class="cos-coaching" id="cos-coaching"></div>
+
+      <!-- 6. Controls -->
+      <div class="game-btn-row cos-controls">
+        <button class="btn game-btn--secondary" id="btn-hear">&#9654; Hear it</button>
+        <button class="btn game-btn--primary" id="btn-check">Check</button>
+        <button class="btn game-btn--secondary" id="btn-show" hidden>Show me</button>
+        <button class="btn game-btn--secondary" id="btn-restart">&#8635; Restart lap</button>
+      </div>
+      <div class="cos-pedal-hint" id="cos-pedal-hint" hidden>Press the pedal to lock in your chord</div>
+
+      <!-- Settings + cycle indicator -->
+      <div class="cos-settings-row">
+        <details class="cos-settings" id="cos-settings">
+          <summary>Settings</summary>
+          <div class="cos-settings__grid">
+            <label for="set-device">MIDI device</label>
+            <select id="set-device"><option value="">(none)</option></select>
+            <div class="cos-settings__status" id="set-device-status"></div>
+
+            <label for="set-echo">Sound for my notes</label>
+            <span class="cos-settings__check"><input type="checkbox" id="set-echo"> <span id="set-echo-note"></span></span>
+
+            <label for="set-pedal">Pedal submits</label>
+            <span class="cos-settings__check"><input type="checkbox" id="set-pedal"> <span>Lock in a chord with the sustain pedal</span></span>
+
+            <label for="set-hints">Hints</label>
+            <select id="set-hints">
+              <option value="guided">Guided: show the move on the keys</option>
+              <option value="names">Names: the path line only</option>
+              <option value="none">None</option>
+            </select>
+
+            <label for="set-mode">Lap</label>
+            <select id="set-mode">
+              <option value="both">Both forms per key</option>
+              <option value="single">One phrase per key</option>
+            </select>
+
+            <label for="set-key">Start key</label>
+            <select id="set-key"></select>
+          </div>
+        </details>
+        <div class="cos-cycle-wrap">
+          <svg class="cos-cycle" id="cos-cycle" role="group" aria-label="Cycle of keys"></svg>
+        </div>
+      </div>
+    </div>
 
   </div>
 </div>

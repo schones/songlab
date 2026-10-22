@@ -3,24 +3,34 @@
  * ==================
  * Page layer for the Cycle of Shells game (/games/cycle-of-shells). Wires
  * the pure core (targets, checker, submit detector) and the MIDI wrapper to
- * the DOM, the VoicingKeyboard and the voicing-player piano. All game logic
- * lives in cycle-of-shells-core.js; this file only wires and renders.
+ * the DOM, the VoicingKeyboard, a guided-hint overlay, the cycle indicator
+ * and the voicing-player piano. All game logic lives in
+ * cycle-of-shells-core.js; this file only wires and renders.
  *
  * Depends on:
  *   - cycle-of-shells-core.js   → buildLap, describeMove, checkAnswer, createSubmitDetector, CYCLE
  *   - cycle-of-shells-input.js  → createShellInput (MIDI)
- *   - voicing-keyboard.js       → VoicingKeyboard (display + on-screen input via onKeyClick)
+ *   - voicing-keyboard.js       → VoicingKeyboard (display + on-screen input via onKeyClick, minKeyWidth)
  *   - voicing-player.js         → VoicingPlayer (Hear it), loadSampler (live echo); one piano on the page
+ *   - voicing-analysis.js       → parseNote, parseSymbol, namedVsPlayed (target-relative spelling of held notes)
+ *   - voicing-explore.js        → spellMidi
  *
  * Lifecycle (hand-rolled, as Scale Builder):
  *   init(params) → DOM wiring, settings restored → start overlay click →
  *   Tone.start(), MIDI init, lap built (resume or URL params) → targets
  *   advance on each correct answer, no timers.
  *
- * Settings (localStorage, prefix 'cycleOfShells.'): mode, startKey, hidePath,
+ * Hints (setting 'hints'): 'guided' draws the move from the previous
+ * target to the current one over the keyboard (ghosted origins, lit
+ * destinations, arrows, labels in the target's spelling) and shows the
+ * text path line; 'names' shows the text line only; 'none' shows neither.
+ * The overlay is an SVG positioned over the keyboard, reading key
+ * rectangles through data-midi; held notes are drawn as rings on top.
+ *
+ * Settings (localStorage, prefix 'cycleOfShells.'): mode, startKey, hints,
  * pedalSubmit, echo (per device name), resume ({ index, mode, startKey });
  * the MIDI device name is kept by the input wrapper under
- * 'cycleOfShells.midiDevice'.
+ * 'cycleOfShells.midiDevice'. A legacy hidePath value migrates to hints.
  *
  * Stage 4 hooks: `hooks.onAccepted(target, result, submission)` and
  * `hooks.onLapComplete(lap)` are called when set; `getState()` exposes the
@@ -32,14 +42,17 @@ import { buildLap, describeMove, checkAnswer, createSubmitDetector, CYCLE } from
 import { createShellInput } from './cycle-of-shells-input.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
 import { VoicingPlayer, loadSampler } from '../shared/voicing-player.js';
-import { parseNote } from '../shared/voicing-analysis.js';
+import { parseNote, parseSymbol, namedVsPlayed } from '../shared/voicing-analysis.js';
+import { spellMidi } from '../shared/voicing-explore.js';
 
 // ════════════════════════════════════════════════════════════════════
 // CONSTANTS
 // ════════════════════════════════════════════════════════════════════
 
 const STORAGE_PREFIX = 'cycleOfShells.';
-const KEYBOARD_RANGE = { low: 'C2', high: 'C5' };
+const KEYBOARD_RANGE = { low: 'C1', high: 'C6' };
+const KEYBOARD_HEIGHT = 150;      // white-key height in px (black keys keep the shared ratio)
+const KEYBOARD_MIN_KEY = 24;      // narrowest white key before the keyboard scrolls sideways (C1–C6 = 36 white keys)
 const SETTLE_MS = 150;
 const MIN_NOTES = 3;
 const MISSES_BEFORE_SHOW_ME = 2;
@@ -49,6 +62,13 @@ const ECHO_DEFAULT_OFF = new Set(['RD-2000']);   // devices that make their own 
 const FORM_TEXT = { '3-below': '3rd below 7th', '7-below': '7th below 3rd' };
 const FORM_SHORT = { '3-below': '3rd below', '7-below': '7th below' };
 const PHRASES_PER_KEY = { both: 2, single: 1 };
+const HINT_LEVELS = ['guided', 'names', 'none'];
+/** Overlay colours: AA text contrast on the page background (#FCFBF8). */
+const GUIDE = { bass: '#7A5607', voicing: '#2D5F8A', ring: '#141210', halo: '#FCFBF8' };
+const GUIDE_FONT = 17;            // label font size in px
+const GUIDE_BAND = 96;            // space above the keys for arrows and labels
+/** Circle of fifths clockwise from the top: pitch classes C G D A E B G♭ D♭ A♭ E♭ B♭ F. */
+const FIFTHS = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];
 
 // ════════════════════════════════════════════════════════════════════
 // STATE
@@ -56,7 +76,7 @@ const PHRASES_PER_KEY = { both: 2, single: 1 };
 
 const $ = id => document.getElementById(id);
 
-const settings = { mode: 'both', startKey: 'C', hidePath: false, pedalSubmit: false };
+const settings = { mode: 'both', startKey: 'C', hints: 'guided', pedalSubmit: false };
 let lap = [];
 let index = 0;
 let misses = 0;
@@ -72,8 +92,9 @@ let input = null;
 let detector = null;
 let player = null;
 let sampler = null;
-let playing = null;               // Set of midis sounding from Hear it, for keyboard follow
+let playing = null;               // Map midi → role while Hear it sounds (keyboard follow)
 const echoing = new Set();        // midis currently echoed on the sampler
+let guideObserver = null;
 
 /** Stage 4 hooks (follow-up question, result logging, /learn links). */
 const hooks = { onAccepted: null, onLapComplete: null };
@@ -89,6 +110,7 @@ const store = {
   set(key, value) {
     try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); } catch (_) { /* storage unavailable */ }
   },
+  remove(key) { try { localStorage.removeItem(STORAGE_PREFIX + key); } catch (_) { /* storage unavailable */ } },
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -99,6 +121,16 @@ const target = () => lap[index] || null;
 const noteName = midi => { const p = parseNote(midi); return p.name + p.octave; };
 const pcName = name => name.replace(/-?\d+$/, '');
 const capitalize = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
+const pcOf = m => ((m % 12) + 12) % 12;
+
+/** Spell a midi against the current target's chord (B♭, not A♯); octave by the letter. */
+function spellForTarget(midi, t = target()) {
+  if (!t) return noteName(midi);
+  const parsed = parseSymbol(t.symbol);
+  const nvp = namedVsPlayed(parsed, [midi]);
+  const e = [...nvp.present, ...nvp.added].find(x => x.pc === pcOf(midi));
+  return spellMidi(midi, e ? e.name : parseNote(midi).name);
+}
 
 /** Normalise a key given by URL or settings to a CYCLE key string, or null. */
 function normaliseKey(key) {
@@ -128,13 +160,18 @@ function muted() { return !!(window.AudioToggle && window.AudioToggle.isMuted())
 
 function startLap({ resumeIndex = 0 } = {}) {
   lap = buildLap({ mode: settings.mode, startKey: settings.startKey });
-  index = Math.min(Math.max(0, resumeIndex), lap.length - 1);
+  goTo(Math.min(Math.max(0, resumeIndex), lap.length - 1));
+  setFeedback('', null);
+  $('cos-coaching').textContent = '';
+}
+
+/** Move to a target index with a clean slate (restart, resume, cycle jump). */
+function goTo(i) {
+  index = i;
   misses = 0; showMe = false; prevAccepted = null; lapComplete = false;
   staged.clear();
   if (detector) detector.reset();
   saveResume();
-  setFeedback('', null);
-  $('cos-coaching').textContent = '';
   render();
 }
 
@@ -154,13 +191,20 @@ function advance() {
   render();
 }
 
+/** First target of a key in the current lap (cycle indicator click). */
+function jumpToKey(key) {
+  const i = lap.findIndex(t => t.key === key);
+  if (i < 0) return;
+  goTo(i);
+  setFeedback('', null);
+  $('cos-coaching').textContent = '';
+}
+
 // ════════════════════════════════════════════════════════════════════
 // SUBMISSION
 // ════════════════════════════════════════════════════════════════════
 
-/**
- * Check a set of midis against the current target. `source` is 'midi' or 'screen'.
- */
+/** Check a set of midis against the current target. `source` is 'midi' or 'screen'. */
 function submit(midis, source) {
   const t = target();
   if (!t || lapComplete) return;
@@ -183,7 +227,7 @@ function submit(midis, source) {
   misses++;
   setFeedback(result.message, 'miss');
   $('cos-coaching').textContent = '';
-  if (misses >= MISSES_BEFORE_SHOW_ME) $('btn-show').hidden = false;
+  renderControls();
   renderKeyboard();
 }
 
@@ -198,36 +242,57 @@ function setFeedback(text, kind) {
 // RENDER
 // ════════════════════════════════════════════════════════════════════
 
+/** Keys of the lap in order (each once). */
+const keyOrder = () => lap.filter(x => x.role === 'ii' && x.formSlot === 1).map(x => x.key);
+
+function positionText(t) {
+  const order = keyOrder();
+  const keyNo = order.indexOf(t.key) + 1;
+  const phrases = PHRASES_PER_KEY[settings.mode];
+  return { keyNo, total: order.length, phrases, phraseText: phrases > 1 ? `phrase ${t.formSlot} of ${phrases}` : '' };
+}
+
 function render() {
   const t = target();
   if (!t) return;
-  const keyOrder = lap.filter(x => x.role === 'ii' && x.formSlot === 1).map(x => x.key);
-  const keyNo = keyOrder.indexOf(t.key) + 1;
+  const pos = positionText(t);
   const chordNo = ['ii', 'V', 'I'].indexOf(t.role) + 1;
-  const phrases = PHRASES_PER_KEY[settings.mode];
   $('cos-home').textContent = `Home: ${t.keyDisplay}`;
   $('cos-progress').textContent = lapComplete
     ? 'Lap complete'
-    : `Key ${keyNo} of ${keyOrder.length}` + (phrases > 1 ? ` · phrase ${t.formSlot} of ${phrases}` : '') + ` · chord ${chordNo} of 3`;
+    : [`Key ${pos.keyNo} of ${pos.total}`, pos.phraseText, `chord ${chordNo} of 3`].filter(Boolean).join(' · ');
   $('cos-symbol').textContent = t.display;
   $('cos-role').textContent = t.role;
   $('cos-form').textContent = FORM_TEXT[t.form];
   renderPath();
   renderKeyboard();
+  renderCycle();
+  renderControls();
+  if (lapComplete) setFeedback('Lap complete — every key, every shell. Restart to go round again.', 'success');
+}
+
+function renderControls() {
   $('btn-show').hidden = !(misses >= MISSES_BEFORE_SHOW_ME && !lapComplete);
   $('btn-check').disabled = lapComplete;
   $('cos-pedal-hint').hidden = !settings.pedalSubmit;
-  if (lapComplete) setFeedback('Lap complete — every key, every shell. Restart to go round again.', 'success');
+}
+
+/** The move from the previous target to the current one, or null on a lap's first chord. */
+function currentMove() {
+  const t = target();
+  if (!t || index === 0) return null;
+  const prev = lap[index - 1];
+  return { prev, move: describeMove(prev.upper, t.upper, { form: FORM_SHORT[t.form] }) };
 }
 
 function renderPath() {
   const el = $('cos-path');
-  el.classList.toggle('cos-path--hidden', settings.hidePath);
+  el.classList.toggle('cos-path--hidden', settings.hints === 'none');
   el.innerHTML = '';
   const t = target();
-  if (!t || index === 0) return;
-  const prev = lap[index - 1];
-  const move = describeMove(prev.upper, t.upper, { form: FORM_SHORT[t.form] });
+  const cm = currentMove();
+  if (!t || !cm) return;
+  const { prev, move } = cm;
   if (move.kind === 'replace') { el.textContent = capitalize(move.summary); return; }
   const degreeOf = midi => { const u = prev.upper.find(x => x.midi === midi); return u ? (u.degree.includes('3') ? '3rd' : '7th') : ''; };
   for (const v of move.voices) {
@@ -244,18 +309,165 @@ function renderPath() {
   }
 }
 
-/** Keys lit: Hear-it playback if sounding, else Show-me target plus held/staged rings, else held/staged by role. */
+/** Key fills: guided target (or Show me) with held notes as rings; otherwise held/staged notes by role. */
 function renderKeyboard() {
   if (!keyboard) return;
   const t = target();
   if (playing) return;   // setPlaying() owns the keys during Hear it
   const live = [...new Set([...held, ...staged])].sort((a, b) => a - b);
-  if (showMe && t) {
+  const guideOn = settings.hints === 'guided' && !lapComplete;
+  if ((guideOn || showMe) && t) {
     keyboard.render({ bass: t.bass.name, voicing: t.upper.map(u => u.name) });
-    keyboard.setHighlight(live);
-    return;
+  } else {
+    keyboard.render(live.length ? { bass: spellForTarget(live[0]), voicing: live.slice(1).map(m => spellForTarget(m)) } : {});
   }
-  keyboard.render(live.length ? { bass: live[0], voicing: live.slice(1) } : {});
+  drawGuide();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// GUIDE OVERLAY
+// ════════════════════════════════════════════════════════════════════
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(name, attrs = {}, text = null) {
+  const el = document.createElementNS(SVG_NS, name);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  if (text != null) el.textContent = text;
+  return el;
+}
+
+/** Rectangle of a key relative to the keyboard stage, or null when the key is outside the range. */
+function keyRect(midi) {
+  const stage = $('cos-kb-stage');
+  const el = stage.querySelector(`.vk-key[data-midi="${midi}"]`);
+  if (!el) return null;
+  const s = stage.getBoundingClientRect(), r = el.getBoundingClientRect();
+  return { x: r.left - s.left, y: r.top - s.top, w: r.width, h: r.height, black: el.classList.contains('vk-key--black') };
+}
+
+/**
+ * Draw the guided overlay: ghosted origins, arrows to destinations, labels
+ * in the target's spelling, and rings for held notes (every hint level).
+ */
+function drawGuide() {
+  const svg = $('cos-guide');
+  const stage = $('cos-kb-stage');
+  if (!svg || !stage) return;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const s = stage.getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${s.width} ${s.height}`);
+  svg.setAttribute('width', s.width);
+  svg.setAttribute('height', s.height);
+  const t = target();
+  const items = [];   // { kind: 'stay'|'move'|'tag', midi|from/to, label, color }
+  if (t && settings.hints === 'guided' && !lapComplete) {
+    const cm = currentMove();
+    if (!cm) {
+      items.push({ kind: 'tag', midi: t.bass.midi, label: 'root', color: GUIDE.bass });
+      for (const u of t.upper) items.push({ kind: 'tag', midi: u.midi, label: u.degree, color: GUIDE.voicing });
+    } else {
+      const { prev, move } = cm;
+      const nameAt = (list, midi) => pcName((list.find(x => x.midi === midi) || {}).name || noteName(midi));
+      if (prev.bass.midi === t.bass.midi) items.push({ kind: 'stay', midi: t.bass.midi, label: `${t.bass.name.replace(/\d+$/, '')} stays`, color: GUIDE.bass });
+      else items.push({ kind: 'move', from: prev.bass.midi, to: t.bass.midi, label: `${pcName(prev.bass.name)} → ${pcName(t.bass.name)}`, color: GUIDE.bass });
+      for (const v of move.voices) {
+        if (v.delta === 0) items.push({ kind: 'stay', midi: v.to, label: `${nameAt(t.upper, v.to)} stays`, color: GUIDE.voicing });
+        else items.push({ kind: 'move', from: v.from, to: v.to, label: `${nameAt(prev.upper, v.from)} → ${nameAt(t.upper, v.to)}`, color: GUIDE.voicing });
+      }
+    }
+  }
+  const labels = [];   // { x, y, text, color } collected, then de-overlapped
+  const anchor = r => ({ x: r.x + r.w / 2, y: r.y });
+  for (const it of items) {
+    if (it.kind === 'move') {
+      const a = keyRect(it.from), b = keyRect(it.to);
+      if (!b) continue;
+      if (a) {
+        // Ghost the origin key.
+        svg.appendChild(svgEl('rect', { x: a.x + 1, y: a.y + 1, width: a.w - 2, height: a.h - 2, rx: 4, fill: it.color, 'fill-opacity': a.black ? 0.45 : 0.22, stroke: it.color, 'stroke-width': 1.5, 'stroke-dasharray': '4 3' }));
+        const p = anchor(a), q = anchor(b);
+        const dx = q.x - p.x;
+        const h = Math.max(30, Math.min(GUIDE_BAND - 26, 24 + Math.abs(dx) * 0.18));
+        const cx = (p.x + q.x) / 2, cy = p.y - h;
+        const d = `M ${p.x} ${p.y - 2} Q ${cx} ${cy} ${q.x} ${q.y - 2}`;
+        svg.appendChild(svgEl('path', { d, fill: 'none', stroke: GUIDE.halo, 'stroke-width': 7, 'stroke-linecap': 'round' }));
+        svg.appendChild(svgEl('path', { d, fill: 'none', stroke: it.color, 'stroke-width': 3, 'stroke-linecap': 'round' }));
+        // Arrowhead along the end tangent (from the control point to the end).
+        const ang = Math.atan2((q.y - 2) - cy, q.x - cx);
+        const tip = { x: q.x, y: q.y - 2 }, len = 11, spread = 0.5;
+        const l = { x: tip.x - len * Math.cos(ang - spread), y: tip.y - len * Math.sin(ang - spread) };
+        const r = { x: tip.x - len * Math.cos(ang + spread), y: tip.y - len * Math.sin(ang + spread) };
+        svg.appendChild(svgEl('polygon', { points: `${tip.x},${tip.y} ${l.x},${l.y} ${r.x},${r.y}`, fill: it.color, stroke: GUIDE.halo, 'stroke-width': 1.5 }));
+        labels.push({ x: cx, y: p.y - h / 2 - 10, text: it.label, color: it.color });
+      } else {
+        const q = anchor(b);
+        labels.push({ x: q.x, y: q.y - 26, text: it.label, color: it.color, leader: q });
+      }
+    } else {
+      const r = keyRect(it.midi);
+      if (!r) continue;
+      const q = anchor(r);
+      labels.push({ x: q.x, y: q.y - 28, text: it.label, color: it.color, leader: q });
+    }
+  }
+  // Labels: estimate widths, lift any that would overlap an earlier one.
+  labels.sort((a, b) => a.x - b.x);
+  const placed = [];
+  for (const lb of labels) {
+    const w = lb.text.length * GUIDE_FONT * 0.6 + 12;
+    let y = lb.y;
+    for (const p of placed) if (Math.abs(p.x - lb.x) < (p.w + w) / 2 && Math.abs(p.y - y) < GUIDE_FONT + 6) y = p.y - (GUIDE_FONT + 8);
+    y = Math.max(GUIDE_FONT, y);
+    if (lb.leader) {
+      svg.appendChild(svgEl('line', { x1: lb.x, y1: y + 6, x2: lb.leader.x, y2: lb.leader.y - 2, stroke: lb.color, 'stroke-width': 2, 'stroke-dasharray': lb.text.endsWith('stays') ? '' : '3 3' }));
+      svg.appendChild(svgEl('circle', { cx: lb.leader.x, cy: lb.leader.y - 2, r: 3.5, fill: lb.color }));
+    }
+    svg.appendChild(svgEl('text', { x: lb.x, y, 'text-anchor': 'middle', 'font-size': GUIDE_FONT, 'font-weight': 800, fill: lb.color, stroke: GUIDE.halo, 'stroke-width': 4, 'paint-order': 'stroke', 'font-family': 'inherit' }, lb.text));
+    placed.push({ x: lb.x, y, w });
+  }
+  // Held and staged notes: rings on top, so the guide stays visible underneath.
+  for (const m of new Set([...held, ...staged])) {
+    const r = keyRect(m);
+    if (!r) continue;
+    svg.appendChild(svgEl('rect', { x: r.x + 3, y: r.y + 3, width: r.w - 6, height: r.h - 6, rx: 5, fill: 'none', stroke: GUIDE.halo, 'stroke-width': 6, 'class': 'cos-ring' }));
+    svg.appendChild(svgEl('rect', { x: r.x + 3, y: r.y + 3, width: r.w - 6, height: r.h - 6, rx: 5, fill: 'none', stroke: GUIDE.ring, 'stroke-width': 3, 'class': 'cos-ring' }));
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CYCLE INDICATOR
+// ════════════════════════════════════════════════════════════════════
+
+function renderCycle() {
+  const svg = $('cos-cycle');
+  const t = target();
+  if (!svg || !t) return;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const size = 170, c = size / 2, ring = 66, r = 15;
+  svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+  const pos = positionText(t);
+  svg.setAttribute('aria-label', `Key ${pos.keyNo} of ${pos.total}, ${t.keyDisplay}${pos.phraseText ? ', ' + pos.phraseText : ''}`);
+  const lastIndexOfKey = key => lap.map((x, i) => (x.key === key ? i : -1)).reduce((m, i) => Math.max(m, i), -1);
+  svg.appendChild(svgEl('circle', { cx: c, cy: c, r: ring, fill: 'none', stroke: '#C9C3B4', 'stroke-width': 1.5 }));
+  FIFTHS.forEach((pc, i) => {
+    const key = CYCLE.find(k => parseNote(k.key).pc === pc);
+    const label = parseNote(key.key).name;
+    const ang = -Math.PI / 2 + (i * Math.PI * 2) / 12;
+    const x = c + ring * Math.cos(ang), y = c + ring * Math.sin(ang);
+    const current = key.key === t.key;
+    const done = !current && lastIndexOfKey(key.key) < index;
+    const g = svgEl('g', { class: `cos-cycle__key${current ? ' cos-cycle__key--current' : ''}${done ? ' cos-cycle__key--done' : ''}`, role: 'button', tabindex: 0, 'aria-label': `Go to ${label}${done ? ' (done)' : current ? ' (current)' : ''}` });
+    g.appendChild(svgEl('circle', { cx: x, cy: y, r, fill: current ? '#2D5F8A' : done ? '#E3F2DF' : '#FFFFFF', stroke: current ? '#2D5F8A' : done ? '#1E7B34' : '#8E877A', 'stroke-width': done || current ? 2 : 1.25 }));
+    g.appendChild(svgEl('text', { x, y: y + 4.5, 'text-anchor': 'middle', 'font-size': 12.5, 'font-weight': 800, fill: current ? '#FFFFFF' : done ? '#155F27' : '#2B2824', 'font-family': 'inherit' }, label));
+    if (current && pos.phrases > 1) {
+      const bx = c + (ring + 24) * Math.cos(ang), by = c + (ring + 24) * Math.sin(ang);
+      g.appendChild(svgEl('text', { x: bx, y: by + 4, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 800, fill: '#2D5F8A', 'font-family': 'inherit', class: 'cos-cycle__phrase' }, `${t.formSlot}/${pos.phrases}`));
+    }
+    const go = () => { if (key.key === t.key && index === lap.findIndex(x => x.key === key.key)) return; if (window.confirm(`Jump to ${label}? The current key is left where it is.`)) jumpToKey(key.key); };
+    g.addEventListener('click', go);
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    svg.appendChild(g);
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -370,8 +582,16 @@ function refreshEchoControl() {
 function loadSettings(params) {
   settings.mode = store.get('mode', 'both') === 'single' ? 'single' : 'both';
   settings.startKey = normaliseKey(store.get('startKey', 'C')) || 'C';
-  settings.hidePath = !!store.get('hidePath', false);
   settings.pedalSubmit = !!store.get('pedalSubmit', false);
+  // Hints, with migration from the Stage 3 hidePath flag (true → none, false → guided), then dropped.
+  let hints = store.get('hints', null);
+  const legacy = store.get('hidePath', null);
+  if (!HINT_LEVELS.includes(hints)) {
+    hints = legacy === true ? 'none' : 'guided';
+    if (legacy !== null) store.set('hints', hints);
+  }
+  if (legacy !== null) store.remove('hidePath');
+  settings.hints = hints;
   // URL params override the remembered lap for this visit (not persisted).
   const urlKey = params && normaliseKey(params.key);
   const urlMode = params && (params.mode === 'single' || params.mode === 'both') ? params.mode : null;
@@ -389,7 +609,7 @@ function wireSettings() {
   }
   keySel.value = settings.startKey;
   $('set-mode').value = settings.mode;
-  $('set-hidepath').checked = settings.hidePath;
+  $('set-hints').value = settings.hints;
   $('set-pedal').checked = settings.pedalSubmit;
 
   $('cos-settings').addEventListener('toggle', () => { if ($('cos-settings').open) { refreshDeviceList(); refreshEchoControl(); } });
@@ -399,9 +619,14 @@ function wireSettings() {
     settings.pedalSubmit = e.target.checked;
     store.set('pedalSubmit', settings.pedalSubmit);
     makeDetector();
-    $('cos-pedal-hint').hidden = !settings.pedalSubmit;
+    renderControls();
   });
-  $('set-hidepath').addEventListener('change', e => { settings.hidePath = e.target.checked; store.set('hidePath', settings.hidePath); renderPath(); });
+  $('set-hints').addEventListener('change', e => {
+    settings.hints = HINT_LEVELS.includes(e.target.value) ? e.target.value : 'guided';
+    store.set('hints', settings.hints);
+    renderPath();
+    renderKeyboard();
+  });
 
   const restartWith = (what, apply, revert) => {
     if (!window.confirm(`Change ${what} and restart the lap?`)) { revert(); return; }
@@ -420,10 +645,16 @@ function wireSettings() {
 
 export function init(params = null) {
   const { fromUrl } = loadSettings(params);
-  keyboard = new VoicingKeyboard('cos-keyboard', { ...KEYBOARD_RANGE, ariaLabel: 'Keyboard for playing the shell', onKeyClick });
+  keyboard = new VoicingKeyboard('cos-keyboard', { ...KEYBOARD_RANGE, height: KEYBOARD_HEIGHT, minKeyWidth: KEYBOARD_MIN_KEY, ariaLabel: 'Keyboard for playing the shell', onKeyClick });
   player = new VoicingPlayer();
   makeDetector();
   wireSettings();
+
+  // The guide overlay follows the keys: redraw on resize and on sideways scroll.
+  const stage = $('cos-kb-stage');
+  if (typeof ResizeObserver === 'function') { guideObserver = new ResizeObserver(() => drawGuide()); guideObserver.observe(stage); }
+  const wrap = stage.querySelector('.vk-wrap');
+  if (wrap) wrap.addEventListener('scroll', () => drawGuide(), { passive: true });
 
   $('btn-hear').addEventListener('click', hearIt);
   $('btn-check').addEventListener('click', () => submit([...staged], 'screen'));
