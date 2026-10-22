@@ -12,6 +12,8 @@
  *                                 followUp, checkFollowUp, chordEntry, followUpEntry, summarizeLap, CYCLE
  *   - cycle-of-shells-log.js    → createResultLog (ResultDetail entries in localStorage)
  *   - cycle-of-shells-input.js  → createShellInput (MIDI)
+ *   - cycle-of-shells-staff.js  → staffMEI, heldChord (the staff panel's MEI, pure)
+ *   - voicing-staff.js          → VEROVIO_VERSION (the pinned Verovio build; the toolkit is loaded here, lazily)
  *   - voicing-keyboard.js       → VoicingKeyboard (display + on-screen input via onKeyClick, minKeyWidth)
  *   - voicing-player.js         → VoicingPlayer (Hear it), loadSampler (live echo); one piano on the page
  *   - voicing-analysis.js       → parseNote, parseSymbol, namedVsPlayed (target-relative spelling of held notes)
@@ -43,6 +45,15 @@
  * (a second submit detector with minNotes 1), two tries, Skip always
  * available; the lap never blocks and chord misses are untouched.
  *
+ * Staff (Stage 3h): a grand staff beside the buttons, engraved by Verovio
+ * (loaded lazily after the start overlay, one toolkit instance for the
+ * page). Guided hints: the previous target faded, the current one full,
+ * the current always in the right-hand slot; names / none, a follow-up
+ * question and the finished lap: only the notes being held, spelled
+ * against the target, bass gold and the rest blue, an empty staff when
+ * nothing is held. Re-engraved when the scene changes; held-note changes
+ * are throttled to STAFF_THROTTLE_MS.
+ *
  * Result log: every chord submission and follow-up answer becomes a
  * ResultDetail entry (core chordEntry / followUpEntry) appended through
  * cycle-of-shells-log.js; the entries of the current lap also feed the
@@ -56,6 +67,8 @@
 import { buildLap, describeMove, checkAnswer, createSubmitDetector, noteLabel, phraseRecipe, moveRule, followUp, checkFollowUp, chordEntry, followUpEntry, summarizeLap, CYCLE } from './cycle-of-shells-core.js';
 import { createResultLog } from './cycle-of-shells-log.js';
 import { createShellInput } from './cycle-of-shells-input.js';
+import { staffMEI, heldChord, COLORS as STAFF_COLORS } from './cycle-of-shells-staff.js';
+import { VEROVIO_VERSION } from '../shared/voicing-staff.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
 import { VoicingPlayer, loadSampler } from '../shared/voicing-player.js';
 import { parseNote, parseSymbol, namedVsPlayed } from '../shared/voicing-analysis.js';
@@ -67,7 +80,7 @@ import { spellMidi } from '../shared/voicing-explore.js';
 
 const STORAGE_PREFIX = 'cycleOfShells.';
 const KEYBOARD_RANGE = { low: 'C1', high: 'C6' };
-const KEYBOARD_HEIGHT = 128;      // white-key height in px (black keys keep the shared ratio); 128 (was 150) pays for the C4 marker band below the keys
+const KEYBOARD_HEIGHT = 112;      // white-key height in px (black keys keep the shared ratio); 112 (was 150, 128) pays for the C4 marker band and the staff row above the fold
 const KEYBOARD_MIN_KEY = 24;      // narrowest white key before the keyboard scrolls sideways (C1–C6 = 36 white keys)
 const SETTLE_MS = 150;
 const MIN_NOTES = 3;
@@ -90,6 +103,13 @@ const C4_MARK = { midi: 60, color: '#B02A14', font: 22, band: 36 };   // band: t
 const FIFTHS = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];
 const CYCLE_SIZE = 500;           // px; the SVG scales with the viewBox below this on narrow screens
 const DUAL = { dual: true };      // core formatters: show awkward spellings as "C♭ (B)"
+const VEROVIO_BASE = `https://cdn.jsdelivr.net/npm/verovio@${VEROVIO_VERSION}/dist/`;   // the same pinned build as /voicings and /learn
+const VEROVIO_OPTIONS = {         // as voicing-staff.js, plus a page width that follows the content (one or two chords)
+  breaks: 'none', scale: 50, adjustPageHeight: true, adjustPageWidth: true, header: 'none', footer: 'none',
+  pageMarginTop: 30, pageMarginBottom: 30, pageMarginLeft: 20, pageMarginRight: 20,
+  svgViewBox: true, svgHtml5: false, spacingStaff: 8, justifyVertically: false,
+};
+const STAFF_THROTTLE_MS = 100;    // held-note re-engravings at most ~10/s
 
 // ════════════════════════════════════════════════════════════════════
 // STATE
@@ -120,6 +140,10 @@ let question = null;              // open follow-up: { prev, target, q, attempt,
 let fuDetector = null;            // single-note submit detector while a question is open
 let lapEntries = [];              // this lap's log entries, for the summary
 let targetShownAt = 0;            // performance.now() when the current target appeared
+let verovio = null;               // toolkit promise: created after the start overlay, one instance for the page
+let staffLoadMs = null;           // Verovio's first-load time on this page (ms), for the report and getState()
+let staffKey = null;              // JSON of the scene drawn (or being drawn); unchanged scenes are not re-engraved
+let staffToken = 0, staffTimer = null, staffLast = 0;
 const log = createResultLog();
 
 /** Hooks for anything built on top (the page itself uses the same paths). */
@@ -442,6 +466,7 @@ function renderKeyboard() {
     keyboard.render(live.length ? { bass: spellForTarget(live[0]), voicing: live.slice(1).map(m => spellForTarget(m)) } : {});
   }
   drawGuide();
+  scheduleStaff();
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -602,6 +627,73 @@ function renderCycle() {
     g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     svg.appendChild(g);
   });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// STAFF
+// ════════════════════════════════════════════════════════════════════
+
+/** Load Verovio once (ES module + WASM from the pinned jsDelivr build); the promise is shared and reset on failure. */
+function loadVerovio() {
+  if (!verovio) {
+    const t0 = now();
+    verovio = (async () => {
+      const [wasm, esm] = await Promise.all([import(VEROVIO_BASE + 'verovio-module.mjs'), import(VEROVIO_BASE + 'verovio.mjs')]);
+      const tk = new esm.VerovioToolkit(await wasm.default());
+      tk.setOptions(VEROVIO_OPTIONS);
+      staffLoadMs = Math.round(now() - t0);
+      console.info(`[cycle-of-shells] Verovio ${VEROVIO_VERSION} ready in ${staffLoadMs} ms`);
+      return tk;
+    })().catch(err => { verovio = null; throw err; });
+  }
+  return verovio;
+}
+
+/** What the staff shows now: the targets (guided hints), else the notes being held. */
+function staffScene() {
+  const t = target();
+  const guideOn = settings.hints === 'guided' && !lapComplete && !question;
+  if (guideOn && t) {
+    const prev = index > 0 ? lap[index - 1] : null;
+    const chord = x => ({ bass: x.bass.name, voicing: x.upper.map(u => u.name) });
+    const names = x => [x.bass.name, ...x.upper.map(u => u.name)].join(' ');
+    return { slots: 2, chords: [prev ? { ...chord(prev), dim: true } : null, chord(t)], label: `${prev ? `${prev.display} (${names(prev)}), then ` : ''}${t.display}: ${names(t)}` };
+  }
+  const live = [...new Set([...held, ...staged])].sort((a, b) => a - b).map(m => spellForTarget(m));
+  return { slots: 1, chords: [heldChord(live)], label: live.length ? `Held notes: ${live.join(' ')}` : 'Nothing held' };
+}
+
+/** Re-engrave when the scene changes. A pending (throttled) render is replaced by the newest scene, or dropped when the scene is back to what is drawn. */
+function scheduleStaff() {
+  if (!audioStarted || !$('cos-staff')) return;
+  const scene = staffScene();
+  const key = JSON.stringify([scene.slots, scene.chords]);
+  if (staffTimer) { clearTimeout(staffTimer); staffTimer = null; }
+  if (key === staffKey) return;
+  const run = () => { staffTimer = null; staffLast = now(); renderStaff(scene, key); };
+  const wait = STAFF_THROTTLE_MS - (now() - staffLast);
+  if (wait > 0) staffTimer = setTimeout(run, wait); else run();
+}
+
+async function renderStaff(scene, key) {
+  const host = $('cos-staff');
+  staffKey = key;
+  const token = ++staffToken;
+  const { mei, dimIds, goldIds, empty } = staffMEI(scene.chords, { slots: scene.slots });
+  host.setAttribute('aria-label', `Staff: ${scene.label}`);
+  let tk;
+  try { tk = await loadVerovio(); }
+  catch (err) {
+    console.warn('[cycle-of-shells] Verovio did not load; the staff stays empty', err);
+    if (token === staffToken) host.dataset.state = 'error';
+    return;
+  }
+  if (token !== staffToken) return;
+  if (!tk.loadData(mei)) { console.warn('[cycle-of-shells] the staff could not be engraved'); host.dataset.state = 'error'; return; }
+  host.innerHTML = tk.renderToSVG(1);
+  for (const id of dimIds) { const el = host.querySelector(`#${id}`); if (el) el.classList.add('cos-staff__dim'); }
+  for (const id of goldIds) { const el = host.querySelector(`#${id}`); if (el) { el.setAttribute('fill', STAFF_COLORS.bass); el.setAttribute('color', STAFF_COLORS.bass); } }   // a bass drawn on the treble (held right hand alone)
+  host.dataset.state = empty ? 'empty' : 'ready';
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -812,6 +904,7 @@ export function init(params = null) {
     audioStarted = true;
     $('start-overlay').style.display = 'none';
     $('main-content').style.display = 'block';
+    loadVerovio().catch(() => {});   // the staff's toolkit, lazily from here; renderStaff reports a failure
     await setupMidi();
     ensureSampler();   // preload the piano for Hear it and echo; not awaited
     // Resume where the player left off, unless the URL asked for a different lap.
@@ -824,7 +917,8 @@ export function init(params = null) {
 /** Current state for Stage 4 (follow-up question, logging, links) and tests. */
 export function getState() {
   return { index, target: target(), lapLength: lap.length, misses, showMe, lapComplete, settings: { ...settings }, held: [...held], staged: [...staged], deviceName: input ? input.deviceName : null,
-    question: question ? { prompt: question.q.prompt, attempt: question.attempt, answer: question.q.answerName } : null, lapEntries: lapEntries.length };
+    question: question ? { prompt: question.q.prompt, attempt: question.attempt, answer: question.q.answerName } : null, lapEntries: lapEntries.length,
+    staff: { loadMs: staffLoadMs, scene: staffKey ? JSON.parse(staffKey) : null, state: $('cos-staff') ? $('cos-staff').dataset.state : null } };
 }
 
 export { hooks };

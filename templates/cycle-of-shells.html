@@ -24,11 +24,11 @@
     max-width: none;
     background: var(--cos-bg);
     color: var(--text-primary);
-    padding: 1rem 1rem 3rem;
+    padding: 0.5rem 1rem 3rem;  /* 8 px top (was 16): the fold at 1440×900 — see the action row */
     font-size: 1.2rem;
   }
   .cos-column { max-width: 780px; margin: 0 auto; }
-  .cos-page .game-title { font-size: 2rem; }
+  .cos-page .game-title { font-size: 1.75rem; }
   .cos-why { font-size: 1.15rem; font-weight: 700; color: var(--accent-blue); text-decoration: none; margin-left: 1rem; border-bottom: 2px solid var(--accent-soft); }
   .cos-why:hover { border-bottom-color: var(--accent-blue); }
   .cos-title-group { display: flex; align-items: baseline; gap: 0.25rem; flex-wrap: wrap; }
@@ -50,7 +50,7 @@
   .cos-summary__grid dd { margin: 0; }
   .cos-summary .game-btn-row { margin-top: 1rem; }
   .cos-summary .btn { font-size: 1.4rem; }
-  .cos-page .game-top-bar { margin-bottom: 0.25rem; }
+  .cos-page .game-top-bar { margin-bottom: 0; }
   .cos-page .game-back-link { font-size: 1.1rem; }
 
   /* ── Start overlay ───────────────────────────────────────── */
@@ -76,6 +76,7 @@
     flex-wrap: wrap;
     gap: 0.25rem 1rem;
     font-size: 2rem;             /* 32 px, bench-readable */
+    line-height: 1.2;
     color: var(--text-muted);
     margin-bottom: 0;
   }
@@ -84,13 +85,13 @@
   /* ── Target ──────────────────────────────────────────────── */
   .cos-target { text-align: center; margin-bottom: 0; }
   .cos-symbol {
-    font-size: 5.25rem;          /* 84 px (was 96): room for the larger lines below */
+    font-size: 4.75rem;          /* 76 px (was 84, 96): room for the staff row below the fold line */
     font-weight: 800;
     line-height: 1;
     color: var(--text-primary);
     letter-spacing: -0.01em;
   }
-  .cos-meta { font-size: 2.25rem; color: var(--text-secondary); font-weight: 700; margin-top: 0; line-height: 1.2; }
+  .cos-meta { font-size: 2rem; color: var(--text-secondary); font-weight: 700; margin-top: 0; line-height: 1.2; }   /* 32 px (was 36) */
   .cos-meta .cos-role {
     display: inline-block;
     min-width: 2em;
@@ -141,20 +142,26 @@
     margin-bottom: 0.25rem;
   }
 
-  /* ── Action row: buttons on the left, cycle on the right, centred as a group under the feedback ──
-     The cycle is 360 px here (its viewBox stays 500 units, so everything scales): with the buttons
-     vertically centred against it and the bench-size text above, 360 px keeps the buttons above the
-     fold at 1440×900 on one-line rule chords. At narrow widths the cycle wraps below the buttons. */
+  /* ── Action row: cycle on the left, buttons in the middle, staff on the right ──
+     A three-column grid under the feedback line. The cycle is 300 px (its viewBox stays 500 units,
+     so everything scales) and the staff column is the same height, so the row is as tall as the
+     cycle. With the stack above trimmed (8 px page padding, 28 px title, 76 px symbol, 112 px keys)
+     the whole row sits above the fold at 1440×900 on a one-line path chord with an empty coaching
+     line (row bottom 894); a key's first chord (recipe + seam rule) or a coaching text pushes the
+     bottom of the cycle and staff 20–30 px under; the buttons always stay above. At ≤ 1024 the
+     buttons take the first row and the cycle and staff share the second; at ≤ 640 the three stack. */
   .cos-action-row {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr) minmax(0, 440px);
+    grid-template-areas: "cycle buttons staff";
     justify-content: center;
+    justify-items: center;
     align-items: center;
-    gap: 0.75rem 2.5rem;
-    max-width: 1200px;           /* four buttons (Show me visible) + gap + the 420 px cycle still fit on one line at 1440 */
+    gap: 0.75rem 1.5rem;
+    max-width: 1320px;
     margin: 0 auto 0;
   }
-  .cos-action-row__buttons { display: flex; flex-direction: column; align-items: center; flex: 0 1 auto; }
+  .cos-action-row__buttons { grid-area: buttons; display: flex; flex-direction: column; align-items: center; width: 100%; }
   .cos-controls { flex-wrap: wrap; margin-top: 0; }
   .cos-controls .btn { font-size: 1.75rem; padding: 0.5em 1.1em; }   /* 28 px text */
   .cos-controls .btn[hidden] { display: none !important; }   /* .btn sets display; keep [hidden] meaning hidden */
@@ -165,8 +172,22 @@
     margin-top: 0.5rem;
   }
 
-  /* ── Cycle indicator (in the action row), settings beneath the row ── */
-  .cos-cycle-row { flex: 0 0 auto; width: 360px; max-width: 100%; }   /* 360 px: the floor, to keep the larger text above the fold */
+  /* ── Cycle indicator and staff (in the action row), settings beneath the row ── */
+  .cos-cycle-row { grid-area: cycle; width: 300px; max-width: 100%; }
+  .cos-staff-col { grid-area: staff; width: 100%; height: 300px; display: flex; align-items: center; justify-content: center; }
+  .cos-staff { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  .cos-staff svg { display: block; height: 100%; width: auto; max-width: 100%; color: var(--text-primary); fill: currentColor; }   /* Verovio: strokes use currentColor; coloured notes carry their own fill */
+  .cos-staff g.meterSig, .cos-staff g.rest, .cos-staff g.mRest { display: none; }   /* the shared model always writes a time signature and fills empty slots with rests */
+  .cos-staff .cos-staff__dim { opacity: 0.35; }   /* the previous target, in guided hints */
+  .cos-staff[data-state="error"]::after { content: 'Notation unavailable'; font-size: 1.1rem; color: var(--text-muted); }
+  @media (max-width: 1024px) {
+    .cos-action-row { grid-template-columns: 1fr 1fr; grid-template-areas: "buttons buttons" "cycle staff"; }
+    .cos-staff-col { height: auto; max-height: 300px; }
+    .cos-staff svg { max-height: 300px; }
+  }
+  @media (max-width: 640px) {
+    .cos-action-row { grid-template-columns: 1fr; grid-template-areas: "buttons" "cycle" "staff"; }
+  }
   .cos-cycle { width: 100%; height: auto; aspect-ratio: 1; display: block; }
   .cos-cycle__key { cursor: pointer; }
   .cos-cycle__key:hover circle, .cos-cycle__key:focus-visible circle { stroke-width: 9; }
@@ -279,8 +300,11 @@
       </section>
     </div>
 
-    <!-- 6. Controls beside the cycle indicator -->
+    <!-- 6. Cycle, controls and staff in one row -->
     <div class="cos-action-row">
+      <div class="cos-cycle-row">
+        <svg class="cos-cycle" id="cos-cycle" role="group" aria-label="Cycle of keys"></svg>
+      </div>
       <div class="cos-action-row__buttons">
         <div class="game-btn-row cos-controls">
           <button class="btn game-btn--secondary" id="btn-hear">&#9654; Hear it</button>
@@ -291,8 +315,8 @@
         </div>
         <div class="cos-pedal-hint" id="cos-pedal-hint" hidden>Press the pedal to lock in your chord</div>
       </div>
-      <div class="cos-cycle-row">
-        <svg class="cos-cycle" id="cos-cycle" role="group" aria-label="Cycle of keys"></svg>
+      <div class="cos-staff-col">
+        <div class="cos-staff" id="cos-staff" role="img" aria-label="Staff" data-state="empty"></div>
       </div>
     </div>
 
