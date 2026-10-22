@@ -207,6 +207,11 @@ def scale_builder():
     return render_template("scale-builder.html")
 
 
+@app.route("/games/cycle-of-shells")
+def cycle_of_shells():
+    return render_template("cycle-of-shells.html")
+
+
 @app.route("/games/swing-trainer")
 def swing_trainer():
     # Production 500 reported in STATUS.md but could not be reproduced locally

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Cycle of Shells — SongLab{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='shared/game-shell.css') }}">
+<!-- Tone.js (same pinned build as the other games; voicing-player reuses window.Tone) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+<style>
+  /* ── Start overlay ───────────────────────────────────────── */
+  #start-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 3rem 1rem;
+    text-align: center;
+    cursor: pointer;
+  }
+  .cos-start-icon { font-size: 3rem; line-height: 1; }
+  .cos-start-text { font-size: 1.2rem; font-weight: 700; color: var(--text-primary); }
+  .cos-start-sub { font-size: 0.85rem; color: var(--text-muted); }
+
+  /* ── Header line ─────────────────────────────────────────── */
+  .cos-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+  }
+  .cos-home { font-weight: 800; color: var(--text-secondary); font-size: 0.95rem; }
+
+  /* ── Target ──────────────────────────────────────────────── */
+  .cos-target { text-align: center; margin-bottom: 0.5rem; }
+  .cos-symbol {
+    font-size: 3rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+  .cos-meta { font-size: 0.95rem; color: var(--text-secondary); font-weight: 700; margin-top: 0.15rem; }
+  .cos-meta .cos-role {
+    display: inline-block;
+    min-width: 2em;
+    padding: 0 0.4em;
+    border-radius: 6px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    margin-right: 0.35em;
+  }
+
+  /* ── Path line ───────────────────────────────────────────── */
+  .cos-path {
+    min-height: 1.4rem;
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+  }
+  .cos-path--hidden { visibility: hidden; }
+  .cos-path__voice + .cos-path__voice::before { content: ' · '; color: var(--text-muted); }
+  .cos-path__label { font-weight: 700; color: var(--text-muted); }
+
+  /* ── Keyboard ────────────────────────────────────────────── */
+  /* C2–C5 is 37 white keys; the shared keyboard never shrinks them below 28px,
+     so the game column is wider than the default 640px to fit it on a laptop.
+     Narrower screens scroll the keyboard sideways. */
+  .cos-page { max-width: 1080px; }
+  .cos-target, .cos-path, .cos-feedback, .cos-coaching, .cos-controls, .cos-settings { max-width: 640px; margin-left: auto; margin-right: auto; }
+  .cos-header { max-width: 640px; margin-left: auto; margin-right: auto; }
+  #cos-keyboard { margin: 0 auto 0.75rem; }
+
+  /* ── Feedback ────────────────────────────────────────────── */
+  .cos-feedback { font-size: 1.05rem; min-height: 1.6em; margin: 0.5rem 0 0.1rem; }
+  /* game-shell's --info reads --accent-blue, which the warm theme maps to coral; info lines here are blue. */
+  .cos-feedback.game-feedback--info { color: var(--text-info, #2D5F8A); }
+  .cos-coaching {
+    min-height: 1.3em;
+    text-align: center;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+  }
+
+  /* ── Controls ────────────────────────────────────────────── */
+  .cos-controls { flex-wrap: wrap; margin-top: 0.5rem; }
+  .cos-pedal-hint {
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+  }
+
+  /* ── Settings ────────────────────────────────────────────── */
+  .cos-settings {
+    margin-top: 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-card);
+    padding: 0.5rem 0.9rem;
+  }
+  .cos-settings > summary {
+    cursor: pointer;
+    font-weight: 800;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    list-style: none;
+  }
+  .cos-settings > summary::-webkit-details-marker { display: none; }
+  .cos-settings > summary::before { content: '▸ '; }
+  .cos-settings[open] > summary::before { content: '▾ '; }
+  .cos-settings__grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.6rem 1rem;
+    align-items: center;
+    margin-top: 0.75rem;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+  }
+  .cos-settings__grid label { font-weight: 700; }
+  .cos-settings__grid select { max-width: 100%; }
+  .cos-settings__status { grid-column: 1 / -1; font-size: 0.8rem; color: var(--text-muted); }
+  .cos-settings__check { display: flex; align-items: center; gap: 0.5rem; font-weight: 400; }
+  @media (max-width: 480px) { .cos-settings__grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cos-page game-page">
+
+  <!-- Top bar -->
+  <div class="game-top-bar">
+    <h1 class="game-title">Cycle of Shells</h1>
+    <a href="/" class="game-back-link">&larr; Back</a>
+  </div>
+
+  <!-- Start overlay (Tone.js needs a user gesture) -->
+  <div id="start-overlay">
+    <div class="cos-start-icon">&#9654;</div>
+    <div class="cos-start-text">Start</div>
+    <div class="cos-start-sub">Click to begin (enables audio and MIDI)</div>
+  </div>
+
+  <!-- Main content (hidden until audio starts) -->
+  <div id="main-content" style="display: none;">
+
+    <!-- 1. Header line -->
+    <div class="cos-header">
+      <span class="cos-home" id="cos-home"></span>
+      <span class="cos-progress" id="cos-progress"></span>
+    </div>
+
+    <!-- 2. Target -->
+    <div class="cos-target">
+      <div class="cos-symbol" id="cos-symbol"></div>
+      <div class="cos-meta"><span class="cos-role" id="cos-role"></span><span id="cos-form"></span></div>
+    </div>
+
+    <!-- 3. Path line -->
+    <div class="cos-path" id="cos-path"></div>
+
+    <!-- 4. Keyboard -->
+    <div id="cos-keyboard"></div>
+
+    <!-- 5. Feedback -->
+    <div class="game-feedback cos-feedback" id="cos-feedback"></div>
+    <div class="cos-coaching" id="cos-coaching"></div>
+
+    <!-- 6. Controls -->
+    <div class="game-btn-row cos-controls">
+      <button class="btn game-btn--secondary" id="btn-hear">&#9654; Hear it</button>
+      <button class="btn game-btn--primary" id="btn-check">Check</button>
+      <button class="btn game-btn--secondary" id="btn-show" hidden>Show me</button>
+      <button class="btn game-btn--secondary" id="btn-restart">&#8635; Restart lap</button>
+    </div>
+    <div class="cos-pedal-hint" id="cos-pedal-hint" hidden>Press the pedal to lock in your chord</div>
+
+    <!-- Settings -->
+    <details class="cos-settings" id="cos-settings">
+      <summary>Settings</summary>
+      <div class="cos-settings__grid">
+        <label for="set-device">MIDI device</label>
+        <select id="set-device"><option value="">(none)</option></select>
+        <div class="cos-settings__status" id="set-device-status"></div>
+
+        <label for="set-echo">Sound for my notes</label>
+        <span class="cos-settings__check"><input type="checkbox" id="set-echo"> <span id="set-echo-note"></span></span>
+
+        <label for="set-pedal">Pedal submits</label>
+        <span class="cos-settings__check"><input type="checkbox" id="set-pedal"> <span>Lock in a chord with the sustain pedal</span></span>
+
+        <label for="set-mode">Lap</label>
+        <select id="set-mode">
+          <option value="both">Both forms per key</option>
+          <option value="single">One phrase per key</option>
+        </select>
+
+        <label for="set-key">Start key</label>
+        <select id="set-key"></select>
+
+        <label for="set-hidepath">Hide path</label>
+        <span class="cos-settings__check"><input type="checkbox" id="set-hidepath"> <span>Don't show the voice-leading line</span></span>
+      </div>
+    </details>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ── URL params (deep-linking): stash on window for the game module to read ──
+  (function () {
+    const params = new URLSearchParams(window.location.search);
+    window.__cosParams = {
+      key: params.get('key') || null,
+      mode: params.get('mode') || null,
+    };
+  })();
+</script>
+<script type="module">
+  import { init } from '{{ url_for("static", filename="games/cycle-of-shells.js") }}';
+  init(window.__cosParams);
+</script>
+{% endblock %}
