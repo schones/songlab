@@ -17,6 +17,54 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-22] VoicingKeyboard clickable mode is mouse/touch only.**
+  `onKeyClick` adds a delegated click listener; the keys stay
+  `role="img"` and are not focusable, so Cycle of Shells' on-screen
+  input has no keyboard access. Fix when the shared keyboard gets a
+  focus model.
+  See: `static/shared/voicing-keyboard.js`; `static/games/cycle-of-shells.js` `onKeyClick`.
+
+- **[2026-10-22] No MIDI hot-plug event.** `MIDIInput` handles
+  statechange internally but exposes no hook, so the game's device
+  picker re-reads `listDevices()` when the settings panel opens; a port
+  plugged in after load is only auto-attached when nothing is attached.
+  Adding an event is a shared edit to midi-input.js.
+  See: `static/shared/midi-input.js` `_handleStateChange`; `static/games/cycle-of-shells-input.js`.
+
+- **[2026-10-22] Choosing a MIDI device in the game changes the
+  site-wide default.** `MIDIInput.selectDevice` persists the id under
+  `songlab_midi_device`, so a choice in Cycle of Shells is the next
+  default for Cantor, Explorer and Harmonograph. Decide whether games
+  should scope their choice.
+  See: `static/shared/midi-input.js` `_attach`.
+
+- **[2026-10-22] Shared keyboard labels held notes with sharps.**
+  `VoicingKeyboard.render` labels a midi number with `parseNote`'s
+  sharp spelling. Cycle of Shells spells held notes against the current
+  target before rendering, and its own overlay labels use the target's
+  spelling; other pages passing midi numbers still get sharps.
+  See: `static/shared/voicing-keyboard.js` `_apply`; `static/games/cycle-of-shells.js` `spellForTarget`.
+
+- **[2026-10-22] game-flow.js extraction.** Cycle of Shells is the
+  third hand-rolled game (after Scale Builder and Chord Walks) with its
+  own stage/lifecycle code; its logic sits in a pure core, so the page
+  layer is the only part an extracted shell would absorb. Extract
+  during the platform audit, not before.
+  See: `docs/game-flow-pattern.md` §6; `docs/game-engine-spec.md` "Unification Work"; `static/games/cycle-of-shells.js`.
+
+- **[2026-10-22] ii_V_I walkthrough: Dm7 and G7 steps carry no
+  concept_specifics.** Only the Cmaj7 step lists `ii_V_I`, so no game
+  pill (Chord Spotter or Cycle of Shells) appears on the first two
+  steps. Add `concept_specifics: ["ii_V_I"]` to them in walkthroughs.js;
+  the sidebar already passes the walkthrough's home key.
+  See: `static/shared/walkthroughs.js` `ii_V_I.steps`; `static/shared/walkthrough-sidebar.js` `buildGameLinks`.
+
+- **[2026-10-22] Before Body and Soul: a timeboxed transcription-pipeline
+  pass.** Position-first reads, tight upscaled crops, Audiveris as one
+  vote among several. Parked behind it: OMR as a project (synthetic
+  degraded scans via Verovio, a review UI from igr-review).
+  See: `tools/pieces/`; `sources/SOURCES.md`.
+
 - **[2026-10-19] Private piece data under `static/` is directly fetchable.**
   `static/private/dont-be-sad.json` answers HTTP 200 at
   `/static/private/dont-be-sad.json` through Flask's static route, not

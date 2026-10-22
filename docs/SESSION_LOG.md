@@ -3,6 +3,128 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-10-22 — learn-topics merged; Cycle of Shells game, stages 1–4 on branch `cycle-of-shells`
+
+`learn-topics` merged into `dev` (`76c50c2`: Phase 1 topics, SOURCES.md,
+tools/pieces). Then a new branch `cycle-of-shells` off that merge for a
+Learning game: ii–V–I shell voicings round the cycle of fourths, played
+on the RD-2000 and checked chord by chord. One read-and-report, then
+four build stages (each with sub-rounds), each ending in a STOP with a
+report file under /tmp. Nothing merged to dev yet.
+
+### Landed
+- Stage 1 — `static/games/cycle-of-shells-core.js` (pure, no DOM, no
+  Tone; 97/97 by the end of the day): the 36 hard-coded symbols spelled
+  per key (G♭ then B); `buildLap` with two-band placement — every
+  phrase fits E♭3–F4 if any octave/form does, else C3–G4 — "smooth
+  entry, jump at the seam"; `describeMove` (voiceMotion for steps,
+  pitch-class pairing for re-placements); `checkAnswer` (form-strict,
+  octave-flexible; TOO_FEW_NOTES → WRONG_ROOT → ROOT_NOT_LOWEST →
+  WRONG_QUALITY → MISSING_GUIDE_TONE → EXTRA_NOTE → WRONG_FORM →
+  TOO_WIDE, messages from namedVsPlayed, the omitted 5th never an
+  error, COMMON_TONE_MOVED coaching); `createSubmitDetector`
+  (lift-to-submit: the most recent held set that persisted ≥ 150 ms,
+  else the set after the last note-on; optional pedal submit, where a
+  CC64 press commits and lifts never do); `followUp`.
+- Stage 2 — `cycle-of-shells-input.js` (17/17): wraps `MIDIInput`
+  with a fake-MIDIAccess self-test; device remembered by name under
+  `cycleOfShells.midiDevice`, channel 10 (Launchkey pads) dropped,
+  per-midi channel sets so RD-2000 layered zones give one on/off pair,
+  CC64 → pedal, times from performance.now(). Part A found no
+  shared-file change needed in midi-input.js (0x80 handled, system
+  bytes ignored, CC64 reaches onCC; no timestamps forwarded).
+  `VoicingKeyboard` gained `onKeyClick` (additive).
+- Stage 3 — route, `templates/cycle-of-shells.html`,
+  `static/games/cycle-of-shells.js` (Scale Builder conventions:
+  base.html, game-shell.css, start overlay → Tone.start, two-script
+  URL bootstrap); Games menu + landing card; MIDI → detector → checker
+  with the previous accepted right hand for coaching; on-screen staged
+  clicks + Check; echo through `loadSampler()` (one piano on the page);
+  settings (device, echo per device with RD-2000 off by default, pedal
+  submit, lap mode, start key) in localStorage; resume; `?key=&mode=`.
+- Stage 3b–3f — readability for the piano bench (page-scoped tokens,
+  AA-checked accent shades, 84 px symbol, 32–36 px lines, 28 px
+  buttons); C1–C6 keyboard full-width (`minKeyWidth` option); hints
+  guided / names / none with the guided SVG overlay (ghosted origins,
+  arrows, labels above the keys in the target's spelling, rings for
+  held notes); cycle-of-fifths indicator (click-to-jump, aria-label),
+  placed beside the buttons at 360 px so everything sits above the fold
+  at 1440×900; `phraseRecipe` ("Home B♭: start on B♭ and E♭ (1 and 4)
+  · root C") and `moveRule` ("G7's 7th, F, falls to E, the new 3rd · B
+  stays, now the 7th"; seams "Cmaj7's 3rd, E, rises to F · its 7th, B,
+  falls to B♭") verified over every transition of both laps; dual
+  labels `noteLabel` ("C♭ (B)") threaded through the core formatters as
+  `opts.dual`; red middle-C label.
+- Stage 4 — follow-up "Which note moved from G7 to Cmaj7?" after each
+  phrase (guide hidden, one note answers via a minNotes-1 detector or
+  one click + Check, two tries then the explanation, Skip, never a
+  chord miss); result logging in Polyrhythm's ResultDetail envelope via
+  `cycle-of-shells-log.js` (7/7; `songlab_results_cycle_of_shells`, cap
+  3000); lap summary from `summarizeLap`; "Why shells?" →
+  /learn/guide-tones-and-shells; EXTERNAL `game-cycle-of-shells` + a
+  Try-it line in the guide-tones topic (still verified; 45/45);
+  walkthrough-sidebar concept entries may be arrays, and the Cycle of
+  Shells pill carries the walkthrough's home key (`homeKeyParam`), not
+  the step's chord root.
+- Commits `52f43bd` … `48cd94c` (the last one includes the walkthrough
+  home-key fix).
+
+### Diagnosed / decided
+- Range: a single E♭3–F4 band cannot hold both forms in eight of the
+  twelve keys ('both' mode), caught in the Stage 1 read-and-report
+  before any code. Decision: two bands, preferred first, outer only
+  when the forced form has no preferred placement; jumps only at
+  phrase seams; 'both' lap mode default.
+- Checking: form-strict, octave-flexible; the bass may be any octave
+  as long as it is lowest. A lone MIDI tap of fewer than three notes is
+  information, not a miss, and is not logged.
+- Submission: lift-to-submit with a 150 ms settle so a stray brush or
+  a deliberately lifted wrong note reads as intended; with pedal
+  submit on, lifts never submit.
+- Game shell: hand-rolled state with everything testable in the pure
+  core; `game-flow.js` extraction stays deferred to the platform
+  audit (Cycle of Shells is now the third hand-rolled game).
+- RD-2000 over USB: one input, 0x80 note-offs with release velocity,
+  no active sensing; supported without touching midi-input.js.
+- Walkthrough pill: the home key lives on `WALKTHROUGHS.<id>.key`
+  (all 18 have one); the pill passes it, Chord Spotter keeps the root.
+
+### Setup for next session
+- Branch `cycle-of-shells`, clean, all stages committed; `dev` at
+  `76c50c2`. Merge after a play-through on the RD-2000.
+- The Flask dev server caches templates unless `FLASK_DEBUG=true`;
+  restart it to see template changes. Headless checks ran on a private
+  instance (`PORT=5077 python3 app.py`) with a small CDP driver kept in
+  the session scratchpad.
+
+### Calibration notes
+- The read-and-report stage caught the range contradiction before any
+  code; the "report and STOP on disagreement" rule paid for itself.
+- Every build stage ended in a STOP with a report; small sub-rounds
+  (3b–3f, 4b) for layout and wording were cheap because the core was
+  already tested.
+- Headless Chrome over CDP with a fake `navigator.requestMIDIAccess`
+  exercised the real MIDIInput and wrapper; check computed styles, not
+  attributes (a `.btn` display rule beat `[hidden]`), and wait out CSS
+  transitions before reading colours.
+
+### Flagged for later
+- See today's RADAR entries: clickable keys are mouse/touch only; no
+  MIDI hot-plug event; a game device choice becomes the site-wide
+  default; held notes labelled with sharps by the shared keyboard;
+  game-flow.js extraction; ii_V_I walkthrough steps without
+  concept_specifics; the transcription-pipeline pass before Body and
+  Soul.
+
+### Out of scope / deferred
+- Mic input for this game: chroma detection has no octave or voicing
+  information, so it cannot check a shell; MIDI and on-screen only.
+- Cross-lap history screen: entries are logged, but only the current
+  lap is summarised.
+- OMR as a project (synthetic degraded scans via Verovio, review UI
+  from igr-review): parked; a timeboxed pipeline pass comes first.
+
+
 ## 2026-10-20 — Instructional content Phase 0: example blocks (pure layer, mounter, /voicings deep links)
 
 Branch `learn-examples` off `dev` (`df0e2fc`). One read-and-report,

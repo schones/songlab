@@ -1,11 +1,12 @@
 # SongLab Project Status
 
-**Last updated:** 2026-10-20
-**Branch:** `learn-examples` (active — instructional content Phase 0,
-example blocks + /voicings deep links, off `dev` after the Voicing
-Explorer merge `df0e2fc`; parts A–C built 2026-10-20, awaiting
-browser check + merge) · `dev` (Cantor v1 through 6B; MIDI multi-port
-fix `57afaa9`; Voicing Explorer Sessions 1–6.5 merged `df0e2fc`) ·
+**Last updated:** 2026-10-22
+**Branch:** `cycle-of-shells` (active — Cycle of Shells game, stages
+1–4 built and committed 2026-10-22 off `dev` at `76c50c2`; playable,
+not yet merged to dev) · `dev` (Cantor v1 through 6B; MIDI multi-port
+fix `57afaa9`; Voicing Explorer Sessions 1–6.5 merged `df0e2fc`;
+instructional content Phase 0 + Phase 1 topics merged via
+`learn-topics` `76c50c2`) ·
 `cantor` (presentational arc, Session 2 polish not resumed since
 2026-05-19) · on origin only: `archive/cantor-presentational-spike`
 (validated spike, known-good reference), `archive/skratch-integration`,
@@ -839,8 +840,47 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - 3-octave keyboards sized to fill wider containers, global key size overrides
 - End-of-chapter "What's Next" cards
 
+### Cycle of Shells — current state (updated 2026-10-22)
+
+**Landed on branch `cycle-of-shells` (verified in Node self-tests and
+headless Chrome; not yet merged to dev):**
+- `/games/cycle-of-shells`: ii–V–I shell voicings (root in the bass,
+  3rd + 7th above, no 5th) round the cycle of fourths, checked chord by
+  chord from MIDI (RD-2000 over USB, Launchkey) or the on-screen
+  keyboard. Untimed; wrong answers explained by degree.
+- Pure core `static/games/cycle-of-shells-core.js` (97/97): the 36
+  targets with two-band placement (preferred E♭3–F4, outer C3–G4),
+  form-strict / octave-flexible checker with an error taxonomy,
+  lift-to-submit detector (150 ms settle, optional pedal-only submit),
+  describeMove / phraseRecipe / moveRule lines, noteLabel dual
+  spellings ("C♭ (B)"), followUp + checkFollowUp, ResultDetail entries,
+  lap summary.
+- `cycle-of-shells-input.js` (17/17): MIDIInput wrapper — device
+  remembered by name, channel 10 dropped, layered-zone de-dup, CC64 as
+  a pedal. `cycle-of-shells-log.js` (7/7): results under
+  `songlab_results_cycle_of_shells`, capped 3000.
+- Page: bench-size type, C1–C6 keyboard, guided / names / none hints
+  (SVG overlay: ghosted origins, arrows, labels in the target's
+  spelling), cycle-of-fifths indicator with click-to-jump, resume,
+  `?key=&mode=` deep links, follow-up "which note moved?" after each
+  phrase, lap summary panel, "Why shells?" link; listed in the Games
+  menu and landing grid; linked from the guide-tones topic and the
+  ii_V_I walkthrough (pill carries the walkthrough's home key).
+- Additive shared changes: VoicingKeyboard `onKeyClick` and
+  `minKeyWidth` options; walkthrough-sidebar concept entries may be
+  arrays with `homeKeyParam`; EXTERNAL `game-cycle-of-shells`.
+
+**Open / deferred:**
+- Merge to dev after Dustin's play-through on the RD-2000.
+- game-flow.js extraction (third hand-rolled game) deferred to the
+  platform audit; see RADAR.
+- Stage 4 follow-ups in RADAR: keyboard access for clickable keys,
+  MIDI hot-plug, site-wide device default, sharp labels on held notes,
+  ii_V_I walkthrough steps without concept_specifics.
+
 ### Games & Tools
 - Harmony Trainer, Chord Walks (4 tiers), Rhythm Lab, Strum Patterns, Chord Spotter, Scale Builder, Melody Match
+- **Cycle of Shells** (2026-10-22, branch `cycle-of-shells`): ii–V–I shell voicings round the cycle from MIDI; see the current-state block above
 - **Swing Trainer**: ear-training for jazz swing feel (rotary knob, waveform viz, Practice/Test)
 - **Polyrhythm Trainer** (new): Guitar Hero-style falling-note game. Practice Mode (phase-based BPM ramp: Listen → Layer A → Layer B → Both → Victory) and Challenge Mode (arcade adaptive with leaderboard). Dark DAW theme, drum pads, lane breathing waves. First game on `input-provider.js` + `onset-detection.js`. Spec: `docs/polyrhythm-trainer-spec.md`
 - **SkratchLab**: Blockly + audio + music blocks + Rhythm Builder
@@ -862,7 +902,7 @@ See `docs/songlab-build-plan.md` (v4) for the full phased roadmap:
 - **Phase A+:** Game visual unification (`game-shell.css` extraction, all games extend base.html) — partially complete (CSS extracted, templates unified, MIDI module landed)
 - **Multi-chord glow worm paths** — visualize chord progressions/transitions with simultaneous paths showing voice leading (notes that stay vs. move)
 - **SkratchLab lightweight DAW** — song presets, chord loops + rhythm, melody play-over, instrument selection (parallel to Phase B)
-- **Phase B:** Extract `game-flow.js` (Pattern B adaptive, independent axes, ResultDetail schema), new games (Voice Leading Detective, Note Name Trainer, Interval Spotter, Chord Progression Builder, Rhythm Tapper, Melody Dictation). **Polyrhythm Trainer ✅ complete (B8)**
+- **Phase B:** Extract `game-flow.js` (Pattern B adaptive, independent axes, ResultDetail schema), new games (Voice Leading Detective, Note Name Trainer, Interval Spotter, Chord Progression Builder, Rhythm Tapper, Melody Dictation). **Polyrhythm Trainer ✅ complete (B8)**. Cycle of Shells (2026-10-22) is the third hand-rolled game with a pure core; the extraction is deferred to the platform audit (RADAR).
 - **Phase B.5:** Auth & Persistence — Supabase auth, profile migration, ResultDetail → Supabase
 - **Phase E5:** Competency Graph — fast path (B → B.5 → E5), cross-game skill tracking. CREPE pitch engine upgrade (Pro tier).
 - **Phase C:** Curriculum paths, path runner UI, Tonnetz curriculum map
