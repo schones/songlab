@@ -20,6 +20,7 @@ solos, no Hal Leonard songbook reprints, no New Real Book lead sheets.
 - IMSLP file index: 1012534
 - Local file: `i-got-rhythm-1930-warner.pdf` (4 pages, 3.7 MB; served by petruccilibrary.us)
 - US public domain (published 1930 or earlier)
+- This scan is a later reprint (© 1930 WB Music Corp., Renewed; from The University Society "Music by Gershwin", with a c.1980 header note) and carries editorial chord symbols that may postdate 1930. SongLab uses the notes only (melody and piano-part pitches); chord symbols are derived by analysis, and the header text is not used.
 
 ## Body and Soul
 - Composer: Johnny Green; lyrics Edward Heyman, Robert Sour, Frank Eyton
