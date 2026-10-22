@@ -561,8 +561,9 @@ function phraseRecipe(target, opts = {}) {
 
 /**
  * The voice-leading rule from one target to the next, as a line of text.
- *   inside a phrase   'fall'    the previous chord's 7th falls a half step to the new 3rd; the other note holds
- *   between keys      'seam'    the I's 3rd rises a half step (to the new 7th), its 7th falls a half step (to the new 3rd)
+ *   inside a phrase   'fall'    "G7's 7th, F, falls to E, the new 3rd · B stays, now the 7th"
+ *   between keys      'seam'    "Cmaj7's 3rd, E, rises to F · its 7th, B, falls to B♭"
+ *   (the previous chord is named, since the line sits under the new chord's form label)
  *   same key, new phrase ('both' mode)  'replace'  describeMove's summary
  * `ok` reports whether the rule actually holds for the pair (by pitch class).
  * @returns {{ kind:'fall'|'seam'|'replace', ok:boolean, text:string }}
@@ -572,11 +573,11 @@ function moveRule(prevTarget, target, opts = {}) {
   const p = shellTones(prevTarget.symbol), c = shellTones(target.symbol);
   if (prevTarget.phrase === target.phrase) {
     const ok = pcOf(p.seventh.pc - 1) === c.third.pc && p.third.pc === c.seventh.pc;
-    return { kind: 'fall', ok, text: `The 7th falls: ${nl(p.seventh.name)} → ${nl(c.third.name)} · ${nl(c.seventh.name)} stays` };
+    return { kind: 'fall', ok, text: `${p.parsed.display}'s 7th, ${nl(p.seventh.name)}, falls to ${nl(c.third.name)}, the new 3rd · ${nl(c.seventh.name)} stays, now the 7th` };
   }
   if (prevTarget.key !== target.key) {
     const ok = pcOf(p.third.pc + 1) === c.seventh.pc && pcOf(p.seventh.pc - 1) === c.third.pc;
-    return { kind: 'seam', ok, text: `3rd up, 7th down: ${nl(p.third.name)} → ${nl(c.seventh.name)} · ${nl(p.seventh.name)} → ${nl(c.third.name)}` };
+    return { kind: 'seam', ok, text: `${p.parsed.display}'s 3rd, ${nl(p.third.name)}, rises to ${nl(c.seventh.name)} · its 7th, ${nl(p.seventh.name)}, falls to ${nl(c.third.name)}` };
   }
   const move = describeMove(prevTarget.upper, target.upper, { form: FORM_WORD[target.form], dual: !!opts.dual });
   return { kind: 'replace', ok: true, text: capitalize(move.summary) };
@@ -781,10 +782,10 @@ async function selfTest() {
     single.filter(t => t.role === 'ii').every(t => { const r = phraseRecipe(t); const home = parseNote(t.key).pc; return parseNote(r.one).pc === home && parseNote(r.four).pc === (home + 5) % 12; }), true);
 
   // ── moveRule: every transition in both lap modes ──────────────────
-  assert('moveRule Dm7 → G7: The 7th falls: C → B · F stays', moveRule(single[0], single[1]).text, 'The 7th falls: C → B · F stays');
-  assert('moveRule Cmaj7 → Gm7 (seam): 3rd up, 7th down: E → F · B → B♭', moveRule(single[2], single[3]).text, '3rd up, 7th down: E → F · B → B♭');
+  assert('moveRule Dm7 → G7: "Dm7\'s 7th, C, falls to B, the new 3rd · F stays, now the 7th"', moveRule(single[0], single[1]).text, "Dm7's 7th, C, falls to B, the new 3rd · F stays, now the 7th");
+  assert('moveRule Cmaj7 → Gm7 (seam): "Cmaj7\'s 3rd, E, rises to F · its 7th, B, falls to B♭"', moveRule(single[2], single[3]).text, "Cmaj7's 3rd, E, rises to F · its 7th, B, falls to B♭");
   assert('moveRule Cmaj7 → Dm7 (both, same key): replace with the describeMove summary', [moveRule(both[2], both[3]).kind, moveRule(both[2], both[3]).text], ['replace', 'New phrase: start 7th below']);
-  assert('moveRule A♭m7 → D♭7 dual: C♭ (B) stays', moveRule(abm7, db7, { dual: true }).text, 'The 7th falls: G♭ → F · C♭ (B) stays');
+  assert('moveRule A♭m7 → D♭7 dual: C♭ (B) stays, now the 7th', moveRule(abm7, db7, { dual: true }).text, "A♭m7's 7th, G♭, falls to F, the new 3rd · C♭ (B) stays, now the 7th");
   for (const [name, ts] of [['single', single], ['both', both]]) {
     const kinds = { fall: 0, seam: 0, replace: 0 }, broken = [];
     for (let i = 1; i < ts.length; i++) {
