@@ -141,8 +141,8 @@ const WALKTHROUGHS = {
       ]
     },
     steps: [
-      { chord: "Dm", chordType: "min7", function: "predominant (ii7)", title: "The ii7 chord", body: "D minor 7 in the key of C — D, F, A, C. The added 7th (that high C) gives it a gentle, smoky quality. Every ii→V→I in jazz starts here.", autoPlay: true },
-      { chord: "G",  chordType: "dom7", function: "dominant (V7)",     title: "The V7 chord", body: "G dominant 7 — G, B, D, F. The 7th (F) creates a tritone with the 3rd (B) that wants to resolve. That tension is why V7 pulls so hard toward I. Watch the path on the Tonnetz from Dm7 to G7 — it's a clean, short move.", autoPlay: true, focus: "tonnetz" },
+      { chord: "Dm", chordType: "min7", function: "predominant (ii7)", title: "The ii7 chord", body: "D minor 7 in the key of C — D, F, A, C. The added 7th (that high C) gives it a gentle, smoky quality. Every ii→V→I in jazz starts here.", autoPlay: true, concept_specifics: ["ii_V_I"] },
+      { chord: "G",  chordType: "dom7", function: "dominant (V7)",     title: "The V7 chord", body: "G dominant 7 — G, B, D, F. The 7th (F) creates a tritone with the 3rd (B) that wants to resolve. That tension is why V7 pulls so hard toward I. Watch the path on the Tonnetz from Dm7 to G7 — it's a clean, short move.", autoPlay: true, focus: "tonnetz", concept_specifics: ["ii_V_I"] },
       { chord: "C",  chordType: "maj7", function: "tonic (Imaj7)",     title: "Home — Cmaj7", body: "C major 7 — C, E, G, B. That dreamy, floating quality is the major 7th. ii7→V7→Imaj7 is everywhere in jazz because the chain of 7ths makes each resolution feel inevitable AND luxurious.", autoPlay: true, concept_specifics: ["ii_V_I", "jazz_harmony"] },
     ]
   },

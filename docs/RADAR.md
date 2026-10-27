@@ -60,13 +60,6 @@ out of awareness.
   during the platform audit, not before.
   See: `docs/game-flow-pattern.md` §6; `docs/game-engine-spec.md` "Unification Work"; `static/games/cycle-of-shells.js`.
 
-- **[2026-10-22] ii_V_I walkthrough: Dm7 and G7 steps carry no
-  concept_specifics.** Only the Cmaj7 step lists `ii_V_I`, so no game
-  pill (Chord Spotter or Cycle of Shells) appears on the first two
-  steps. Add `concept_specifics: ["ii_V_I"]` to them in walkthroughs.js;
-  the sidebar already passes the walkthrough's home key.
-  See: `static/shared/walkthroughs.js` `ii_V_I.steps`; `static/shared/walkthrough-sidebar.js` `buildGameLinks`.
-
 - **[2026-10-22] Before Body and Soul: a timeboxed transcription-pipeline
   pass.** Position-first reads, tight upscaled crops, Audiveris as one
   vote among several. Parked behind it: OMR as a project (synthetic
@@ -352,6 +345,13 @@ out of awareness.
 ## Retired
 (items move here when resolved, for short-term reference, then get
 cleared periodically.)
+
+- **[2026-10-22] ii_V_I walkthrough: Dm7 and G7 steps carry no
+  concept_specifics** — resolved 2026-10-27: `concept_specifics:
+  ["ii_V_I"]` added to both steps in `walkthroughs.js`. All three steps
+  now show the Chord Spotter pill (`progression=ii-V-I&root=<step root>`)
+  and the Cycle of Shells pill (`key=C`, the walkthrough's home key) via
+  `buildGameLinks`. The Cmaj7 step and other walkthroughs are unchanged.
 
 - **[2026-10-19] Rag derived symbols: slash bass is the top note** —
   resolved 2026-10-19. The symbols were a hand-entered table
