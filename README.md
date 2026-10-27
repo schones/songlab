@@ -2,58 +2,97 @@
 
 **Harmony has a shape. Explore it.**
 
-SongLab is a music education platform that helps you understand harmony through interactive visualization and real songs. Pick a song you love, see how its chords move on the Tonnetz and Circle of Fifths, then create your own progressions in SkratchLab.
+SongLab is a music education platform for understanding harmony through
+interactive visualization and real songs. See how chords move on the
+Tonnetz and the Circle of Fifths, analyse and reshape real piano voicings,
+practise with ear-training and keyboard games, and build your own
+progressions in SkratchLab.
 
-🎹 **Explorer** — Interactive Tonnetz, Chord Wheel, Fretboard, and Rhythm panels synchronized via a shared harmony engine. 14 guided walkthroughs using real songs (Beatles, Radiohead, Billy Joel, jazz standards, blues, and more).
+🎹 **Explorer** (`/explorer`) — Tonnetz, Chord Wheel, Fretboard, Spectrum and
+Resonance panels synchronized through a shared harmony engine, with MIDI
+and audio-interface input. 18 guided walkthroughs using real songs (Beatles,
+Radiohead, Billy Joel, jazz standards, blues) and 84 song examples.
 
-🧱 **SkratchLab** — Block-based music creation environment with Blockly, Neo-Riemannian transform blocks (P/L/R), Rhythm Builder drum machine, and MIDI export.
+🎼 **Voicings** (`/voicings`) — load a voiced progression and see per-bar
+interval tension, rubbing intervals, named-vs-played chord tones and
+upper-voice motion on an engraved grand staff, keyboard and Tonnetz; play
+it back on a sampled piano; explore and keep alternative voicings. Public
+pieces are built from public-domain sheet music (`sources/`, `tools/`).
 
-🎮 **Games** — Harmony Trainer, Chord Spotter, Scale Builder, Swing Trainer, Melody Match, Rhythm Lab, Strum Patterns, Relative Key Trainer. All games accept deep-link params from walkthroughs for contextual practice.
+📖 **Learn** (`/learn`) — short theory explainers behind the Voicings tool
+(chord tones and roles, guide tones and shells, the tritone, …) with
+playable examples. Early; many topics are stubs.
 
-📚 **Fundamentals** — 5-chapter interactive introduction to intervals, scales, chords, the Tonnetz, and Neo-Riemannian transforms.
+🎮 **Games** — Harmony Trainer, Chord Spotter, Melody Match, Swing Trainer,
+Rhythm Lab, Strum Patterns, Scale Builder, Cycle of Shells (ii–V–I shell
+voicings round the cycle from a MIDI keyboard), Chord Walks, Polyrhythm
+Trainer. Games accept deep-link params from walkthroughs.
+
+📚 **Fundamentals** (`/intro`) — six-chapter interactive introduction: sound
+and notes, intervals and scales, chords, beyond triads, the Tonnetz,
+transforms (chapter 6 is a stub). Plus theory pages on the circle of
+fifths, tonal centers, modes and chord progressions.
+
+🧱 **SkratchLab** (`/skratchlab`) — block-based music creation with Blockly,
+Neo-Riemannian transform blocks (P/L/R), Rhythm Builder and MIDI export.
+
+🔬 **Experimental, unlinked** — `/cantor` (live-performance Tonnetz view)
+and `/harmonograph` (audio-reactive generative art).
 
 ---
 
-## Quick Start
+## Quick start
 
 ```bash
-# Clone and install
 git clone https://github.com/schones/songlab.git
 cd songlab
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-# Run locally
+cp .env.example .env     # set PORT=5001 if port 5000 is taken (macOS AirPlay Receiver holds it)
 python3 app.py
-# → http://127.0.0.1:5000
+# → http://127.0.0.1:5001
 ```
 
-## Tech Stack
+`app.py` reads `PORT` from `.env`. There is no hosted deployment at the
+moment; development is local.
+
+## Tech stack
 
 - **Backend:** Flask / Jinja2
-- **Frontend:** Vanilla JS (ES modules), SVG visualizations
-- **Audio:** Tone.js + Salamander piano sampler
+- **Frontend:** vanilla JS (ES modules), SVG visualizations, Verovio for
+  notation
+- **Audio:** Tone.js + vendored Salamander piano; Web MIDI; client-side
+  pitch/onset/chord detection
 - **State:** HarmonyState pub/sub model
-- **Music theory:** Neo-Riemannian transforms (P/L/R), interval-content chord resolution
+- **Music theory:** Neo-Riemannian transforms (P/L/R), interval-content
+  chord resolution, voicing analysis engine
 - **Block coding:** Blockly (SkratchLab)
-- **Deploy:** Railway from `main`
+- **Tools:** Python (music21, Verovio) for the public-pieces pipeline
 
-## Project Structure
+## Project structure
 
 ```
+app.py               # Flask routes
 static/
-  shared/          # Core modules (harmony-state, transforms, tonnetz-neighborhood, etc.)
-  games/           # Game-specific JS
-  skratch-studio/  # SkratchLab engine
-  css/             # Design tokens + stylesheets
-  intro/           # Fundamentals chapter JS
-templates/         # Jinja2 templates (Explorer, games, theory, intro)
-docs/              # Specs, build plan, session log, status
+  shared/            # Core modules (harmony-state, transforms, voicing-analysis, explainer registry, …)
+  games/             # Game-specific JS
+  skratch-studio/    # SkratchLab engine
+  intro/             # Fundamentals chapter JS
+  css/               # Design tokens + stylesheets
+templates/           # Jinja2 templates (explorer, voicings, learn, games, theory, intro)
+tools/voicings/      # Build and check voiced-progression JSON for /voicings
+tools/pieces/        # Sheet-music → reviewed read pipeline for public pieces
+sources/             # Public-domain scans (gitignored) + SOURCES.md
+tests/               # Fixtures and test-track generators
+docs/                # STATUS, audit, RADAR, specs, session log
 ```
 
 ## Docs
 
-See `docs/STATUS.md` for current project state and `docs/songlab-build-plan.md` for the full roadmap.
+Start with `docs/STATUS.md` (current state) and `docs/AUDIT-2026-10-27.md`
+(audit + roadmap). `CLAUDE.md` lists the reference docs.
 
 ## License
 
-All rights reserved. © 2025-2026
+All rights reserved. © 2025–2026. Piano samples: Salamander Grand Piano by
+Alexander Holm, CC BY 3.0.

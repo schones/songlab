@@ -1,164 +1,124 @@
 # SongLab Project Status
 
-**Last updated:** 2026-10-22
-**Branch:** `cycle-of-shells` (active — Cycle of Shells game, stages
-1–4 built and committed 2026-10-22 off `dev` at `76c50c2`; playable,
-not yet merged to dev) · `dev` (Cantor v1 through 6B; MIDI multi-port
-fix `57afaa9`; Voicing Explorer Sessions 1–6.5 merged `df0e2fc`;
-instructional content Phase 0 + Phase 1 topics merged via
-`learn-topics` `76c50c2`) ·
-`cantor` (presentational arc, Session 2 polish not resumed since
-2026-05-19) · on origin only: `archive/cantor-presentational-spike`
-(validated spike, known-good reference), `archive/skratch-integration`,
-`chord-melody-research` (classifier arc, paused) · `main` (prod —
-84 commits behind dev, last deployed pre-pivot)
-**Deploy:** Railway from `main`
+**Last updated:** 2026-10-27
+**Branch:** `dev` — all active work. Cycle of Shells merged 2026-10-27;
+Voicing Explorer Sessions 1–6.5 merged `df0e2fc`; Learn Phase 0 + Phase 1
+topics merged via `learn-topics`; Cantor v1; MIDI multi-port fix `57afaa9`.
+Other branches: `cantor` (presentational arc; Session 2 unfinished since
+2026-05-19; 6 ahead / 55 behind dev — merge-or-archive decision pending) ·
+`chord-melody-research` (origin only; classifier arc paused 2026-05-13;
+rename to `archive/` and cherry-pick the docs RADAR points to) ·
+`archive/cantor-presentational-spike` (origin only; validated spike,
+known-good reference) · `archive/skratch-integration` (origin only; 173
+behind; safe to delete) · `main` (stale — last commit `0d9efe4`
+2026-04-12, ~138 behind dev; fast-forward or retire before any deploy) ·
+`cycle-of-shells` (merged; delete).
+**Deploy:** none. The Railway project was deleted in Oct 2026. Development
+is local on the Mac mini; a deploy will be set up fresh later (hardening
+list: `docs/AUDIT-2026-10-27.md` §3 "Before any public deploy").
 **Local run:** `python3 app.py` with the venv active, port from `.env`
-(`PORT=5001` on the Mac mini — AirPlay Receiver holds 5000)
-**Active roadmap:** `docs/songlab-build-plan.md` (v4) + `docs/active-plans/voicing-explorer-build-plan.md` + `docs/cantor-design.md` + `docs/audio-architecture.md`
+(`PORT=5001` on the Mac mini — AirPlay Receiver holds 5000). Machine setup:
+`docs/DEV_SETUP.md` (local-only, not committed).
+**Active roadmap:** `docs/AUDIT-2026-10-27.md` §4 (this week + next) ·
+`docs/active-plans/voicing-explorer-build-plan.md` ·
+`docs/active-plans/instructional-content.md` ·
+`docs/active-plans/explainer-content.md` · `sources/SOURCES.md` (pieces).
+`docs/songlab-build-plan.md` (v4, April) is the historical phase plan, no
+longer the roadmap. `docs/active-plans/cantor-presentational-build-plan.md`
+is parked with Cantor.
 **Platform name:** SongLab · SkratchLab (rebrand complete)
 
 
-## Current state (2026-05-14)
+## Current state (2026-10-27)
 
-### Cantor — current state
+Full audit: `docs/AUDIT-2026-10-27.md`. This section is the short form.
 
-**Landed and verified on dev:**
-- Prompts 1–5 (route, on-screen keyboard, MIDI input, MusicalEventStream singleton, split-point input model)
-- 6A: 3D torus migration (12×4 toroidal lattice, 48 nodes, 4 PC instances each)
-- 6A.1: constellation wash-vertex snap fix
-- 6A.2: chord-detection Hardware-state gating
-- 6B: per-frame rotY drift (1 rev / 45s) + torusMajorR breathing (±5%, 8s sine)
-- Test track infrastructure: `tests/generate_cantor_test_track.py` +
-  `tests/cantor-test-track.md`. WAV regenerable from script (gitignored).
+### Voicing Explorer — `/voicings` (active)
+Analyze + Explore are on dev (Sessions 1–6.5, merged `df0e2fc`
+2026-10-19): per-bar and per-event interval tension, rubs, named-vs-played
+chord tones, upper-voice motion; an engraved grand staff (Verovio); Tone.js
+playback on a vendored Salamander piano with a melody toggle; an Explore
+panel that ranks candidate voicings and keeps/reverts them over a
+non-destructive override layer; a piece picker (`/voicings/pieces`
+auto-discovers `tests/fixtures/voicing-*.json`; Maple Leaf Rag A strain is
+the public fixture, Don't Be Sad is private and gitignored). Well tested
+(engine self-tests, headless Chrome). Known defects: the audit's six
+definite labelling/text bugs (degrees named by written letter not chord
+type; ♯9 guide tones; shape catalogue ignoring chord quality; "root left
+to the bass" on slash chords; `-` parsed as flat; tritone topic wording)
+plus parser gaps (13, 7alt, 9sus4, m11, 6/9 …). Those are item 3 of this
+week's list. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+Schema: `tools/voicings/schema.md`. Detail below under "What's Working".
 
-**Landed on branch `chord-melody-research` (paused, not on dev):**
-- Onset-driven analysis foundation plus chord/melody classifier
-  work (Sessions 1–2 of the classifier arc, plus 2026-05-13's
-  parser extension). Arc paused 2026-05-13 in favor of a
-  presentational approach to Cantor Phase 2. General-purpose
-  pieces (TempoState, chord-resolver power-chord template,
-  parser extension) remain valid infrastructure. See
-  `docs/active-plans/chord-melody-build-plan.md` (on
-  `chord-melody-research`) for the pause block and arc record.
+### Learn — `/learn` (active, Phase 0–1)
+Explainer registry `static/shared/voicing-explainer-content.js`: 25 topics
+(14 claude-draft tool topics, 3 verified theory topics — chord tones and
+roles, tritone, guide tones and shells — and 8 stubs). Phase 0 example
+blocks and Phase 1 topics are merged. `/learn` is not in the site nav yet;
+every Theory card links to at least one stub. Next: write `extensions`
+(most-linked stub), then `omitting-tones`. Open decision: three content
+systems (this registry, `theory-content.js`, the /intro chapter JS) don't
+know about each other. Plans: `docs/active-plans/instructional-content.md`,
+`docs/active-plans/explainer-content.md`.
 
-**Landed on branch `cantor-presentational-spike` (retained as reference):**
-- Spike implementation of Cantor Phase 2 as a presentational
-  view: lit Tonnetz triangles for sounding triads, dynamic
-  per-note glyphs (radial octave offset, velocity-scaled size),
-  harmonograph-style particle sparkle, color by triad quality.
-  Validated live on Launchkey 49 (Stressed Out, Jupiter's
-  Faerie, 12-bar blues, voice-leading test). ~1,123 lines in
-  one commit. Production-promoted to `cantor` branch via
-  Session 1 cleanup pass (2026-05-18); kept as known-good
-  reference.
+### Cycle of Shells — `/games/cycle-of-shells` (merged 2026-10-27)
+ii–V–I shell voicings round the cycle of fourths, checked chord by chord
+from MIDI or the on-screen keyboard; stages 1–4 with a pure core
+(`cycle-of-shells-core.js`), MIDI wrapper, results log, guided hints,
+follow-up questions, lap summary, deep links. Listed in the Games menu and
+landing grid; linked from the guide-tones topic and the ii_V_I walkthrough
+(`concept_specifics` landed `4316f8a`). Stage 4 follow-ups live in RADAR
+(keyboard access for clickable keys, MIDI hot-plug, site-wide device
+default, sharp labels on held notes, double accidentals on held
+non-chord tones). It is the third hand-rolled game loop; `game-flow.js`
+extraction is deferred to the consolidation phase.
 
-**Landed on branch `cantor` (not on dev):**
-- Session 1 of the cantor presentational arc: spike code
-  promoted with cleanup pass. Three commits (`c34305c`,
-  `8c95949`, `155b435`):
-  - B1 — branch setup: spike files copied in via
-    `git checkout cantor-presentational-spike -- <files>`;
-    v1 cantor files removed; v1 `/cantor` route stripped from
-    app.py.
-  - B2 — renames + route registration: module
-    `cantor-presentational-view.js` → `cantor-view.js`,
-    class `CantorPresentationalView` → `CantorView`,
-    template `cantor-spike.html` → `cantor.html`, `/cantor`
-    route registered.
-  - B3 — content cleanup: spike-isms stripped (console
-    prefixes, localStorage key, gameId, dev hook, page title,
-    aria-label); duplicate `_noteNameToMidi`/`_audioNoteToMidi`
-    deduped; vestigial `_parseRGBA` indirection replaced with
-    direct array constants matching `GLYPH_RGB`; stale
-    comments removed.
-    - 2026-05-19 (`66bb368`): polyphonic chord detection wired in
-  templates/cantor.html alongside YIN pitch detection — direct
-  chord-detection.js instantiation mirroring harmonograph's
-  dual-detector pattern; both publish to MusicalEventStream with
-  source: 'audio'. Fabricated octave 4 for chord PCs, flatness
-  gate (> 0.4) against broadband transients, 500ms silence
-  watcher. Marked experimental in the UI ("pitch + chord
-  detection (experimental)"). NOTE: this is outside the build
-  plan's declared scope (polyphonic detection was deferred to a
-  separate arc per RADAR); the framing decision (mirror / x-ray /
-  microscope policy; prefer-mono vs always-both) is explicitly
-  deferred and blocks calling Session 2 done.
+### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
+Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
+gitignored). Toolchain: `mxl_to_norm`, `diff_reads`, `collect_third`,
+`review_page` (3-way vote, Verovio render, pitch self-check). I Got Rhythm
+is mid-review. Missing: a `norm_to_voicing.py` converter to the `/voicings`
+piece format (biggest gap); `review_page.py` is hard-wired to I Got
+Rhythm; no tracked record of where the IGR review stopped; schema needs a
+reduction rule for song-sheet piano parts. Proposed order: I Got Rhythm →
+Embraceable You → But Not for Me → Body and Soul. See audit §2.
 
+### Platform (stable)
+Explorer (Tonnetz / Chord Wheel / Fretboard / Spectrum / Resonance, MIDI
+and audio-interface input) is mature and central. 18 guided walkthroughs,
+84 song examples, four theory pages, Fundamentals with six chapters
+(chapter 6 is a stub). Games in the nav: Harmony Trainer, Chord Spotter,
+Melody Match, Swing Trainer, Rhythm Lab, Strum Patterns, Scale Builder,
+Cycle of Shells, Chord Walks, Polyrhythm Trainer. Harmony Trainer still
+uses server-side pitch detection; Rhythm Lab and Strum Patterns have mic
+input disabled. Duplication to consolidate later: three keyboards, three
+to four pill/tooltip systems, chord-type registries in three places,
+torus math in two (audit §3).
 
-**In progress:**
-- Cantor presentational arc — see
-  `docs/active-plans/cantor-presentational-build-plan.md`
-  (5 sessions: cleanup/promotion ✓ landed 2026-05-18,
-  polish ⚠ in flight, audio verification, full audio interface
-  input, merge to dev).
-- Session 2 status (as of 2026-05-19, unresumed since): opened
-  with a STATUS update, then diverted into the polyphonic
-  chord-detection wiring above. The build plan's actual Session 2
-  content (parameter tuning, triangle-lighting edge cases,
-  extreme registers) has not started. No SESSION_LOG entry exists
-  for 2026-05-19 — the closeout protocol was skipped; commit
-  message `66bb368` is the only record of that session.
-- MIDI ≤ C4 regression (discovered evening 2026-05-18, SESSION_LOG
-  addendum `f397287`): **resolved 2026-10-14** during Mac mini
-  setup — chromatic check below C4 passes on the Launchkey. Not
-  reproducible on a fresh Chrome profile; probable cause a stale
-  persisted `localStorage['songlab.cantor.splitPoint']`; unconfirmed.
-  Related: multi-port MIDI devices now
-  auto-attach on init, preferring the non-DAW port (`57afaa9`).
+### Parked
+- **Cantor** — v1 is on dev at `/cantor`; the presentational rewrite is on
+  the `cantor` branch with Session 2 unfinished since 2026-05-19. Decision
+  needed: rebase and merge, or rename to `archive/`. Specs:
+  `docs/cantor-design.md`, `docs/cantor-presentational-design.md`,
+  `docs/active-plans/cantor-presentational-build-plan.md`. May 2026 state
+  preserved verbatim under "History" at the end of this file.
+- **SkratchLab** — MVP, dormant since April. "Clear All" doesn't reset the
+  canvas (open).
+- **Harmonograph** — `/harmonograph` sandbox at Stage 2, frozen since
+  April, unlinked from the nav by design.
+- **Chord-melody classifier** — `chord-melody-research` branch, paused
+  2026-05-13 in favour of the presentational Cantor. RADAR items point to
+  docs that exist only on that branch.
 
-**Open / deferred:**
-- Constellation z-fade vs hard occlusion on torus back side.
-- 3D math helper deduplication (`_uvToXYZ`, `_rotate3D`,
-  `_projectOrtho` are duplicated between cantor-view.js and
-  harmonograph-view.js; shared-utility extraction flagged TODO).
-- Tempo/beat-driven breathing (replace wall-clock `_elapsed`
-  accumulator with a musical-time signal — one-line swap).
-- Melody trails: connecting lines between consecutive constellation
-  glyphs to expose phrase contour. Needs its own design doc; even
-  more interesting on the 3D torus.
-- `activeTriads`-clears-mid-phrase anchor snap-back: cosmetic, low
-  priority. Fix is to keep last anchor for ~1–2× decay τ after
-  `activeTriads` empties.
-- Scales on the Tonnetz: separate design thread
-  (`docs/scale-regions.md` to be drafted). Not blocking Cantor v1.
-- Chladni backdrop dynamics (separate brainstorming thread).
-- Build plan review and consolidation across SongLab surfaces —
-  flagged as a candidate for a dedicated planning session.
-
-**After Cantor v1 ships:**
-- v1 user testing.
-- Audio chord-detection silence-watcher tuning if needed.
-- `chordChange` dispatch on MusicalEventStream (currently skipped
-  as redundant; revisit if a use case emerges).
-
-
-### Cantor v1 working state
-
-Capability inventory of what's currently shipping on dev:
-
-- /cantor route, on-screen keyboard, MIDI input, Tone.js playback
-- MusicalEventStream singleton; on-screen keyboard publishes too
-- Tonnetz substrate, canonical orientation (12×4 toroidal lattice
-  in 3D mode; 7×5 lattice in 2D mode, regression-free)
-- Chord wash with cross-fade, quality-colored fills, hue shifts for
-  7ths, (rootPC, baseQuality) diff key for flash-on-quality-change
-- Melody constellation, anchored to active wash centroid, with
-  exponential decay, velocity → brightness, chord-quality color
-- Constellation snap to wash vertices: melody glyphs snap to the
-  wash triangle vertex matching their PC. Verified via deterministic
-  `cantorView._testSnap` and live Launchkey play.
-- User-controllable split-point line (drag, snap, persist) with
-  default at MIDI 72 (C5, mid-keyboard)
-- Audio chord auto-detection — wash + flash + extension hue all
-  driven from live audio when Hardware is active
-- Chord-detection respects Hardware state: won't run when Hardware
-  is "No audio input", so manual `setTriad` is authoritative on the
-  MIDI-only path
-- 3D torus rendering (mode3D=true) with per-frame rotY drift
-  (1 rev / 45s) and torusMajorR breathing (±5%, 8s sine). Pause
-  freezes both; resume produces no jump.
-- `window.cantorView` exposed on localhost for dev convenience
+### This week (audit §4)
+1. ~~Merge Cycle of Shells~~ done 2026-10-27; prune merged branches.
+2. Rewrite the top of STATUS.md and fix CLAUDE.md / README (this pass);
+   commit the audit.
+3. Fix the six definite labelling/text bugs and `-` parsing + common
+   suffixes.
+4. Timeboxed pieces pipeline: generalize the review page,
+   `norm_to_voicing.py`, finish I Got Rhythm.
+5. Write `extensions`, then `omitting-tones`.
 
 ---
 
@@ -247,11 +207,8 @@ Harmonograph (`/harmonograph`, formerly `/art`) is parked on dev at Stage 2: aud
 Approaching Cantor v1 user-testing readiness once the presentational arc lands on dev.
 
 
-**Next priorities (active):**
-1. ~~**Voicing Explorer — tension option B**~~ — landed 2026-10-15 (`af3034b`): spans reduced mod 12, `OCTAVE_DISCOUNTS = {m2: 2/3, M2: 0, TT: 2/3, M7: 0}`; comp-only numbers inside one octave unchanged; compound minor 2nds and tritones now score (bar 26 0 → 1.333, bar 28 3 → 4.333), major 9ths/14ths do not (see SESSION_LOG).
-2. **Next: Instructional content — Phase 1 theory stubs** (2–3 topics per session in dependency order; see `docs/active-plans/instructional-content.md`). ~~Phase 0 example block~~ landed 2026-10-20 on `learn-examples` (parts A–C; merge pending). ~~Voicing Explorer Session 6.5 (explainer layer, Theory card, dominant rule, piece picker, rag fixes)~~ landed 2026-10-19 and merged to dev (`df0e2fc`); Explore tuning items stay open in RADAR. ~~Session 6 (Explore first slice)~~ landed 2026-10-16 (`ad44437`, `7ccd8fb`, `ea7d7ff`). ~~Session 5 (playback + melody toggle)~~ landed 2026-10-16. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
-3. **Cantor presentational arc** — 5-session build plan promoting the validated spike to production. Spec: `docs/cantor-presentational-design.md`. Plan: `docs/active-plans/cantor-presentational-build-plan.md`. Gates Cantor v1 user testing.
-4. **SkratchLab "Clear All"** — should also reset canvas (not just blocks).
+**Next priorities:** see "This week" under Current state above and
+`docs/AUDIT-2026-10-27.md` §4.
 
 - SkratchLab "Clear All" (~lines 117, 316): **still open** —
   `loopPedal.clearAll()` wired at `studio.js:988` clears
@@ -915,26 +872,62 @@ See `docs/songlab-build-plan.md` (v4) for the full phased roadmap:
 
 ## Known Issues
 
-- **Resonance defaults changed (April 20)** — Explorer's Resonance tab now renders sparkler-style by default, not the original starburst from April 19. Original aesthetic not preserved as a baked-in preset; consider adding it back as a named preset alongside "Defaults".
-- **`/harmonograph` route is unlinked** — sandbox by design; visit `/harmonograph` directly (legacy `/art` redirects). Easy to forget the route exists. Decide on a front-door (footer link, easter egg, or remain hidden).
-- **`pitch-detection.js` uses deprecated `ScriptProcessorNode`** — Chrome logs a deprecation warning. Functional for now. AudioWorklet migration tracked in `docs/audio-architecture.md` Open Question 1.
-- **Swing Trainer 500 on production** — could not reproduce locally (April 17). Template extends base.html correctly. Likely Railway deploy state issue. Need fresh deploy + production stack trace capture. See `docs/KNOWN-ISSUES.md`.
-- **Railway cold start** — ~15s first load after inactivity (hobby tier), warn testers
-- **Port 5000 unavailable on the Mac mini** — macOS AirPlay Receiver (Control Center) listens on 5000 and answers 403. `.env` sets `PORT=5001`; `app.py` reads it. Scripts or prompts that assume 5000 will hit AirPlay, not Flask.
-- **Global SVG `max-width` rule** squashes wide inline SVGs on narrow screens; `voicing-chart.js` pins its width inline. Any future scrollable SVG panel needs the same.
-- **Rhythm Lab + Strum Patterns mic paths disabled** — dead route calls commented out, TODO points to onset-detection.js migration. Keyboard/spacebar input still works.
-- **Harmony Trainer still uses server-side pitch detection** — `/process_audio_chunk` → librosa. Migration guide in `templates/harmony.html` comment block.
-- **`_suppressAutoPlay` load-bearing** — 19 sites in explorer.html (1 declaration, 6 set-true, 6 set-false, a save/restore pair, 2 reads). Code review recommends source-tagged HarmonyState.update() (`docs/code-review-opus47.md`). Deferred.
-- **Triplicated chord-type registries** — transforms.js, chord-resolver.js, chord-detection.js. Consolidation into transforms.js recommended.
-- **`/api/chat` proxy hardening** — model allowlist and server-side system prompt recommended. Not a blocker.
-- Swing Trainer: dial slightly finicky past midpoint
-- Swing Trainer: song-examples.js swing_ratio field not yet consumed by game
-- SkratchLab Rhythm Builder: strum row doesn't export to Blockly (no strum block exists)
-- Sustain pedal bug: Organ/Synth in SkratchLab — `triggerAttackRelease` bypasses sustain state
-- Mobile/responsive not tested — deferred to post-MVP
-- SkratchLab: "Clear All" button clears blocks but not canvas — needs canvas reset
-- Full list: `docs/KNOWN-ISSUES.md`
-- **Backlog:** Enharmonic sharp/flat toggle for Fundamentals keyboards (deferred)
+This is the one list of bugs. Cross-cutting threads that are not bugs live
+in `docs/RADAR.md`. Content and labelling defects found 2026-10-27 are
+itemised in `docs/AUDIT-2026-10-27.md` §1 and summarised here.
+
+**Voicing Explorer / Learn (audit §1, fix this week):**
+- Degrees follow the written letter, not the chord type
+  (`voicing-analysis.js` `_degreeOf`): Cdim7 with A → "13"; C7♯9 with E♭ →
+  "♭3"; C6 with A → "13".
+- Guide tones on ♯9 chords: ♭3 folds into class "3" (`voicing-describe.js`).
+- Shape catalogue ignores chord quality: Cm7 gets "dominant version".
+- "The root is left to the bass" said on slash chords.
+- `-` parses as flat (`C-7` → C♭7). Parser gaps: 13, 7alt, 9sus4, m11, 7♭13,
+  7♯5, maj7♯5, 6/9, maj13, -7b5. Duplicate `'mmaj7'` key.
+- Tritone topic (verified) says only the dominant 7th has its tritone
+  between 3rd and 7th; dim7 does too.
+- `/learn` is not in the site nav; `/learn/<unknown-slug>` returns 200.
+- Every Theory card links to at least one stub (extensions,
+  omitting-tones, voice-leading, voicings-as-shapes, rootless-voicings).
+
+**Before any public deploy (audit §3):**
+- `/api/chat`: client picks model and system prompt; rate limit keyed on
+  proxy IP. Needs model allowlist, server-side prompt, X-Forwarded-For,
+  spend cap.
+- `/play` writes to committed `scores.json` unauthenticated; remove with
+  `/relative`, `/status`, `/tone-check`.
+- `static/private/` is served by Flask's static route; move it out.
+- No LICENSE file; Blockly unpinned from unpkg; MusyngKite soundfont
+  licence unchecked.
+
+**Platform (carried forward):**
+- Swing Trainer returned 500 on the old Railway deploy; never reproduced
+  locally (2026-04-17). Unverifiable until there is a deploy again.
+- `pitch-detection.js` uses deprecated `ScriptProcessorNode`; AudioWorklet
+  migration tracked in `docs/audio-architecture.md` Open Question 1.
+- Harmony Trainer still uses server-side pitch detection
+  (`/process_audio_chunk` → librosa).
+- Rhythm Lab + Strum Patterns mic paths disabled; keyboard input works.
+- `/harmonograph` is unlinked (sandbox by design; `/art` redirects).
+- Resonance defaults changed April 20; original starburst not preserved as
+  a preset.
+- Port 5000 is held by macOS AirPlay Receiver on the Mac mini; `.env` sets
+  `PORT=5001`.
+- Global SVG `max-width` rule squashes wide inline SVGs; `voicing-chart.js`
+  pins its width inline. Any future scrollable SVG panel needs the same.
+- `_suppressAutoPlay` is load-bearing in explorer.html (19 sites); source-
+  tagged `HarmonyState.update()` recommended. Deferred.
+- Triplicated chord-type registries (transforms.js, chord-resolver.js,
+  chord-detection.js); inventory in `docs/registry-inventory.md`.
+- Tooltip (`.tt-tooltip`): `100vh` jitter on mobile (use `dvh`); no focus
+  trap / `aria-modal`; `z-index: 9999` unaudited; `stopPropagation` in
+  game canvases would block `[data-theory]` triggers.
+- Swing Trainer: dial finicky past midpoint; `swing_ratio` not consumed.
+- SkratchLab: Rhythm Builder strum row doesn't export to Blockly; sustain
+  bypassed for Organ/Synth; "Clear All" clears blocks but not canvas.
+- Mobile/responsive untested.
+- Backlog: enharmonic sharp/flat toggle for Fundamentals keyboards.
 
 ---
 
@@ -942,23 +935,26 @@ See `docs/songlab-build-plan.md` (v4) for the full phased roadmap:
 
 | Doc | Purpose |
 |---|---|
-| `docs/songlab-build-plan.md` | **Active roadmap** (v4) — Phases A–F + A+ + A++ + B.5, dependency graph, session budget |
+| `docs/AUDIT-2026-10-27.md` | **Audit + roadmap** — content bugs, pieces pipeline, platform state, this-week / next lists |
+| `docs/RADAR.md` | Cross-cutting threads (not bugs), scanned at session start |
+| `docs/songlab-build-plan.md` | Historical phase plan (v4, April 2026). Roadmap is now the audit §4 |
 | `docs/audio-architecture.md` | **Audio & Input spec** — detection modalities, client-side DSP, device selection, input provider, CREPE upgrade path |
 | `docs/polyrhythm-trainer-spec.md` | **Polyrhythm Trainer spec** (v2) — Practice/Challenge modes, drum pads, phase-based ramp |
-| `docs/code-review-opus47.md` | **Code review** — Opus 4.7 comprehensive review, 5 sections, severity ratings |
+| `docs/code-review-opus47.md` | Code review (April 2026; blockers resolved; follow-ups carried into Known Issues) |
 | `docs/game-engine-spec.md` | **Game audit** — per-game analysis, adaptive axes, ResultDetail schemas, new game designs |
 | `docs/design-system-reference.md` | CSS tokens, color palette, typography — design system reference |
 | `docs/visual-engine-spec.md` | Generative art engine spec (Tonnetz-driven, post-launch) |
 | `docs/explorer-spec.md` | Explorer design, panel specs, canonical orientation |
 | `docs/voicing-explorer-spec.md` | Voicing Explorer — chord shapes, glow worm paths, projections |
 | `docs/active-plans/voicing-explorer-build-plan.md` | **Voicing Explorer analysis arc** — 7-session plan, Decisions, open questions |
+| `docs/active-plans/instructional-content.md` | **Learn plan** — topic order, verification status |
+| `docs/active-plans/explainer-content.md` | Explainer registry drafts (Session 6.5 + Phase 0) |
+| `sources/SOURCES.md` | Public-domain scans, PD reasoning, pieces pipeline notes |
 | `tools/voicings/schema.md` | Voiced-progression JSON schema (v1) consumed by `voicing-analysis.js` |
 | `docs/registry-inventory.md` | Chord-type registry audit + canonical JSON spec (§9: voicing-analysis local types) |
 | `docs/content-architecture.md` | Content model, topic schema, lens system |
 | `docs/game-flow-pattern.md` | Learn → Practice → Test pattern (to be updated with audit findings) |
 | `docs/auth-architecture.md` | Supabase auth, profile migration, security checklist |
-| `docs/KNOWN-ISSUES.md` | Tracked bugs and fixes |
-| `docs/claude-code-preferences.md` | Claude Code workflow conventions |
 | `docs/extended-chords-spec.md` | Extended chord type system — CHORD_TYPES, data model, visual rendering |
 ---
 
@@ -970,3 +966,148 @@ After every work session:
 3. Move completed items into "What's Working"
 4. Add new bugs to "Known Issues"
 5. Commit: `git add docs/ && git commit -m "Update project status"`
+
+---
+
+## History
+
+### Cantor state as of 2026-05-14 (moved verbatim 2026-10-27)
+
+### Cantor — current state
+
+**Landed and verified on dev:**
+- Prompts 1–5 (route, on-screen keyboard, MIDI input, MusicalEventStream singleton, split-point input model)
+- 6A: 3D torus migration (12×4 toroidal lattice, 48 nodes, 4 PC instances each)
+- 6A.1: constellation wash-vertex snap fix
+- 6A.2: chord-detection Hardware-state gating
+- 6B: per-frame rotY drift (1 rev / 45s) + torusMajorR breathing (±5%, 8s sine)
+- Test track infrastructure: `tests/generate_cantor_test_track.py` +
+  `tests/cantor-test-track.md`. WAV regenerable from script (gitignored).
+
+**Landed on branch `chord-melody-research` (paused, not on dev):**
+- Onset-driven analysis foundation plus chord/melody classifier
+  work (Sessions 1–2 of the classifier arc, plus 2026-05-13's
+  parser extension). Arc paused 2026-05-13 in favor of a
+  presentational approach to Cantor Phase 2. General-purpose
+  pieces (TempoState, chord-resolver power-chord template,
+  parser extension) remain valid infrastructure. See
+  `docs/active-plans/chord-melody-build-plan.md` (on
+  `chord-melody-research`) for the pause block and arc record.
+
+**Landed on branch `cantor-presentational-spike` (retained as reference):**
+- Spike implementation of Cantor Phase 2 as a presentational
+  view: lit Tonnetz triangles for sounding triads, dynamic
+  per-note glyphs (radial octave offset, velocity-scaled size),
+  harmonograph-style particle sparkle, color by triad quality.
+  Validated live on Launchkey 49 (Stressed Out, Jupiter's
+  Faerie, 12-bar blues, voice-leading test). ~1,123 lines in
+  one commit. Production-promoted to `cantor` branch via
+  Session 1 cleanup pass (2026-05-18); kept as known-good
+  reference.
+
+**Landed on branch `cantor` (not on dev):**
+- Session 1 of the cantor presentational arc: spike code
+  promoted with cleanup pass. Three commits (`c34305c`,
+  `8c95949`, `155b435`):
+  - B1 — branch setup: spike files copied in via
+    `git checkout cantor-presentational-spike -- <files>`;
+    v1 cantor files removed; v1 `/cantor` route stripped from
+    app.py.
+  - B2 — renames + route registration: module
+    `cantor-presentational-view.js` → `cantor-view.js`,
+    class `CantorPresentationalView` → `CantorView`,
+    template `cantor-spike.html` → `cantor.html`, `/cantor`
+    route registered.
+  - B3 — content cleanup: spike-isms stripped (console
+    prefixes, localStorage key, gameId, dev hook, page title,
+    aria-label); duplicate `_noteNameToMidi`/`_audioNoteToMidi`
+    deduped; vestigial `_parseRGBA` indirection replaced with
+    direct array constants matching `GLYPH_RGB`; stale
+    comments removed.
+    - 2026-05-19 (`66bb368`): polyphonic chord detection wired in
+  templates/cantor.html alongside YIN pitch detection — direct
+  chord-detection.js instantiation mirroring harmonograph's
+  dual-detector pattern; both publish to MusicalEventStream with
+  source: 'audio'. Fabricated octave 4 for chord PCs, flatness
+  gate (> 0.4) against broadband transients, 500ms silence
+  watcher. Marked experimental in the UI ("pitch + chord
+  detection (experimental)"). NOTE: this is outside the build
+  plan's declared scope (polyphonic detection was deferred to a
+  separate arc per RADAR); the framing decision (mirror / x-ray /
+  microscope policy; prefer-mono vs always-both) is explicitly
+  deferred and blocks calling Session 2 done.
+
+
+**In progress:**
+- Cantor presentational arc — see
+  `docs/active-plans/cantor-presentational-build-plan.md`
+  (5 sessions: cleanup/promotion ✓ landed 2026-05-18,
+  polish ⚠ in flight, audio verification, full audio interface
+  input, merge to dev).
+- Session 2 status (as of 2026-05-19, unresumed since): opened
+  with a STATUS update, then diverted into the polyphonic
+  chord-detection wiring above. The build plan's actual Session 2
+  content (parameter tuning, triangle-lighting edge cases,
+  extreme registers) has not started. No SESSION_LOG entry exists
+  for 2026-05-19 — the closeout protocol was skipped; commit
+  message `66bb368` is the only record of that session.
+- MIDI ≤ C4 regression (discovered evening 2026-05-18, SESSION_LOG
+  addendum `f397287`): **resolved 2026-10-14** during Mac mini
+  setup — chromatic check below C4 passes on the Launchkey. Not
+  reproducible on a fresh Chrome profile; probable cause a stale
+  persisted `localStorage['songlab.cantor.splitPoint']`; unconfirmed.
+  Related: multi-port MIDI devices now
+  auto-attach on init, preferring the non-DAW port (`57afaa9`).
+
+**Open / deferred:**
+- Constellation z-fade vs hard occlusion on torus back side.
+- 3D math helper deduplication (`_uvToXYZ`, `_rotate3D`,
+  `_projectOrtho` are duplicated between cantor-view.js and
+  harmonograph-view.js; shared-utility extraction flagged TODO).
+- Tempo/beat-driven breathing (replace wall-clock `_elapsed`
+  accumulator with a musical-time signal — one-line swap).
+- Melody trails: connecting lines between consecutive constellation
+  glyphs to expose phrase contour. Needs its own design doc; even
+  more interesting on the 3D torus.
+- `activeTriads`-clears-mid-phrase anchor snap-back: cosmetic, low
+  priority. Fix is to keep last anchor for ~1–2× decay τ after
+  `activeTriads` empties.
+- Scales on the Tonnetz: separate design thread
+  (`docs/scale-regions.md` to be drafted). Not blocking Cantor v1.
+- Chladni backdrop dynamics (separate brainstorming thread).
+- Build plan review and consolidation across SongLab surfaces —
+  flagged as a candidate for a dedicated planning session.
+
+**After Cantor v1 ships:**
+- v1 user testing.
+- Audio chord-detection silence-watcher tuning if needed.
+- `chordChange` dispatch on MusicalEventStream (currently skipped
+  as redundant; revisit if a use case emerges).
+
+
+### Cantor v1 working state
+
+Capability inventory of what's currently shipping on dev:
+
+- /cantor route, on-screen keyboard, MIDI input, Tone.js playback
+- MusicalEventStream singleton; on-screen keyboard publishes too
+- Tonnetz substrate, canonical orientation (12×4 toroidal lattice
+  in 3D mode; 7×5 lattice in 2D mode, regression-free)
+- Chord wash with cross-fade, quality-colored fills, hue shifts for
+  7ths, (rootPC, baseQuality) diff key for flash-on-quality-change
+- Melody constellation, anchored to active wash centroid, with
+  exponential decay, velocity → brightness, chord-quality color
+- Constellation snap to wash vertices: melody glyphs snap to the
+  wash triangle vertex matching their PC. Verified via deterministic
+  `cantorView._testSnap` and live Launchkey play.
+- User-controllable split-point line (drag, snap, persist) with
+  default at MIDI 72 (C5, mid-keyboard)
+- Audio chord auto-detection — wash + flash + extension hue all
+  driven from live audio when Hardware is active
+- Chord-detection respects Hardware state: won't run when Hardware
+  is "No audio input", so manual `setTriad` is authoritative on the
+  MIDI-only path
+- 3D torus rendering (mode3D=true) with per-frame rotY drift
+  (1 rev / 45s) and torusMajorR breathing (±5%, 8s sine). Pause
+  freezes both; resume produces no jump.
+- `window.cantorView` exposed on localhost for dev convenience

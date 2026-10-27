@@ -114,7 +114,8 @@ Don't touch the following without explicit lift:
 - harmonograph.html
 - harmony-state.js
 - musical-event-stream.js
-- chord-detection.js (currently lifted on the audio-onset branch)
+- chord-detection.js (currently lifted on the `chord-melody-research`
+  branch — formerly `audio-onset-analysis`)
 - audio-input.js
 - keyboard-view.js
 
