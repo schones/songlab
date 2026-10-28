@@ -108,7 +108,7 @@ const EXAMPLES = {
   'c7-rootless-a-form': {
     symbol: 'C7', bass: 'C2',
     shape: { degrees: ['3', '13', '7', '9'], aboveBass: [16, 21, 22, 26] },
-    label: 'C7 rootless A-form — 3, 13, ♭7, 9 over the bass',
+    label: 'C7 rootless, 3rd on the bottom — 3, 13, ♭7, 9 over the bass',
   },
   // T1 (chord-tones-and-roles): three close-position seventh chords over
   // C3 that share root and 5th — only the 3rd and 7th change.
@@ -313,7 +313,7 @@ async function selfTest() {
   // Spot checks: the seed examples say what the topics will say.
   const s1 = resolved['c7-shell-3-below-7'], s2 = resolved['c7-shell-7-below-3'], s3 = resolved['c7-rootless-a-form'], s4 = resolved['eb7-shell-in-the-rag'];
   check('C7 shell: R in the bass, 3 and ♭7 above', s1 && s1.bassDegree === 'R' && s1.degrees.join(' ') === '3 ♭7' && s2 && s2.degrees.join(' ') === '♭7 3');
-  check('rootless A-form derives E3 A3 B♭3 D4 = 3 13 ♭7 9', s3 && s3.voicing.join(' ') === 'E3 A3 B♭3 D4' && s3.degrees.join(' ') === '3 13 ♭7 9');
+  check('rootless, 3rd on the bottom: derives E3 A3 B♭3 D4 = 3 13 ♭7 9', s3 && s3.voicing.join(' ') === 'E3 A3 B♭3 D4' && s3.degrees.join(' ') === '3 13 ♭7 9');
   check('E♭7 shell spells its ♭7 as D♭', s4 && s4.display === 'E♭7' && s4.degrees.join(' ') === '3 ♭7' && s4.voicing[1] === 'D♭4');
 
   // ── Piece links ────────────────────────────────────────────────

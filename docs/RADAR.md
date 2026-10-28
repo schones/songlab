@@ -19,17 +19,20 @@ out of awareness.
 
 - **[2026-10-28] Unnamed tones: letter-based labels vs Levine T5/T6.**
   The engine now gives a tone the chord type names the type's degree
-  name (A over Cdim7 is ♭♭7, F over C7sus4 is 4, A over C6 is 6). A
-  tone the type does *not* name still takes its label from the written
-  letter: A over Cmaj7 reads 13, F over Cmaj7 reads 11, B♭ over Gmaj7
-  reads ♭3, E♭ over plain C7 reads ♭3 while a midi E♭ reads ♯9. Levine
-  T5/T6 (`docs/reference/levine-claims.md`) would say 6 and 4 on major
-  chords, 13 and 11 on dominant and minor chords, regardless of what
-  the symbol names. Decide whether unnamed tones should follow T5/T6
-  (and whether an unnamed semis-3 on a major-third chord is ♯9 or ♭3
-  irrespective of spelling). Changing it moves fixture bar 8 (`B♭·♭3`
-  over Gmaj7), the private bar-17 melody label and the
-  `named-vs-played` topic text.
+  name (A over Cdim7 is ♭♭7, F over C7sus4 is 4, A over C6 is 6).
+  *Adopted 2026-10-28 (Prompt 2.5):* an unnamed semitone 9 over a
+  maj7-family type (major 3rd and major 7th named, no ♭7) reads 6, not
+  13, by letter or midi — Levine T6 and fig 7-2 (R2: CΔ voiced E G A D
+  is 3–5–6–9, the 6/9 chord). Minor and dominant chords keep 13.
+  *Still open:* every other unnamed tone takes its label from the
+  written letter: F over Cmaj7 reads 11, B♭ over Gmaj7 reads ♭3, E♭
+  over plain C7 reads ♭3 while a midi E♭ reads ♯9. Levine T5
+  (`docs/reference/levine-claims.md`) would say 4 on major chords, 11
+  on dominant and minor chords, regardless of what the symbol names.
+  Decide whether the rest should follow T5 (and whether an unnamed
+  semis-3 on a major-third chord is ♯9 or ♭3 irrespective of spelling).
+  Changing it moves fixture bar 8 (`B♭·♭3` over Gmaj7), the private
+  bar-17 melody label and the `named-vs-played` topic text.
   See: `static/shared/voicing-analysis.js` `_degreeOf`, `_spellDegree`.
 
 - **[2026-10-22] Held non-chord tones can show double accidentals on the

@@ -196,6 +196,7 @@ function toMidi(input) {
  */
 function _degreeOf(note, root, chordDef) {
   const semis = ((note.pc - root.pc) % 12 + 12) % 12;
+  const ivs = new Set((chordDef?.intervals || []).map(i => i % 12));
   // On 7alt the four alterations are what the symbol means (Levine T1), so
   // they take the type's names (E♭ → ♯9) even though only R, 3 and ♭7 are
   // named intervals for the omitted list.
@@ -210,9 +211,16 @@ function _degreeOf(note, root, chordDef) {
   let diff = ((note.pc - expected) % 12 + 12) % 12;
   if (diff > 6) diff -= 12;
   const base = STEP_DEGREE[steps];
-  const degree = (ACC_STR[String(diff)] ?? '') + base;
+  let degree = (ACC_STR[String(diff)] ?? '') + base;
+  // Levine T6 (and fig 7-2, R2): on a major 7th chord an unnamed major 6th
+  // is the 6, not the 13 — CΔ voiced E G A D is 3–5–6–9, the 6/9 chord.
+  // Minor and dominant chords keep 13.
+  if (degree === '13' && _maj7Family(ivs)) degree = '6';
   return { degree, name: note.name };
 }
+
+/** Major 7th family (maj7, maj9, maj7♯11, maj7♯5 …): major 3rd and major 7th named, no ♭7. */
+function _maj7Family(ivs) { return ivs.has(4) && ivs.has(11) && !ivs.has(10); }
 
 /**
  * Chord-relative degree label + spelling from a semitone offset.
@@ -239,10 +247,12 @@ function _spellDegree(root, semis, chordDef) {
     // Levine T1: on an altered dominant the raised 4th is the ♯11 even with no 5th named.
     case 6:  degree = has(7) || alt ? '♯11' : '♭5'; break;
     case 7:  degree = '5'; break;
-    // ♯5 only when the type names an augmented 5th; otherwise a 13th.
-    case 8:  degree = has(8) ? '♯5' : '♭13'; break;
-    // Levine T6: 6 on a sixth chord (no 7th), 13 when there is a 7th; dim7's 7th is ♭♭7.
-    case 9:  degree = has(3) && has(6) && has(9) && !hasSeventh ? '♭♭7' : (has(9) && !hasSeventh ? '6' : '13'); break;
+    // ♯5 only when the type names an augmented 5th and no perfect 5th (7♯5, maj7♯5);
+    // a type that keeps its 5th and names semitone 8 names a ♭13 (7♭13). Otherwise a 13th.
+    case 8:  degree = has(8) && !has(7) ? '♯5' : '♭13'; break;
+    // Levine T6: 6 on a sixth chord (no 7th) and on a major 7th chord that names no 13
+    // (fig 7-2, R2: CΔ voiced E G A D is 3–5–6–9); 13 otherwise when there is a 7th; dim7's 7th is ♭♭7.
+    case 9:  degree = has(3) && has(6) && has(9) && !hasSeventh ? '♭♭7' : ((has(9) && !hasSeventh) || (_maj7Family(ivs) && !has(9)) ? '6' : '13'); break;
     case 10: degree = '♭7'; break;
     case 11: degree = '7'; break;
   }
@@ -792,12 +802,17 @@ async function selfTest() {
   assert('A8 C6 with A played → A·6 (Levine T6)',                  nv('C6', ['C3', 'E3', 'G3', 'A3'])[0], ['C·R', 'E·3', 'G·5', 'A·6']);
   assert('A9 C6 with A missing → omitted A·6',                     nv('C6', ['C3', 'E3', 'G3'])[1], ['A·6']);
   assert('A10 Cm7♭5 with midi A♭ → added A♭·♭13 (was G♯·♯5)',      nv('Cm7♭5', [48, 51, 54, 56, 58])[2], ['A♭·♭13']);
-  assert('A11 Cmaj7 with A written → added A·13 (unnamed: letter path, unchanged)', nv('Cmaj7', ['C3', 'E3', 'B3', 'A3'])[2], ['A·13']);
+  assert('A11 Cmaj7 with A written → added A·6 (unnamed on a major 7th chord: Levine T6 / fig 7-2)', nv('Cmaj7', ['C3', 'E3', 'B3', 'A3'])[2], ['A·6']);
+  assert('A11b Cmaj7 with midi A → added A·6 (midi path, same rule)',       nv('Cmaj7', [48, 52, 59, 57])[2], ['A·6']);
+  assert('A11c Cmaj9 and Cmaj7♯11 with A → A·6; Cm7, C7, Cmaj13 keep A·13', [nv('Cmaj9', ['C3', 'E3', 'B3', 'D4', 'A4'])[2], nv('Cmaj7♯11', ['C3', 'E3', 'B3', 'A3'])[2], nv('Cm7', ['C3', 'E♭3', 'B♭3', 'A3'])[2], nv('C7', ['C3', 'E3', 'B♭3', 'A3'])[2], nv('Cmaj13', ['C3', 'E3', 'B3', 'A3'])[0].pop()], [['A·6'], ['A·6'], ['A·13'], ['A·13'], 'A·13']);
   assert('A12 Gmaj7 with B♭ written → added B♭·♭3 (letter path, unchanged)', nv('Gmaj7', ['G2', 'B3', 'B♭3'])[2], ['B♭·♭3']);
   assert('A13 plain C7 with E♭ written → added E♭·♭3 (unnamed on C7: spelling decides)', nv('C7', ['C3', 'E3', 'B♭3', 'E♭4'])[2], ['E♭·♭3']);
   assert('C13 with A → A·13; Cm6 with A → A·6; C6/9 → A·6 D·9',   [nv('C13', ['C3', 'E3', 'B♭3', 'A3'])[0].pop(), nv('Cm6', ['C3', 'E♭3', 'A3'])[0].pop(), nv('C6/9', ['C3', 'E3', 'A3', 'D4'])[0].slice(-2)], ['A·13', 'A·6', ['A·6', 'D·9']]);
   assert('Cdim7 with midi A♭ → added A♭·♭13 (was G♯·♯5)',          nv('Cdim7', [48, 51, 54, 57, 56])[2], ['A♭·♭13']);
   assert('C7♯5 with G♯ written → G♯·♯5 (named ♯5 stays ♯5)',       nv('C7♯5', ['C3', 'E3', 'G♯3', 'B♭3'])[0], ['C·R', 'E·3', 'G♯·♯5', 'B♭·♭7']);
+  assert('A14 C7♭13 with A♭ written → A♭·♭13 (named ♭13 beside a perfect 5th, was G♯·♯5)', nv('C7♭13', ['C3', 'E3', 'G3', 'B♭3', 'A♭4'])[0], ['C·R', 'E·3', 'G·5', 'B♭·♭7', 'A♭·♭13']);
+  assert('A14b C7♭13 by midi → A♭·♭13 present; without it → omitted A♭·♭13', [nv('C7♭13', [48, 52, 55, 58, 68])[0].pop(), nv('C7♭13', ['C3', 'E3', 'B♭3'])[1]], ['A♭·♭13', ['G·5', 'A♭·♭13']]);
+  assert('A14c C7♯5 and Cmaj7♯5 by midi still spell G♯·♯5 (♯5 named, no perfect 5th)', [nv('C7♯5', [48, 52, 56, 58])[0][2], nv('Cmaj7♯5', [48, 52, 56, 59])[0][2]], ['G♯·♯5', 'G♯·♯5']);
   assert('C9sus4 with F → F·4; Cm11 with F → F·11 (Levine T5)',   [nv('C9sus4', ['C3', 'F3', 'B♭3', 'D4'])[0][1], nv('Cm11', ['C3', 'E♭3', 'B♭3', 'F4'])[0].pop()], ['F·4', 'F·11']);
   assert('C7alt by midi: R 3 ♭7 present; ♭9 ♯9 ♯11 ♭13 added, ♯11 spelled F♯ (Levine T1)', nv('C7alt', [48, 52, 58, 49, 51, 54, 56]), [['C·R', 'E·3', 'B♭·♭7'], [], ['D♭·♭9', 'D♯·♯9', 'F♯·♯11', 'A♭·♭13']]);
   assert('C7alt written: E♭ and A♭ keep their names, labelled ♯9 and ♭13', nv('C7alt', ['C3', 'E3', 'B♭3', 'E♭4', 'A♭4'])[2], ['E♭·♯9', 'A♭·♭13']);
