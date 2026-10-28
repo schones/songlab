@@ -3,6 +3,38 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-10-28 — theory-label fixes merged; Levine claims reference; learning-path thesis
+
+Theory-label branch merged into `dev` (Prompts 1, 2, 2.5, 3; branch
+deleted). Engine, Theory card and content now agree with Levine on
+degree labels, alterations and shapes. A numbered Levine claims
+reference was added so content fixes can cite a page. Decided what
+SongLab is: a learning path through jazz harmony, with the books as
+references.
+
+### Landed
+- Engine: chord-type degree labels, -/+ alterations, Δ, 11 new chord
+  types, 7alt.
+- Theory card: guide tones by pitch, quality-aware shapes named by
+  bottom note, Levine major forms, root clause, sus and ♭13-on-ø
+  wording.
+- Tone pools for alt and ø.
+- Content rewrites and verified-topic fixes.
+- `docs/reference/levine-claims.md` — numbered Levine claims with page
+  refs.
+
+### Diagnosed / decided
+- SongLab's thesis is a learning path through jazz harmony: hear,
+  explore, practise, find in a real piece. The books are references,
+  not the spine.
+- Each unit opens with a skip-if-you-know-it check-in.
+- Path doc planned for Friday.
+
+### Setup for next session
+- Thu: pieces pipeline — generalise `review_page.py` and
+  `norm_to_voicing.py`, finish I Got Rhythm.
+
+
 ## 2026-10-27 — cycle-of-shells merged; platform audit; docs truth pass
 
 Housekeeping day, no feature work. The ii_V_I walkthrough got its
