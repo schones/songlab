@@ -65,25 +65,42 @@ import { glossaryLookup } from './voicing-explainer-content.js';
 // Keyed by DEGREE_CLASS-collapsed degrees, bottom to top above the bass
 // (shapeKey), so ♭3 / ♭7 variants match. `requires` are degree classes the
 // chord symbol must name for the match to hold: a 3rd and 7th played over
-// a plain triad are not a shell of that triad. This is the only shape
-// catalogue the explainer layer publishes; voicing-explore.js's private
-// SHAPE_NAMES (the piece-specific library) is never surfaced here.
+// a plain triad are not a shell of that triad. `quality`, when present,
+// is a predicate on the type's intervals (mod 12): the dominant forms with
+// the 13th for the 5th match only a dominant type, and Levine's two major
+// forms only a major 7th type. The card prints the shape's degrees as the
+// engine labels them (♭3–5–♭7–9 on Cm7), after a fixed name. Rootless
+// shapes are named by their bottom note, never A/B: Levine's A and B
+// positions name a whole II–V–I by its bottom notes (Levine R6), which the
+// rootless-voicings topic will explain. `text(ctx)` gets { shell, rootClause }
+// — see shellText() and rootClause() — so the shell wording and the root
+// sentence fit the chord and bass in front of the learner. This is the only
+// shape catalogue the explainer layer publishes; voicing-explore.js's
+// private SHAPE_NAMES (the piece-specific library) is never surfaced here.
 
-const SHELL_TEXT = 'the two guide tones over the bass and nothing else — the smallest voicing that still says the chord';
-const ROOTLESS_TEXT = 'the root is left to the bass';
+const QUALITY = {
+  dominant: ivs => ivs.has(4) && ivs.has(10),   // major 3rd + minor 7th, as chordTones().dominant
+  major7:   ivs => ivs.has(4) && ivs.has(11),   // maj7 family: maj7, maj9, maj7♯11, maj13, maj7♯5 …
+};
 const SHAPE_CATALOGUE = [
-  { degrees: ['3', '7'], requires: ['3', '7'], name: 'Shell voicing, 3rd below the 7th', term: 'shell', topic: 'guide-tones-and-shells', text: SHELL_TEXT },
-  { degrees: ['7', '3'], requires: ['3', '7'], name: 'Shell voicing, 7th below the 3rd', term: 'shell', topic: 'guide-tones-and-shells', text: SHELL_TEXT },
-  { degrees: ['3', '5', '7', '9'], requires: ['3', '7'], name: 'Rootless A-form (3–5–7–9)', term: 'A-form', topic: 'rootless-voicings',
-    text: `3rd at the bottom, 9th on top; ${ROOTLESS_TEXT}` },
-  { degrees: ['7', '9', '3', '5'], requires: ['3', '7'], name: 'Rootless B-form (7–9–3–5)', term: 'B-form', topic: 'rootless-voicings',
-    text: `7th at the bottom, 5th on top; ${ROOTLESS_TEXT}` },
-  { degrees: ['3', '13', '7', '9'], requires: ['3', '7'], name: 'Rootless A-form, dominant version (3–13–7–9)', term: 'A-form', topic: 'rootless-voicings',
-    text: `the 13th stands in for the 5th; ${ROOTLESS_TEXT}` },
-  { degrees: ['7', '9', '3', '13'], requires: ['3', '7'], name: 'Rootless B-form, dominant version (7–9–3–13)', term: 'B-form', topic: 'rootless-voicings',
-    text: `the 13th stands in for the 5th; ${ROOTLESS_TEXT}` },
+  { degrees: ['3', '7'], requires: ['3', '7'], name: 'Shell voicing, 3rd below the 7th', term: 'shell', topic: 'guide-tones-and-shells', text: c => c.shell },
+  { degrees: ['7', '3'], requires: ['3', '7'], name: 'Shell voicing, 7th below the 3rd', term: 'shell', topic: 'guide-tones-and-shells', text: c => c.shell },
+  { degrees: ['3', '5', '7', '9'], requires: ['3', '7'], name: 'Rootless voicing, 3rd on the bottom', term: 'rootless voicing', topic: 'rootless-voicings',
+    text: c => `the 9th sits on top; ${c.rootClause}` },
+  { degrees: ['7', '9', '3', '5'], requires: ['3', '7'], name: 'Rootless voicing, 7th on the bottom', term: 'rootless voicing', topic: 'rootless-voicings',
+    text: c => `the 5th sits on top; ${c.rootClause}` },
+  { degrees: ['3', '13', '7', '9'], requires: ['3', '7'], quality: 'dominant', name: 'Rootless voicing, 3rd on the bottom', term: 'rootless voicing', topic: 'rootless-voicings',
+    text: c => `the 13th stands in for the 5th; ${c.rootClause}` },
+  { degrees: ['7', '9', '3', '13'], requires: ['3', '7'], quality: 'dominant', name: 'Rootless voicing, 7th on the bottom', term: 'rootless voicing', topic: 'rootless-voicings',
+    text: c => `the 13th stands in for the 5th; ${c.rootClause}` },
+  // Levine R2: CΔ in A position is 3–5–6–9 (E G A D), no major 7th, which is why it can be written C69.
+  { degrees: ['3', '5', '13', '9'], requires: ['3', '7'], quality: 'major7', name: 'Rootless voicing, 3rd on the bottom, 6 in place of the major 7th', term: 'rootless voicing', topic: 'rootless-voicings',
+    text: c => `reads as a 6/9 sound; ${c.rootClause}` },
+  // Levine R4: CΔ in B position is 7–R–3–5 (B C E G): the root is in the voicing but not on the bottom.
+  { degrees: ['7', 'R', '3', '5'], requires: ['3', '7'], quality: 'major7', name: 'Major 7th on the bottom, root just above it', term: 'shape', topic: 'rootless-voicings',
+    text: () => 'the root is in the voicing, a half step over the 7th, so this is not a rootless voicing' },
 ];
-const CATALOGUE_SUMMARY = 'shell, rootless A-form or B-form';
+const CATALOGUE_SUMMARY = 'shell, rootless voicing, or a major 7th form';
 
 // ════════════════════════════════════════════════════════════════════
 // WORDS
@@ -136,6 +153,12 @@ function degreeWord(d) {
   if (d === '♭♭7') return '♭♭7 (the diminished 7th)';
   return d;
 }
+/** The named 2nd, 4th or 6th a sus / sixth chord carries in place of a 3rd or 7th (Levine T5, T6): "4th". */
+const LOW_DEGREE_WORD = { '2': '2nd', '4': '4th', '6': '6th' };
+/** Intervals mod 12 the type names. */
+function intervalSet(parsed) { return new Set(parsed.intervals.map(i => i % 12)); }
+/** Half-diminished: minor 3rd, ♭5 and minor 7th with no perfect 5th (Levine H1). */
+function isHalfDim(ivs) { return ivs.has(3) && ivs.has(6) && ivs.has(10) && !ivs.has(7); }
 function capital(s) { return s[0].toUpperCase() + s.slice(1); }
 
 /**
@@ -189,16 +212,47 @@ function bassWords(inferred) {
     : { inferred, noun: 'bass', Noun: 'Bass', aside: '' };
 }
 
+/**
+ * The root sentence a rootless shape ends with, from where the root
+ * actually is (read-and-report §4): left to the bass when the bass has it;
+ * otherwise it is not sounded, and the sentence says what the bass is.
+ */
+function rootClause(v, parsed, B) {
+  const { bassDegree } = v;
+  const slash = !!parsed && parsed.bassPC != null;
+  if (bassDegree === 'R') return `the root is left to the ${B.noun}`;
+  if (!bassDegree) return 'the root is not sounded';
+  if (slash) return `the root is not sounded; the ${B.noun} has the ${degreeWord(bassDegree)} instead`;
+  return `the root is not sounded at all — the ${B.noun} is the ${degreeWord(bassDegree)}`;
+}
+
+/**
+ * Shell wording. On a half-diminished chord the two guide tones alone do
+ * not say the chord: ♭3 and ♭7 over the root read as a plain minor 7th
+ * until the ♭5 arrives (Levine H1: ø is a minor 7th with a flatted 5th).
+ */
+function shellText(v, parsed, B) {
+  const ivs = intervalSet(parsed);
+  if (isHalfDim(ivs)) {
+    const third = v.named.get('3'), seventh = v.named.get('7');
+    return `the two guide tones over the ${B.noun} — but ${third.name} and ${seventh.name} over ${parsed.root} say ${parsed.root}m7 as readily as ${parsed.display}; for a half-diminished chord the ♭5 is part of the identity`;
+  }
+  return `the two guide tones over the ${B.noun} and nothing else — the smallest voicing that still says the chord`;
+}
+
 /** 1. Shape — catalogue match or the plain degree list, then layout, doubling and the bass. */
 function shapeSection(v, bass, parsed, B) {
   const { notes, bassDegree, named } = v;
   const items = [];
   const see = ['voicings-as-shapes'];
   const sk = shapeKey(notes.map(n => n.name), bass, parsed);
+  const ivs = intervalSet(parsed);
   const degreeList = list(notes.map(n => `${n.degree} (${n.name})`));
-  const match = sk && SHAPE_CATALOGUE.find(c => c.degrees.join('-') === sk.degrees.join('-') && c.requires.every(r => named.has(r)));
+  const match = sk && SHAPE_CATALOGUE.find(c => c.degrees.join('-') === sk.degrees.join('-') && c.requires.every(r => named.has(r)) && (!c.quality || QUALITY[c.quality](ivs)));
   if (match) {
-    items.push({ text: `${match.name}: ${match.text}. Degrees bottom to top: ${degreeList}.`, term: match.term });
+    const played = notes.map(n => n.degree).join('–');
+    const ctx = { shell: shellText(v, parsed, B), rootClause: rootClause(v, parsed, B) };
+    items.push({ text: `${match.name} (${played}): ${match.text(ctx)}. Degrees bottom to top: ${degreeList}.`, term: match.term });
     see.push(match.topic);
   } else {
     items.push({ text: `Degrees bottom to top: ${degreeList} — not one of the catalogue shapes (${CATALOGUE_SUMMARY}).`, term: 'shape' });
@@ -232,16 +286,21 @@ function shapeSection(v, bass, parsed, B) {
 
 /** 2. Guide tones — where the 3rd and 7th sit, the interval between them, what is missing. */
 function guideTonesSection(v, bass, parsed, B) {
-  const { notes, named, bassDegree } = v;
+  const { notes, named, bassDegree, nvp } = v;
   if (!parsed || !notes.length) return null;
   const dominant = !!chordTones(parsed)?.dominant;
+  const ivs = intervalSet(parsed);
   const items = [];
   const see = ['guide-tones-and-shells'];
   const places = {};
   for (const cls of ['3', '7']) {
-    const idx = notes.findIndex(n => n.cls === cls);
     const namedEntry = named.get(cls);
-    const inBass = bassDegree && degClass(bassDegree) === cls;
+    // The symbol's own 3rd / 7th by pitch class (a ♯9 or ♭♭7 lower down shares the class but not the pc);
+    // the class scan only when the symbol names none (sus chords, triads).
+    const idx = namedEntry ? notes.findIndex(n => n.pc === namedEntry.pc) : notes.findIndex(n => n.cls === cls);
+    const inBass = bassDegree && (namedEntry ? v.bassPC === namedEntry.pc : degClass(bassDegree) === cls);
+    // Levine T5/T6: a sus or sixth chord names a 2nd, 4th or 6th where the 3rd or 7th would be.
+    const standIn = !namedEntry && notes.find(n => (cls === '3' ? ['2', '4'] : ['6']).includes(n.degree) && nvp.present.some(p => p.pc === n.pc));
     if (idx >= 0) {
       const n = notes[idx];
       places[cls] = { midi: n.midi, name: n.name };
@@ -252,11 +311,17 @@ function guideTonesSection(v, bass, parsed, B) {
       items.push({ text: B.inferred ? `The ${degreeWord(bassDegree)} (${bass}) is the lowest note, under the voicing.` : `The ${degreeWord(bassDegree)} (${bass}) is the bass, not part of the voicing.` });
     } else if (namedEntry) {
       items.push({ text: `The ${degreeWord(namedEntry.degree)} (${namedEntry.name}) is not played.` });
+    } else if (standIn) {
+      items.push({ text: `${parsed.display} names no ${cls === '3' ? '3rd' : '7th'}: the ${LOW_DEGREE_WORD[standIn.degree]} (${standIn.name}) stands in its place.` });
     } else {
       items.push({ text: `${parsed.display} names no ${cls === '3' ? '3rd' : '7th'}.` });
     }
   }
   items[0].term = 'guide tones';
+  // Levine S6: sus chords function as V chords and resolve to the I as smoothly as a dominant 7th does.
+  if (!named.has('3') && ivs.has(10)) {
+    items.push({ text: 'A sus chord works as a V chord: it resolves to its I as smoothly as a dominant 7th does.', term: 'dominant seventh' });
+  }
   if (places['3'] && places['7']) {
     const [lo, hi] = [places['3'], places['7']].sort((a, b) => a.midi - b.midi);
     const semis = hi.midi - lo.midi;
@@ -286,17 +351,20 @@ function colourTonesSection(v, event, bass, parsed, context, B) {
   const items = [];
   const see = ['extensions', 'named-vs-played'];
   const dominant = !!chordTones(parsed)?.dominant;
-  const ivs = new Set(parsed.intervals.map(i => i % 12));
+  const ivs = intervalSet(parsed);
   const majorSeventhChord = ivs.has(4) && ivs.has(11);
+  const halfDim = isHalfDim(ivs);
   const addedPCs = new Set(nvp.added.map(e => e.pc));
   const colour = notes.filter(n => !['R', '3', '5', '7'].includes(n.cls) || addedPCs.has(n.pc));
   const sounding = [...notes, ...(isNaN(v.bassMidi) ? [] : [{ name: bass, midi: v.bassMidi, degree: v.bassDegree || '?', bass: true }])];
   for (const n of colour) {
     const i = notes.indexOf(n);
     const isNamed = named.has(n.cls) && nvp.present.some(p => p.pc === n.pc);
-    const kind = ALTERED.has(n.cls) ? 'Alteration' : EXTENSION_CLASSES.has(n.cls) ? 'Extension' : 'Added tone';
+    // A raw 2, 4 or 6 is a tone the symbol names in place of a 3rd or 7th (Levine T5, T6), not an extension.
+    const low = n.degree in LOW_DEGREE_WORD;
+    const kind = low ? (isNamed ? 'Chord tone' : 'Added tone') : ALTERED.has(n.cls) ? 'Alteration' : EXTENSION_CLASSES.has(n.cls) ? 'Extension' : 'Added tone';
     const provenance = isNamed ? `named by ${parsed.display} and played` : `not named by ${parsed.display}`;
-    const term = n.cls === '♯11' && dominant ? '♯11' : ALTERED.has(n.cls) ? 'alterations' : EXTENSION_CLASSES.has(n.cls) ? 'extension' : 'named vs played';
+    const term = low ? (isNamed ? 'chord tones' : 'named vs played') : n.cls === '♯11' && dominant ? '♯11' : ALTERED.has(n.cls) ? 'alterations' : EXTENSION_CLASSES.has(n.cls) ? 'extension' : 'named vs played';
     items.push({ text: `${kind} ${n.degree} (${n.name}) in ${voiceLabel(i, notes.length)}, ${provenance}.`, term });
     if (n.cls === '♯11' && dominant) see.push('sharp-eleven-on-dominants');
     // A rub: the colour tone a half step from a chord tone that is sounding.
@@ -306,7 +374,13 @@ function colourTonesSection(v, event, bass, parsed, context, B) {
       see.push('intervals-that-rub');
     }
     // Labels that surprise: keep the fact above, explain here.
-    if (ALTERED.has(n.cls) && !isNamed && !dominant && !(n.cls === '♯11' && majorSeventhChord)) {
+    if (n.cls === '♭13' && !isNamed && ivs.has(3)) {
+      // Not a dominant sound here: the ♭6 is a scale tone on a minor-3rd chord. On ø it is in both
+      // Locrian and Locrian ♯2 (Levine H5); 9 and 11 are the usual additions (Levine H3, H4).
+      items.push(halfDim
+        ? { text: `${n.degree} (${n.name}) is a scale tone on a half-diminished chord: the ♭6 of both Locrian and Locrian ♯2. The 9 and 11 are the more usual additions.`, term: 'extensions' }
+        : { text: `A ${n.degree} on ${parsed.display} is the ♭6 of the chord's minor scale — diatonic colour rather than a dominant sound, though the 9 and 11 are the usual additions.`, term: 'extensions', kind: 'heuristic' });
+    } else if (ALTERED.has(n.cls) && !isNamed && !dominant && !(n.cls === '♯11' && majorSeventhChord)) {
       items.push({ text: `A ${n.degree} is not a usual colour on ${parsed.display}: altered 9ths, 11ths and 13ths are dominant-chord sounds. Against this symbol the ${n.name} reads as a passing or neighbour tone rather than chord colour.`, term: 'alterations', kind: 'heuristic' });
     } else if (n.cls === '7' && !named.has('7')) {
       const implied = impliedSeventh(parsed, n.degree);
@@ -343,6 +417,8 @@ function omissionsSection(v, parsed, B) {
     else if (cls === '3') text = `${label} — notable: a guide tone is missing. Without the 3rd the chord is open and ambiguous, major or minor.`;
     else if (cls === '7') text = `${label} — notable: a guide tone is missing. ${dominant ? `Without the 7th, ${parsed.display} stops sounding like a dominant.` : 'Without the 7th what is left is a plain triad.'}`;
     else if (['2', '4', '6'].includes(o.degree)) text = `${label} — notable: it is the tone that makes ${parsed.display} what it is.`;
+    // A named alteration is the symbol's point (Levine T1: the alterations are what 7alt means); without it the player played the plain chord.
+    else if (ALTERED.has(cls)) text = `${label} — notable: the ${o.degree} is the colour ${parsed.display} asks for; without it ${dominant ? `this is plain ${parsed.root}7` : "the symbol's alteration is not heard"}.`;
     else text = `${label} — routine: a named extension is colour, not structure. Leaving it out keeps the chord's identity but not the symbol's flavour.`;
     items.push({ text, term: items.length ? undefined : 'omitted' });
   }
@@ -586,7 +662,7 @@ async function selfTest() {
   const f5b = describeAt(fixture, fa, 5, 1);                       // Gm7/F: A3 B♭3 D4 → A♭3 D4
   const m5b = byId(f5b, 'motion');
   check('fixture 5.2: voice-count change leads the motion section and the total is omitted', /^From bar 5, event 1, the previous voiced event \(A3 B♭3 D4 over F3\): the voicing drops a voice — B♭3 has no partner here\.$/.test(m5b.items[0].text) && !/Total upper-voice motion/.test(texts([m5b])), texts([m5b]));
-  check('fixture 5.2: ♭9 on a minor 7th gets a heuristic item', byId(f5b, 'colour-tones').items.some(it => it.kind === 'heuristic' && /A ♭9 is not a usual colour on Gm7\/F/.test(it.text)), texts([byId(f5b, 'colour-tones')]));
+  check('D15 fixture 5.2: ♭9 on a minor 7th still gets the "not a usual colour" heuristic', byId(f5b, 'colour-tones').items.some(it => it.kind === 'heuristic' && /A ♭9 is not a usual colour on Gm7\/F/.test(it.text)), texts([byId(f5b, 'colour-tones')]));
   const f5 = describeAt(fixture, fa, 5, 0);
   check('fixture 5.1 (Gm7/F): 9 (A3) is an extension in the bottom voice; root left out', /Extension 9 \(A3\) in the bottom voice, not named by Gm7\/F/.test(texts([byId(f5, 'colour-tones')])) && /Root \(G\) left out, and the bass does not have it either/.test(texts([byId(f5, 'omissions')])), texts(f5));
   check('fixture 5.1: the 9 a half step under the ♭3 is reported as a rub', byId(f5, 'colour-tones').items.some(it => it.term === 'rub' && /9 \(A3\) sits a half step below the ♭3 \(B♭3\): a minor 2nd rub\./.test(it.text)) && byId(f5, 'colour-tones').see_also.includes('intervals-that-rub'), texts([byId(f5, 'colour-tones')]));
@@ -613,13 +689,42 @@ async function selfTest() {
     const parsed = parseSymbol(symbol);
     return describeVoicing({ voicing, bass, namedVsPlayed: namedVsPlayed(parsed, [bass, ...voicing]) }, { parsed, prev: null, next: null, includeMelody: false, ...context });
   };
+  const shapeText = out => byId(out, 'shape').items[0].text;
   const aForm = make('Cm7', 'C3', ['E♭4', 'G4', 'B♭4', 'D5']);
-  check('A-form: Cm7 over C3, E♭4 G4 B♭4 D5 (♭3 5 ♭7 9)', byId(aForm, 'shape').items[0].term === 'A-form' && /^Rootless A-form \(3–5–7–9\)/.test(byId(aForm, 'shape').items[0].text) && byId(aForm, 'shape').see_also.includes('rootless-voicings'), byId(aForm, 'shape').items[0].text);
-  check('A-form: 9 (D5) on top reported as an extension; nothing omitted', /Extension 9 \(D5\) in the top voice/.test(texts([byId(aForm, 'colour-tones')])) && byId(aForm, 'omissions') === null, texts(aForm));
+  check('D5 rootless, 3rd on the bottom: Cm7 over C3, E♭4 G4 B♭4 D5 prints its degrees as played (♭3–5–♭7–9)', byId(aForm, 'shape').items[0].term === 'rootless voicing' && /^Rootless voicing, 3rd on the bottom \(♭3–5–♭7–9\): the 9th sits on top; the root is left to the bass\./.test(shapeText(aForm)) && byId(aForm, 'shape').see_also.includes('rootless-voicings'), shapeText(aForm));
+  check('…9 (D5) on top reported as an extension; nothing omitted', /Extension 9 \(D5\) in the top voice/.test(texts([byId(aForm, 'colour-tones')])) && byId(aForm, 'omissions') === null, texts(aForm));
   const bForm = make('Cmaj7', 'C3', ['B3', 'D4', 'E4', 'G4']);
-  check('B-form: Cmaj7 over C3, B3 D4 E4 G4 (7 9 3 5)', byId(bForm, 'shape').items[0].term === 'B-form' && /^Rootless B-form \(7–9–3–5\)/.test(byId(bForm, 'shape').items[0].text), byId(bForm, 'shape').items[0].text);
+  check('rootless, 7th on the bottom: Cmaj7 over C3, B3 D4 E4 G4 (7–9–3–5)', byId(bForm, 'shape').items[0].term === 'rootless voicing' && /^Rootless voicing, 7th on the bottom \(7–9–3–5\): the 5th sits on top; the root is left to the bass\./.test(shapeText(bForm)), shapeText(bForm));
   const aDom = make('C7', 'C3', ['E3', 'A3', 'B♭3', 'D4']);
-  check('A-form, dominant version: C7 over C3, E3 A3 B♭3 D4 (3 13 ♭7 9)', /^Rootless A-form, dominant version/.test(byId(aDom, 'shape').items[0].text), byId(aDom, 'shape').items[0].text);
+  check('D7 / D10 dominant form, 3rd on the bottom: C7 over C3, E3 A3 B♭3 D4 (3–13–♭7–9); root left to the bass', /^Rootless voicing, 3rd on the bottom \(3–13–♭7–9\): the 13th stands in for the 5th; the root is left to the bass\./.test(shapeText(aDom)), shapeText(aDom));
+  const bDom = make('C7', 'C3', ['B♭3', 'D4', 'E4', 'A4']);
+  check('dominant form, 7th on the bottom: C7 over C3, B♭3 D4 E4 A4 (♭7–9–3–13)', /^Rootless voicing, 7th on the bottom \(♭7–9–3–13\): the 13th stands in for the 5th/.test(shapeText(bDom)), shapeText(bDom));
+  check('no A/B in any catalogue name', SHAPE_CATALOGUE.every(c => !/\b[AB]-form\b/.test(c.name)) && !/[AB]-form/.test(CATALOGUE_SUMMARY));
+  // §3: the dominant forms match only dominant types (Levine R2/R4 give D-7 3–5–7–9 and 7–9–3–5, never 13 for the 5th).
+  const d3 = make('Cm7', 'C3', ['E♭3', 'A3', 'B♭3', 'D4']);
+  check('D3 Cm7 with ♭3 13 ♭7 9 is not "dominant version": plain degree list', byId(d3, 'shape').items[0].term === 'shape' && /not one of the catalogue shapes/.test(shapeText(d3)) && !/dominant/.test(shapeText(d3)), shapeText(d3));
+  const d4 = make('Cmaj7', 'C3', ['B3', 'D4', 'E4', 'A4']);
+  check('D4 Cmaj7 with 7 9 3 13 is not "dominant version" either', byId(d4, 'shape').items[0].term === 'shape' && /not one of the catalogue shapes/.test(shapeText(d4)), shapeText(d4));
+  const d6 = make('Cm7♭5', 'C3', ['E♭3', 'G♭3', 'B♭3', 'D4']);
+  check('D6 Cm7♭5 rootless, 3rd on the bottom, prints (♭3–♭5–♭7–9)', /^Rootless voicing, 3rd on the bottom \(♭3–♭5–♭7–9\)/.test(shapeText(d6)), shapeText(d6));
+  // Levine's major forms (R2, R4) on maj7-family types only.
+  const r2 = make('Cmaj7', 'C3', ['E3', 'G3', 'A3', 'D4']);
+  check('R2 Cmaj7 over C3, E3 G3 A3 D4: 3rd on the bottom, 6 in place of the major 7th, reads as a 6/9 sound', byId(r2, 'shape').items[0].term === 'rootless voicing' && /^Rootless voicing, 3rd on the bottom, 6 in place of the major 7th \(3–5–13–9\): reads as a 6\/9 sound; the root is left to the bass\./.test(shapeText(r2)) && byId(r2, 'shape').see_also.includes('rootless-voicings'), shapeText(r2));
+  const r4 = make('Cmaj7', 'C3', ['B3', 'C4', 'E4', 'G4']);
+  check('R4 Cmaj7 over C3, B3 C4 E4 G4: major 7th on the bottom, root just above it (7–R–3–5), not rootless', byId(r4, 'shape').items[0].term === 'shape' && /^Major 7th on the bottom, root just above it \(7–R–3–5\): the root is in the voicing, a half step over the 7th, so this is not a rootless voicing\./.test(shapeText(r4)) && byId(r4, 'shape').see_also.includes('rootless-voicings'), shapeText(r4));
+  const r2m = make('Cm7', 'C3', ['E♭3', 'G3', 'A3', 'D4']);
+  check('…the 6-for-7th form does not match a minor 7th (♭3 5 13 9 on Cm7)', byId(r2m, 'shape').items[0].term === 'shape' && /not one of the catalogue shapes/.test(shapeText(r2m)), shapeText(r2m));
+  const r4d = make('C7', 'C3', ['B♭3', 'C4', 'E4', 'G4']);
+  check('…nor does the 7–R–3–5 form match a dominant (♭7 R 3 5 on C7)', byId(r4d, 'shape').items[0].term === 'shape' && /not one of the catalogue shapes/.test(shapeText(r4d)), shapeText(r4d));
+  // §4: the root clause follows the bass.
+  const d8 = make('C7/E', 'E3', ['B♭3', 'D4', 'E4', 'G4']);
+  check('D8 C7/E over E3: no "left to the bass"; "the bass has the 3rd instead"; the slash sentence stays', !/left to the bass/.test(shapeText(d8)) && /\(♭7–9–3–5\): the 5th sits on top; the root is not sounded; the bass has the 3rd instead\./.test(shapeText(d8)) && /The bass E3 is the 3rd, the slash bass in C7\/E\./.test(texts([byId(d8, 'shape')])), texts([byId(d8, 'shape')]));
+  const d9 = make('C7', 'G2', ['B♭3', 'D4', 'E4', 'G4']);
+  check('D9 C7 over G2 (no slash): "the root is not sounded at all — the bass is the 5th"', !/left to the bass/.test(shapeText(d9)) && /the root is not sounded at all — the bass is the 5th\./.test(shapeText(d9)), shapeText(d9));
+  const d9i = describeVoicing({ voicing: ['B♭3', 'D4', 'E4', 'G4'], bass: 'G2', bassSource: 'inferred', namedVsPlayed: namedVsPlayed(parseSymbol('C7'), ['G2', 'B♭3', 'D4', 'E4', 'G4']) }, { parsed: parseSymbol('C7'), prev: null, next: null, includeMelody: false });
+  check('…with an inferred bass the clause says "the lowest note is the 5th"', /the root is not sounded at all — the lowest note is the 5th\./.test(shapeText(d9i)), shapeText(d9i));
+  const d9x = make('C7', 'D♭2', ['B♭3', 'D4', 'E4', 'G4']);
+  check('…a bass outside the chord is still labelled (added ♭9): "the bass is the ♭9"', /the root is not sounded at all — the bass is the ♭9\./.test(shapeText(d9x)), shapeText(d9x));
   const shell = make('C7', 'C2', ['E3', 'B♭3']);
   check('C7 shell: E3 B♭3 over C2 → shell, 3rd below the 7th; tritone with the dominant remark; 5th routine', byId(shell, 'shape').items[0].term === 'shell' && /from E3 up to B♭3: a tritone — the interval that gives a dominant its pull/.test(texts([byId(shell, 'guide-tones')])) && /5th \(G\) left out — routine/.test(texts([byId(shell, 'omissions')])), texts(shell));
   const shell2 = make('C7', 'C2', ['B♭3', 'E4']);
@@ -632,6 +737,35 @@ async function selfTest() {
   check('missing 7th on a dominant: "stops sounding like a dominant"', /♭7 \(F\) is not played/.test(texts([byId(no7, 'guide-tones')])) && /Without the 7th, G7 stops sounding like a dominant/.test(texts([byId(no7, 'omissions')])), texts(no7));
   const half = make('Cm7♭5', 'C3', ['E♭3', 'B♭3']);
   check('altered 5th left out is notable (Cm7♭5 without its ♭5)', /♭5 \(G♭\) left out — notable: the altered 5th is part of what Cm7♭5 says/.test(texts([byId(half, 'omissions')])), texts(half));
+  check('D12 half-diminished shell: "say Cm7 as readily as Cm7♭5", the ♭5 is part of the identity', byId(half, 'shape').items[0].term === 'shell' && /^Shell voicing, 3rd below the 7th \(♭3–♭7\): the two guide tones over the bass — but E♭ and B♭ over C say Cm7 as readily as Cm7♭5; for a half-diminished chord the ♭5 is part of the identity\./.test(shapeText(half)), shapeText(half));
+  check('…and the plain C7 shell keeps "still says the chord"', /the smallest voicing that still says the chord/.test(shapeText(shell)) && !/as readily as/.test(shapeText(shell)), shapeText(shell));
+  // §2: guide tones by the named entry's pitch class; sus wording; 2/4/6 colour kind.
+  const d1 = make('C7♯9', 'C3', ['B♭3', 'E♭4', 'E4']);
+  check('D1 C7♯9 over C3, B♭3 E♭4 E4: the 3rd is E4 (top), not the ♯9; tritone with the dominant remark', /The 3rd \(E4\) is the top voice\./.test(texts([byId(d1, 'guide-tones')])) && /The ♭7 \(B♭3\) is the bottom voice\./.test(texts([byId(d1, 'guide-tones')])) && /from B♭3 up to E4: a tritone — the interval that gives a dominant its pull/.test(texts([byId(d1, 'guide-tones')])), texts([byId(d1, 'guide-tones')]));
+  check('D1 …♯9 (E♭4) is an alteration, named and played; no heuristic', /Alteration ♯9 \(E♭4\) in an inner voice, named by C7♯9 and played\./.test(texts([byId(d1, 'colour-tones')])) && !byId(d1, 'colour-tones').items.some(it => it.kind === 'heuristic'), texts([byId(d1, 'colour-tones')]));
+  const d1b = make('C7♯9', 'C3', ['E♭3', 'B♭3', 'E4']);
+  check('…with the ♯9 below the 3rd the lookup still finds E4', /The 3rd \(E4\) is the top voice\./.test(texts([byId(d1b, 'guide-tones')])) && /from B♭3 up to E4: a tritone/.test(texts([byId(d1b, 'guide-tones')])), texts([byId(d1b, 'guide-tones')]));
+  const d2 = make('C7sus4', 'C3', ['F3', 'G3', 'B♭3']);
+  check('D2 C7sus4 over C3, F3 G3 B♭3: "names no 3rd: the 4th (F3) stands in its place"; sus-as-V line (Levine S6)', /^C7sus4 names no 3rd: the 4th \(F3\) stands in its place\.$/m.test(texts([byId(d2, 'guide-tones')])) && byId(d2, 'guide-tones').items.some(it => /^A sus chord works as a V chord: it resolves to its I as smoothly as a dominant 7th does\.$/.test(it.text) && it.kind === undefined) && !/Between them/.test(texts([byId(d2, 'guide-tones')])), texts([byId(d2, 'guide-tones')]));
+  check('D2 …colour line is "Chord tone 4 (F3)", not "Extension"', /^Chord tone 4 \(F3\) in the bottom voice, named by C7sus4 and played\.$/m.test(texts([byId(d2, 'colour-tones')])) && !/Extension/.test(texts([byId(d2, 'colour-tones')])) && byId(d2, 'colour-tones').items[0].term === 'chord tones', texts([byId(d2, 'colour-tones')]));
+  const d2b = make('C7sus4', 'C3', ['G3', 'B♭3']);
+  check('…with the 4th missing: plain "names no 3rd", and the omission is notable', /^C7sus4 names no 3rd\.$/m.test(texts([byId(d2b, 'guide-tones')])) && /4 \(F\) left out — notable/.test(texts([byId(d2b, 'omissions')])), texts(d2b));
+  const susTriad = make('Csus4', 'C3', ['F3', 'G3']);
+  check('…a sus4 triad gets the stand-in line but no V-chord line (no ♭7)', /names no 3rd: the 4th \(F3\) stands in its place/.test(texts([byId(susTriad, 'guide-tones')])) && !/V chord/.test(texts([byId(susTriad, 'guide-tones')])), texts([byId(susTriad, 'guide-tones')]));
+  const sixth = make('C6', 'C3', ['E3', 'G3', 'A3']);
+  check('…C6: "names no 7th: the 6th (A3) stands in its place"; colour "Chord tone 6 (A3)"', /C6 names no 7th: the 6th \(A3\) stands in its place\./.test(texts([byId(sixth, 'guide-tones')])) && /^Chord tone 6 \(A3\) in the top voice, named by C6 and played\.$/m.test(texts([byId(sixth, 'colour-tones')])), texts(sixth));
+  // §6a: ♭13 on a minor-3rd chord is a scale tone, not a dominant sound (Levine H5).
+  const d11 = make('Cm7♭5', 'C3', ['E♭3', 'G♭3', 'A♭3', 'B♭3']);
+  check('D11 Cm7♭5 with A♭: no "dominant-chord sounds"; a fact line names Locrian and Locrian ♯2', !/dominant-chord sounds/.test(texts([byId(d11, 'colour-tones')])) && byId(d11, 'colour-tones').items.some(it => it.kind === undefined && /^♭13 \(A♭3\) is a scale tone on a half-diminished chord: the ♭6 of both Locrian and Locrian ♯2\. The 9 and 11 are the more usual additions\.$/.test(it.text)), texts([byId(d11, 'colour-tones')]));
+  const m7b13 = make('Cm7', 'C3', ['E♭3', 'G3', 'A♭3', 'B♭3']);
+  check('…♭13 on Cm7: heuristic "♭6 of the chord\'s minor scale", not a dominant sound', !/dominant-chord sounds/.test(texts([byId(m7b13, 'colour-tones')])) && byId(m7b13, 'colour-tones').items.some(it => it.kind === 'heuristic' && /A ♭13 on Cm7 is the ♭6 of the chord's minor scale/.test(it.text)), texts([byId(m7b13, 'colour-tones')]));
+  // §6c: an omitted named alteration is notable.
+  const d13 = make('C7♭9', 'C3', ['E3', 'B♭3']);
+  check('D13 C7♭9 without its ♭9: "♭9 (D♭) left out — notable … without it this is plain C7"', /^♭9 \(D♭\) left out — notable: the ♭9 is the colour C7♭9 asks for; without it this is plain C7\.$/m.test(texts([byId(d13, 'omissions')])), texts([byId(d13, 'omissions')]));
+  const d14 = make('C9', 'C3', ['E3', 'B♭3']);
+  check('D14 C9 without its 9: still routine', /^9 \(D\) left out — routine: a named extension is colour, not structure\./m.test(texts([byId(d14, 'omissions')])), texts([byId(d14, 'omissions')]));
+  const majSharp11 = make('Cmaj7♯11', 'C3', ['E3', 'G3', 'B3']);
+  check('…an omitted ♯11 on Cmaj7♯11 is notable, worded for a non-dominant', /^♯11 \(F♯\) left out — notable: the ♯11 is the colour Cmaj7♯11 asks for; without it the symbol's alteration is not heard\.$/m.test(texts([byId(majSharp11, 'omissions')])), texts([byId(majSharp11, 'omissions')]));
   const aug = make('Cmaj9♯5', 'C3', ['E3', 'B3', 'D4']);
   check('…and so is a ♯5 (Cmaj9♯5 without its ♯5)', /♯5 \(G♯\) left out — notable/.test(texts([byId(aug, 'omissions')])), texts(aug));
   check('no previous event → sections are shape, guide-tones, colour-tones, omissions (no motion)', shell.map(s => s.id).join(',') === 'shape,guide-tones,colour-tones,omissions', shell.map(s => s.id).join(','));

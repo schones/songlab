@@ -110,11 +110,11 @@ const LOCAL_CHORD_TYPES = {
  */
 const SUFFIX_TO_TYPE = {
   '': 'major', 'maj': 'major', 'M': 'major',
-  'm': 'minor', 'min': 'minor', '-': 'minor',
+  'm': 'minor', 'min': 'minor', '-': 'minor', 'mi': 'minor',
   'dim': 'diminished', 'o': 'diminished',
   'aug': 'augmented', '+': 'augmented',
   '7': 'dom7', 'maj7': 'maj7', 'M7': 'maj7', 'ma7': 'maj7',
-  'm7': 'min7', 'min7': 'min7', '-7': 'min7',
+  'm7': 'min7', 'min7': 'min7', '-7': 'min7', 'mi7': 'min7',   // Dmi7 (Levine T2)
   'dim7': 'dim7', 'o7': 'dim7',
   'm7b5': 'half-dim7', '-7b5': 'half-dim7', 'h7': 'half-dim7', 'h': 'half-dim7',
   'mmaj7': 'minmaj7', 'mMaj7': 'minmaj7', 'minmaj7': 'minmaj7', 'mM7': 'minmaj7', 'm(maj7)': 'minmaj7',
@@ -759,6 +759,7 @@ async function selfTest() {
   assert('P8 m(maj7), mM7, mmaj7, mMaj7, minmaj7, mΔ7 → minmaj7', ['Cm(maj7)', 'CmM7', 'Cmmaj7', 'CmMaj7', 'Cminmaj7', 'CmΔ7'].map(s => sym(s)[1]), Array(6).fill('minmaj7'));
   assert('P9 parseNote still reads "-" as flat in a note name (E-3 = E♭3)', parseNote('E-3').midi, parseNote('E♭3').midi);
   assert('bare "sus" still parses as sus4',                   sym('Csus'), ['C', 'sus4']);
+  assert('T2 Dmi7 → D min7; Dmi → D minor',                    [sym('Dmi7'), sym('Dmi')], [['D', 'min7'], ['D', 'minor']]);
   // ── Unit: parser — new types (§5b), alterations (Levine T4), Δ (Levine T2)
   const ivs = s => parseSymbol(s)?.intervals ?? null;
   assert('P6 13',                 ivs('C13'),       [0, 4, 7, 10, 14, 21]);

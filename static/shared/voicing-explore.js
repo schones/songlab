@@ -175,19 +175,36 @@ function isDominant(parsed) {
  * @returns {{ parsed, named: Array<{pc, degree, name}>, pool: Array<{pc, degree, name, named:boolean}>, dominant:boolean }|null}
  *   named = the symbol's tones (slash bass included); pool = named plus the
  *   extensions above, each spelled chord-relatively. null when unparsed.
+ *
+ * Pool rules (heuristic), by semitone above the root:
+ *   - 9 (2) on every type, unless the type names a ♭9 or ♯9 (an altered 9th
+ *     displaces the natural one).
+ *   - dominant types (major 3rd + minor 7th) add 13 (9) and ♯11 (6).
+ *   - `def.alt` (7alt, Levine T1): ♭9 ♯9 ♯11 ♭13 (1 3 6 8) and no 5, 9 or 13.
+ *   - half-diminished (minor 3rd, ♭5, minor 7th): 11 (5) and ♭13 (8), never
+ *     ♭9 — Locrian's avoid note (Levine H3); 9 stays in, from Locrian ♯2
+ *     (Levine H4); ♭13 is a scale tone in both modes (Levine H5).
  */
 function chordTones(symbolOrParsed) {
   const parsed = typeof symbolOrParsed === 'string' ? parseSymbol(symbolOrParsed) : symbolOrParsed;
   if (!parsed) return null;
   const root = parsed.rootPC;
+  const ivs = new Set(parsed.intervals.map(i => i % 12));
   const namedPCs = [];
   for (const iv of parsed.intervals) { const pc = (root + iv) % 12; if (!namedPCs.includes(pc)) namedPCs.push(pc); }
   if (parsed.bassPC != null && !namedPCs.includes(parsed.bassPC)) namedPCs.push(parsed.bassPC);
   const dominant = isDominant(parsed);
-  const altered9 = namedPCs.includes((root + 1) % 12) || namedPCs.includes((root + 3) % 12) && dominant;
-  const extPCs = [];
-  if (!altered9) extPCs.push((root + 2) % 12);
-  if (dominant) extPCs.push((root + 9) % 12, (root + 6) % 12);
+  const alt = !!parsed.def?.alt;
+  const halfDim = ivs.has(3) && ivs.has(6) && ivs.has(10) && !ivs.has(7);
+  const altered9 = ivs.has(1) || ivs.has(3) && dominant;   // a named ♭9, or a ♯9 on a dominant (3 is the ♭3 elsewhere)
+  const extSemis = [];
+  if (alt) extSemis.push(1, 3, 6, 8);
+  else {
+    if (!altered9) extSemis.push(2);
+    if (dominant) extSemis.push(9, 6);
+    if (halfDim) extSemis.push(5, 8);
+  }
+  const extPCs = extSemis.map(s => (root + s) % 12);
   const allPCs = [...namedPCs, ...extPCs.filter(pc => !namedPCs.includes(pc))];
   // Spell every pool tone through the engine's chord-relative speller (midi input → degree + name).
   const nvp = namedVsPlayed(parsed, allPCs.map(pc => 60 + pc));
@@ -767,6 +784,15 @@ async function selfTest() {
   assert('C7♭9 skips the natural 9th', chordTones('C7b9').pool.map(p => p.degree), ['R', '3', '5', '♭7', '♭9', '13', '♯11']);
   assert('Cmaj7, Cm7, Cdim7 get no 13/♯11', [chordTones('Cmaj7').pool.length, chordTones('Cm7').pool.length, chordTones('Cdim7').pool.length], [5, 5, 5]);
   assert('C7sus4 is not dominant (no 3rd)', chordTones('C7sus4').dominant, false);
+  // E1–E5: pools for the Levine types (read-and-report §1, §5; Prompt 2 items 5–6)
+  assert('E1 C7alt pool: R 3 ♭7 then ♭9 ♯9 ♯11 ♭13 — no 5, 9 or 13 (Levine T1); dominant', [chordTones('C7alt').pool.map(p => `${p.name}·${p.degree}`), chordTones('C7alt').dominant],
+    [['C·R', 'E·3', 'B♭·♭7', 'D♭·♭9', 'D♯·♯9', 'F♯·♯11', 'A♭·♭13'], true]);
+  assert('E2 C13 pool names the 13 once, no duplicate', [chordTones('C13').pool.filter(p => p.degree === '13').length, chordTones('C13').pool.map(p => p.degree)], [1, ['R', '3', '5', '♭7', '9', '13', '♯11']]);
+  assert('E3 C9sus4: not dominant; the 4 is in the pool (Levine T5)', [chordTones('C9sus4').dominant, chordTones('C9sus4').pool.map(p => p.degree)], [false, ['R', '4', '5', '♭7', '9']]);
+  assert('E4 Cm7♭5 pool offers 9, 11 and ♭13 and never ♭9 (Levine H3–H5)', chordTones('Cm7♭5').pool.map(p => `${p.name}·${p.degree}`), ['C·R', 'E♭·♭3', 'G♭·♭5', 'B♭·♭7', 'D·9', 'F·11', 'A♭·♭13']);
+  assert('E4 Cø7 reaches the same pool through the ø suffix', chordTones('Cø7').pool.map(p => p.degree), ['R', '♭3', '♭5', '♭7', '9', '11', '♭13']);
+  assert('C7♯9 skips the natural 9th (altered9 on a dominant ♯9)', chordTones('C7♯9').pool.map(p => p.degree), ['R', '3', '5', '♭7', '♯9', '13', '♯11']);
+  assert('Cm7 (minor 3rd, not dominant) still gets the natural 9', chordTones('Cm7').pool.map(p => p.degree), ['R', '♭3', '5', '♭7', '9']);
   assert('B♭maj9♯5/F named includes the slash F as 5', chordTones('B♭maj9♯5/F').named.map(n => `${n.name}·${n.degree}`), ['B♭·R', 'D·3', 'F♯·♯5', 'A·7', 'C·9', 'F·5']);
   assert('unparsed symbol → null', chordTones('Xyz'), null);
   assert('spellMidi keeps the letter\'s octave (C♭ at 59 → C♭4, B♯ at 60 → B♯3)', [spellMidi(59, 'C♭'), spellMidi(60, 'B♯'), parseNote(spellMidi(59, 'C♭')).midi], ['C♭4', 'B♯3', 59]);
