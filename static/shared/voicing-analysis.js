@@ -79,14 +79,35 @@ function _intervalBucket(span) {
 const LOCAL_CHORD_TYPES = {
   '6':        { intervals: [0, 4, 7, 9],          symbol: '6',       name: 'Major 6th',             base: 'major' },
   'm6':       { intervals: [0, 3, 7, 9],          symbol: 'm6',      name: 'Minor 6th',             base: 'minor' },
+  '6/9':      { intervals: [0, 4, 7, 9, 14],      symbol: '6/9',     name: 'Major 6/9',             base: 'major' },
   '7#11':     { intervals: [0, 4, 7, 10, 18],     symbol: '7♯11',    name: 'Dominant 7th ♯11',      base: 'major' },
   '7b9':      { intervals: [0, 4, 7, 10, 13],     symbol: '7♭9',     name: 'Dominant 7th ♭9',       base: 'major' },
   '7#9':      { intervals: [0, 4, 7, 10, 15],     symbol: '7♯9',     name: 'Dominant 7th ♯9',       base: 'major' },
+  '7b13':     { intervals: [0, 4, 7, 10, 20],     symbol: '7♭13',    name: 'Dominant 7th ♭13',      base: 'major' },
+  '7b9#11':   { intervals: [0, 4, 7, 10, 13, 18], symbol: '7♭9♯11',  name: 'Dominant 7th ♭9 ♯11',   base: 'major' },
+  '7#5':      { intervals: [0, 4, 8, 10],         symbol: '7♯5',     name: 'Dominant 7th ♯5',       base: 'augmented' },
+  '13':       { intervals: [0, 4, 7, 10, 14, 21], symbol: '13',      name: 'Dominant 13th',         base: 'major' },
+  '13#11':    { intervals: [0, 4, 7, 10, 14, 18, 21], symbol: '13♯11', name: 'Dominant 13th ♯11',   base: 'major' },
+  // Levine T1: G7alt = G7(♭9, ♯9, ♯11, ♭13). Only root, 3rd and ♭7 are named
+  // (option A of the 2026-10-28 read-and-report); `alt` tells the speller
+  // and the Explore pool that the colour is the four alterations, never
+  // the natural 5, 9 or 13.
+  '7alt':     { intervals: [0, 4, 10],            symbol: '7alt',    name: 'Altered dominant',      base: 'major', alt: true },
+  '9sus4':    { intervals: [0, 5, 7, 10, 14],     symbol: '9sus4',   name: 'Dominant 9th sus4',     base: null },
+  'm11':      { intervals: [0, 3, 7, 10, 14, 17], symbol: 'm11',     name: 'Minor 11th',            base: 'minor' },
   'maj7#11':  { intervals: [0, 4, 7, 11, 18],     symbol: 'maj7♯11', name: 'Major 7th ♯11',         base: 'major' },
+  'maj7#5':   { intervals: [0, 4, 8, 11],         symbol: 'maj7♯5',  name: 'Major 7th ♯5',          base: 'augmented' },
   'maj9#5':   { intervals: [0, 4, 8, 11, 14],     symbol: 'maj9♯5',  name: 'Major 9th ♯5',          base: 'augmented' },
+  'maj13':    { intervals: [0, 4, 7, 11, 14, 21], symbol: 'maj13',   name: 'Major 13th',            base: 'major' },
 };
 
-/** Symbol suffix (ASCII-normalised) → chord type id in CHORD_TYPES or LOCAL_CHORD_TYPES. */
+/**
+ * Symbol suffix → chord type id in CHORD_TYPES or LOCAL_CHORD_TYPES. Keys
+ * are in the form _normaliseSuffix produces: ASCII # and b, Δ expanded to
+ * maj7 (Levine T2), and - / + before an extension turned into b / # (Levine
+ * T4), so "7-9" is looked up as "7b9". A leading "-" is minor (Levine T3)
+ * and a leading "+" augmented; those keys are listed as written.
+ */
 const SUFFIX_TO_TYPE = {
   '': 'major', 'maj': 'major', 'M': 'major',
   'm': 'minor', 'min': 'minor', '-': 'minor',
@@ -95,12 +116,19 @@ const SUFFIX_TO_TYPE = {
   '7': 'dom7', 'maj7': 'maj7', 'M7': 'maj7', 'ma7': 'maj7',
   'm7': 'min7', 'min7': 'min7', '-7': 'min7',
   'dim7': 'dim7', 'o7': 'dim7',
-  'm7b5': 'half-dim7', 'h7': 'half-dim7', 'h': 'half-dim7',
-  'mmaj7': 'minmaj7', 'mM7': 'minmaj7', 'mmaj7': 'minmaj7', 'm(maj7)': 'minmaj7',
+  'm7b5': 'half-dim7', '-7b5': 'half-dim7', 'h7': 'half-dim7', 'h': 'half-dim7',
+  'mmaj7': 'minmaj7', 'mMaj7': 'minmaj7', 'minmaj7': 'minmaj7', 'mM7': 'minmaj7', 'm(maj7)': 'minmaj7',
+  '-maj7': 'minmaj7', '-M7': 'minmaj7', '-(maj7)': 'minmaj7',
   'sus4': 'sus4', 'sus': 'sus4', 'sus2': 'sus2', '7sus4': '7sus4', '7sus': '7sus4',
-  'add9': 'add9', '9': 'dom9', 'maj9': 'maj9', 'M9': 'maj9', 'm9': 'min9', 'min9': 'min9',
-  '6': '6', 'm6': 'm6', '7#11': '7#11', '7b9': '7b9', '7#9': '7#9',
+  '9sus4': '9sus4', '9sus': '9sus4',
+  'add9': 'add9', '9': 'dom9', 'maj9': 'maj9', 'M9': 'maj9', 'm9': 'min9', 'min9': 'min9', '-9': 'min9',
+  'm11': 'm11', 'min11': 'm11', '-11': 'm11',
+  '13': '13', 'maj13': 'maj13', 'M13': 'maj13', '13#11': '13#11',
+  '6': '6', 'm6': 'm6', '-6': 'm6', '6/9': '6/9', '69': '6/9', '6add9': '6/9',
+  '7#11': '7#11', '7b9': '7b9', '7#9': '7#9', '7b13': '7b13', '7b9#11': '7b9#11',
+  '7#5': '7#5', '+7': '7#5', '7+': '7#5', 'aug7': '7#5', '7alt': '7alt',
   'maj7#11': 'maj7#11', 'M7#11': 'maj7#11', 'maj9#5': 'maj9#5', 'M9#5': 'maj9#5',
+  'maj7#5': 'maj7#5', 'M7#5': 'maj7#5', '+maj7': 'maj7#5', 'maj7+': 'maj7#5',
 };
 
 const LETTERS   = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
@@ -110,6 +138,8 @@ const STEP_PC   = [0, 2, 4, 5, 7, 9, 11];
 /** Degree number for each letter step, as chord-tone labels use them. */
 const STEP_DEGREE = ['R', '9', '3', '11', '5', '13', '7'];
 const ACC_STR   = { '-2': '♭♭', '-1': '♭', '0': '', '1': '♯', '2': '♯♯' };
+/** The altered dominant's colour: ♭9, ♯9, ♯11, ♭13 as semitones above the root (Levine T1). */
+const _ALT_SEMIS = [1, 3, 6, 8];
 
 // ════════════════════════════════════════════════════════════════════
 // NOTES
@@ -156,32 +186,47 @@ function toMidi(input) {
 
 /**
  * Degree label and spelled name for a note relative to a chord root.
- * Uses the written letter when the note has one (B♭ over G → ♭3);
- * otherwise falls back to the semitone table (chord-aware) and spells
- * the result chord-relatively.
+ *
+ * A tone the chord type names takes the type's degree name (A over Cdim7
+ * is ♭♭7, E♭ over C7♯9 is ♯9, F over C7sus4 is 4 whether played or
+ * missing); the written name is kept as written, never respelled. A tone
+ * the type does not name keeps the letter-based label (B♭ over Gmaj7 →
+ * ♭3, A over Cmaj7 → 13); a midi number with no letter falls back to the
+ * chord-aware semitone table and is spelled chord-relatively.
  */
 function _degreeOf(note, root, chordDef) {
-  if (note.letter) {
-    const steps = (LETTERS.indexOf(note.letter) - LETTERS.indexOf(root.letter) + 7) % 7;
-    const expected = (root.pc + STEP_PC[steps]) % 12;
-    let diff = ((note.pc - expected) % 12 + 12) % 12;
-    if (diff > 6) diff -= 12;
-    const base = STEP_DEGREE[steps];
-    const degree = (ACC_STR[String(diff)] ?? '') + base;
-    return { degree, name: note.name };
-  }
   const semis = ((note.pc - root.pc) % 12 + 12) % 12;
-  return _spellDegree(root, semis, chordDef);
+  // On 7alt the four alterations are what the symbol means (Levine T1), so
+  // they take the type's names (E♭ → ♯9) even though only R, 3 and ♭7 are
+  // named intervals for the omitted list.
+  const named = (chordDef?.intervals || []).some(i => i % 12 === semis)
+    || (!!chordDef?.alt && _ALT_SEMIS.includes(semis));
+  if (named || !note.letter) {
+    const spelled = _spellDegree(root, semis, chordDef);
+    return { degree: spelled.degree, name: note.letter ? note.name : spelled.name };
+  }
+  const steps = (LETTERS.indexOf(note.letter) - LETTERS.indexOf(root.letter) + 7) % 7;
+  const expected = (root.pc + STEP_PC[steps]) % 12;
+  let diff = ((note.pc - expected) % 12 + 12) % 12;
+  if (diff > 6) diff -= 12;
+  const base = STEP_DEGREE[steps];
+  const degree = (ACC_STR[String(diff)] ?? '') + base;
+  return { degree, name: note.name };
 }
 
 /**
  * Chord-relative degree label + spelling from a semitone offset.
- * Used for omitted chord tones (no written form) and midi-only input.
+ * Used for named tones (whatever their written form), omitted chord
+ * tones and midi-only input. Rows are decided by the type's intervals,
+ * not its id, so new types inherit them.
  */
 function _spellDegree(root, semis, chordDef) {
   const ivs = new Set((chordDef?.intervals || []).map(i => i % 12));
   const id = chordDef?.id || '';
+  const alt = !!chordDef?.alt;
   const has = s => ivs.has(s);
+  const hasThird = has(3) || has(4);
+  const hasSeventh = has(10) || has(11);
   let degree;
   switch (semis % 12) {
     case 0:  degree = 'R'; break;
@@ -189,11 +234,15 @@ function _spellDegree(root, semis, chordDef) {
     case 2:  degree = id === 'sus2' ? '2' : '9'; break;
     case 3:  degree = has(4) ? '♯9' : '♭3'; break;
     case 4:  degree = '3'; break;
-    case 5:  degree = (id === 'sus4' || id === '7sus4') ? '4' : '11'; break;
-    case 6:  degree = has(7) ? '♯11' : '♭5'; break;
+    // Levine T5: 4 on sus chords (no 3rd), 11 on dominant and minor chords.
+    case 5:  degree = hasThird ? '11' : '4'; break;
+    // Levine T1: on an altered dominant the raised 4th is the ♯11 even with no 5th named.
+    case 6:  degree = has(7) || alt ? '♯11' : '♭5'; break;
     case 7:  degree = '5'; break;
-    case 8:  degree = has(7) ? '♭13' : '♯5'; break;
-    case 9:  degree = id === 'dim7' ? '♭♭7' : (id === '6' || id === 'm6' ? '6' : '13'); break;
+    // ♯5 only when the type names an augmented 5th; otherwise a 13th.
+    case 8:  degree = has(8) ? '♯5' : '♭13'; break;
+    // Levine T6: 6 on a sixth chord (no 7th), 13 when there is a 7th; dim7's 7th is ♭♭7.
+    case 9:  degree = has(3) && has(6) && has(9) && !hasSeventh ? '♭♭7' : (has(9) && !hasSeventh ? '6' : '13'); break;
     case 10: degree = '♭7'; break;
     case 11: degree = '7'; break;
   }
@@ -213,15 +262,34 @@ function _spellDegree(root, semis, chordDef) {
 // CHORD SYMBOLS
 // ════════════════════════════════════════════════════════════════════
 
-const _SYM_RE = /^([A-G])([#♯b♭\-]?)(.*?)(?:\/([A-G])([#♯b♭\-]?))?$/;
+/** Root and slash bass take ♯/♭ (# / b) only: "-" is never a root accidental (Levine T3, T4). */
+const _SYM_RE = /^([A-G])([#♯b♭]?)(.*?)(?:\/([A-G])([#♯b♭]?))?$/;
 
 /**
- * Parse a chord symbol such as "Gm7/F", "A7♯11/C♯", "E-maj7".
+ * Suffix as written → the SUFFIX_TO_TYPE key.
+ *   ♯ ♭ ° ø   → # b o h
+ *   Δ         → maj7 on its own or before a non-digit (CΔ, CΔ♯11); maj
+ *               before a digit (Δ7, Δ9, Δ13). Levine T2.
+ *   - / +     → b / # when directly before 5, 9, 11 or 13 anywhere after
+ *               the first character (C7-9 = C7♭9, C7+11 = C7♯11, C7+5 =
+ *               C7♯5). At the first character they are the quality:
+ *               "-" minor (C-9 = Cm9), "+" augmented (C+7). Levine T3, T4.
+ */
+function _normaliseSuffix(raw) {
+  let s = raw.replace(/♯/g, '#').replace(/♭/g, 'b').replace(/°/g, 'o').replace(/ø/g, 'h');
+  s = s.replace(/Δ(?=\d)/g, 'maj').replace(/Δ/g, 'maj7');
+  s = s.replace(/[-+](?=(?:5|9|11|13)(?!\d))/g, (sign, offset) => (offset === 0 ? sign : sign === '-' ? 'b' : '#'));
+  return s;
+}
+
+/**
+ * Parse a chord symbol such as "Gm7/F", "A7♯11/C♯", "E-Δ7", "C7-9".
  *
  * @returns {{ root:string, rootPC:number, type:string, intervals:number[],
  *             bass:string|null, bassPC:number|null, display:string, def:Object }|null}
  *   `type` is the id in CHORD_TYPES or LOCAL_CHORD_TYPES. null if the
- *   root or suffix is not understood.
+ *   root or suffix is not understood. `def` carries the type's fields
+ *   (`alt: true` on 7alt).
  */
 function parseSymbol(symbol) {
   if (typeof symbol !== 'string') return null;
@@ -229,7 +297,7 @@ function parseSymbol(symbol) {
   if (!m) return null;
   const root = parseNote(m[1] + m[2]);
   const suffixRaw = m[3];
-  const suffix = suffixRaw.replace(/♯/g, '#').replace(/♭/g, 'b').replace(/Δ/g, 'maj').replace(/°/g, 'o').replace(/ø/g, 'h');
+  const suffix = _normaliseSuffix(suffixRaw);
   const type = SUFFIX_TO_TYPE[suffix];
   if (!type) return null;
   const def = CHORD_TYPES[type] || LOCAL_CHORD_TYPES[type];
@@ -676,11 +744,62 @@ async function selfTest() {
   assert('parseNote(60) → C4', [parseNote(60).name, parseNote(60).octave], ['C', 4]);
   assert('parseSymbol("A7♯11/C♯")', (({ root, type, bass, display }) => ({ root, type, bass, display }))(parseSymbol('A7♯11/C♯')),
     { root: 'A', type: '7#11', bass: 'C♯', display: 'A7♯11/C♯' });
-  assert('parseSymbol("E-maj7").display = E♭maj7', parseSymbol('E-maj7').display, 'E♭maj7');
+  assert('P4 parseSymbol("E-maj7") = E minmaj7 (- is minor, never flat; was E♭maj7)', (({ root, type, display }) => [root, type, display])(parseSymbol('E-maj7')), ['E', 'minmaj7', 'E-maj7']);
   assert('parseSymbol("Gm9").type = min9 (from transforms)', parseSymbol('Gm9').type, 'min9');
   assert('parseSymbol("Xyz") = null', parseSymbol('Xyz'), null);
   assert('toHarmonyNotes(["F♯3", 62])', toHarmonyNotes(['F♯3', 62]),
     [{ note: 'F♯', octave: 3, source: 'user', color: null }, { note: 'D', octave: 4, source: 'user', color: null }]);
+
+  // ── Unit: parser — "-" is minor (Levine T3), dash suffixes ──────────
+  const sym = s => { const p = parseSymbol(s); return p ? [p.root, p.type] : null; };
+  assert('P1 C-7 → C min7, display as written',             [...sym('C-7'), parseSymbol('C-7').display], ['C', 'min7', 'C-7']);
+  assert('P2 B♭-7 and Bb-7 → B♭ min7',                       [sym('B♭-7'), sym('Bb-7')], [['B♭', 'min7'], ['B♭', 'min7']]);
+  assert('P3 C-7♭5 and C-7b5 → half-dim7',                   [sym('C-7♭5'), sym('C-7b5')], [['C', 'half-dim7'], ['C', 'half-dim7']]);
+  assert('P5 C-, C-9, C-6 → minor, min9, m6',                [sym('C-'), sym('C-9'), sym('C-6')], [['C', 'minor'], ['C', 'min9'], ['C', 'm6']]);
+  assert('P8 m(maj7), mM7, mmaj7, mMaj7, minmaj7, mΔ7 → minmaj7', ['Cm(maj7)', 'CmM7', 'Cmmaj7', 'CmMaj7', 'Cminmaj7', 'CmΔ7'].map(s => sym(s)[1]), Array(6).fill('minmaj7'));
+  assert('P9 parseNote still reads "-" as flat in a note name (E-3 = E♭3)', parseNote('E-3').midi, parseNote('E♭3').midi);
+  assert('bare "sus" still parses as sus4',                   sym('Csus'), ['C', 'sus4']);
+  // ── Unit: parser — new types (§5b), alterations (Levine T4), Δ (Levine T2)
+  const ivs = s => parseSymbol(s)?.intervals ?? null;
+  assert('P6 13',                 ivs('C13'),       [0, 4, 7, 10, 14, 21]);
+  assert('P6 9sus4 / 9sus',       [ivs('C9sus4'), ivs('C9sus')], [[0, 5, 7, 10, 14], [0, 5, 7, 10, 14]]);
+  assert('P6 m11 / -11 / min11',  [ivs('Cm11'), ivs('C-11'), ivs('Cmin11')], Array(3).fill([0, 3, 7, 10, 14, 17]));
+  assert('P6 7♭13',               ivs('C7♭13'),     [0, 4, 7, 10, 20]);
+  assert('P6 7♯5 / +7 / 7+ / aug7 / 7#5', ['C7♯5', 'C+7', 'C7+', 'Caug7', 'C7#5'].map(ivs), Array(5).fill([0, 4, 8, 10]));
+  assert('P6 maj7♯5 / +maj7 / maj7+', ['Cmaj7♯5', 'C+maj7', 'Cmaj7+'].map(ivs), Array(3).fill([0, 4, 8, 11]));
+  assert('P6 6/9 / 69 / 6add9',   ['C6/9', 'C69', 'C6add9'].map(ivs), Array(3).fill([0, 4, 7, 9, 14]));
+  assert('P6 maj13',              ivs('Cmaj13'),    [0, 4, 7, 11, 14, 21]);
+  assert('P6 7♭9♯11, 13♯11',      [ivs('C7♭9♯11'), ivs('C13♯11')], [[0, 4, 7, 10, 13, 18], [0, 4, 7, 10, 14, 18, 21]]);
+  assert('P6 7alt: R 3 ♭7 named, alt flag on def (Levine T1)', [ivs('C7alt'), parseSymbol('C7alt').def.alt], [[0, 4, 10], true]);
+  assert('P7 C6/9/E → type 6/9 with bass E', (({ type, bass }) => [type, bass])(parseSymbol('C6/9/E')), ['6/9', 'E']);
+  assert('T4 C7-9 = C7♭9, C7+11 = C7♯11, C7+5 = C7♯5', [sym('C7-9')[1], sym('C7+11')[1], sym('C7+5')[1]], ['7b9', '7#11', '7#5']);
+  assert('T4 C7-9+11 = 7♭9♯11, Cm7-5 = half-dim7, C7-13 = 7♭13', [sym('C7-9+11')[1], sym('Cm7-5')[1], sym('C7-13')[1]], ['7b9#11', 'half-dim7', '7b13']);
+  assert('T3/T4 leading sign is the quality: C-9 = Cm9, C+7 = C7♯5, C+ = aug', [sym('C-9')[1], sym('C+7')[1], sym('C+')[1]], ['min9', '7#5', 'augmented']);
+  assert('T2 CΔ, CΔ7 → maj7; CΔ9 → maj9; CΔ♯11 → maj7♯11', ['CΔ', 'CΔ7', 'CΔ9', 'CΔ♯11'].map(s => sym(s)[1]), ['maj7', 'maj7', 'maj9', 'maj7#11']);
+  assert('T2 C-Δ, C-Δ7 → minmaj7',                          [sym('C-Δ')[1], sym('C-Δ7')[1]], ['minmaj7', 'minmaj7']);
+  assert('display keeps the suffix as written (C7-9, CΔ)',  [parseSymbol('C7-9').display, parseSymbol('CΔ').display], ['C7-9', 'CΔ']);
+
+  // ── Unit: degree labels — named tones take the type's name (§1) ────
+  const nv = (s, p) => { const r = namedVsPlayed(s, p); return [fmt(r.present), fmt(r.omitted), fmt(r.added)]; };
+  assert('A1 Cdim7 with A written → A·♭♭7 (not 13), nothing omitted', nv('Cdim7', ['C3', 'E♭3', 'G♭3', 'A3']), [['C·R', 'E♭·♭3', 'G♭·♭5', 'A·♭♭7'], [], []]);
+  assert('A2 Cdim7 without its 7th → omitted B♭♭·♭♭7',            nv('Cdim7', ['C3', 'E♭3', 'G♭3'])[1], ['B♭♭·♭♭7']);
+  assert('A3 C7♯9 with E♭ written → E♭·♯9 (not ♭3)',              nv('C7♯9', ['C3', 'E3', 'B♭3', 'E♭4']), [['C·R', 'E·3', 'B♭·♭7', 'E♭·♯9'], ['G·5'], []]);
+  assert('A4 C7♯9, E♭ played and E missing → ♯9 present, 3 omitted', nv('C7♯9', ['C3', 'B♭3', 'E♭4']), [['C·R', 'B♭·♭7', 'E♭·♯9'], ['E·3', 'G·5'], []]);
+  assert('A5 C7♯9 with D♯ written → D♯·♯9 (unchanged)',            nv('C7♯9', ['C3', 'E3', 'B♭3', 'D♯4'])[0], ['C·R', 'E·3', 'B♭·♭7', 'D♯·♯9']);
+  assert('A6 C7sus4 with F played → F·4 (Levine T5)',              nv('C7sus4', ['C3', 'F3', 'G3', 'B♭3'])[0], ['C·R', 'F·4', 'G·5', 'B♭·♭7']);
+  assert('A7 C7sus4 with F missing → omitted F·4',                 nv('C7sus4', ['C3', 'G3', 'B♭3'])[1], ['F·4']);
+  assert('A8 C6 with A played → A·6 (Levine T6)',                  nv('C6', ['C3', 'E3', 'G3', 'A3'])[0], ['C·R', 'E·3', 'G·5', 'A·6']);
+  assert('A9 C6 with A missing → omitted A·6',                     nv('C6', ['C3', 'E3', 'G3'])[1], ['A·6']);
+  assert('A10 Cm7♭5 with midi A♭ → added A♭·♭13 (was G♯·♯5)',      nv('Cm7♭5', [48, 51, 54, 56, 58])[2], ['A♭·♭13']);
+  assert('A11 Cmaj7 with A written → added A·13 (unnamed: letter path, unchanged)', nv('Cmaj7', ['C3', 'E3', 'B3', 'A3'])[2], ['A·13']);
+  assert('A12 Gmaj7 with B♭ written → added B♭·♭3 (letter path, unchanged)', nv('Gmaj7', ['G2', 'B3', 'B♭3'])[2], ['B♭·♭3']);
+  assert('A13 plain C7 with E♭ written → added E♭·♭3 (unnamed on C7: spelling decides)', nv('C7', ['C3', 'E3', 'B♭3', 'E♭4'])[2], ['E♭·♭3']);
+  assert('C13 with A → A·13; Cm6 with A → A·6; C6/9 → A·6 D·9',   [nv('C13', ['C3', 'E3', 'B♭3', 'A3'])[0].pop(), nv('Cm6', ['C3', 'E♭3', 'A3'])[0].pop(), nv('C6/9', ['C3', 'E3', 'A3', 'D4'])[0].slice(-2)], ['A·13', 'A·6', ['A·6', 'D·9']]);
+  assert('Cdim7 with midi A♭ → added A♭·♭13 (was G♯·♯5)',          nv('Cdim7', [48, 51, 54, 57, 56])[2], ['A♭·♭13']);
+  assert('C7♯5 with G♯ written → G♯·♯5 (named ♯5 stays ♯5)',       nv('C7♯5', ['C3', 'E3', 'G♯3', 'B♭3'])[0], ['C·R', 'E·3', 'G♯·♯5', 'B♭·♭7']);
+  assert('C9sus4 with F → F·4; Cm11 with F → F·11 (Levine T5)',   [nv('C9sus4', ['C3', 'F3', 'B♭3', 'D4'])[0][1], nv('Cm11', ['C3', 'E♭3', 'B♭3', 'F4'])[0].pop()], ['F·4', 'F·11']);
+  assert('C7alt by midi: R 3 ♭7 present; ♭9 ♯9 ♯11 ♭13 added, ♯11 spelled F♯ (Levine T1)', nv('C7alt', [48, 52, 58, 49, 51, 54, 56]), [['C·R', 'E·3', 'B♭·♭7'], [], ['D♭·♭9', 'D♯·♯9', 'F♯·♯11', 'A♭·♭13']]);
+  assert('C7alt written: E♭ and A♭ keep their names, labelled ♯9 and ♭13', nv('C7alt', ['C3', 'E3', 'B♭3', 'E♭4', 'A♭4'])[2], ['E♭·♯9', 'A♭·♭13']);
 
   // ── Fixture ──────────────────────────────────────────────────────
   const fixtureURL = new URL('../../tests/fixtures/voicing-fixture.json', import.meta.url);

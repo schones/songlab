@@ -17,6 +17,21 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-10-28] Unnamed tones: letter-based labels vs Levine T5/T6.**
+  The engine now gives a tone the chord type names the type's degree
+  name (A over Cdim7 is ♭♭7, F over C7sus4 is 4, A over C6 is 6). A
+  tone the type does *not* name still takes its label from the written
+  letter: A over Cmaj7 reads 13, F over Cmaj7 reads 11, B♭ over Gmaj7
+  reads ♭3, E♭ over plain C7 reads ♭3 while a midi E♭ reads ♯9. Levine
+  T5/T6 (`docs/reference/levine-claims.md`) would say 6 and 4 on major
+  chords, 13 and 11 on dominant and minor chords, regardless of what
+  the symbol names. Decide whether unnamed tones should follow T5/T6
+  (and whether an unnamed semis-3 on a major-third chord is ♯9 or ♭3
+  irrespective of spelling). Changing it moves fixture bar 8 (`B♭·♭3`
+  over Gmaj7), the private bar-17 melody label and the
+  `named-vs-played` topic text.
+  See: `static/shared/voicing-analysis.js` `_degreeOf`, `_spellDegree`.
+
 - **[2026-10-22] Held non-chord tones can show double accidentals on the
   staff.** Cycle of Shells spells held notes against the current target
   (`spellForTarget` → `namedVsPlayed`), so a non-chord tone takes the
