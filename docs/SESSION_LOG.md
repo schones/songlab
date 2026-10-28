@@ -3,6 +3,47 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-10-27 — cycle-of-shells merged; platform audit; docs truth pass
+
+Housekeeping day, no feature work. The ii_V_I walkthrough got its
+missing `concept_specifics` (Dm7 and G7 steps, `4316f8a`), then
+`cycle-of-shells` was merged into `dev` and the merged branches
+cleaned up. A platform audit was written from a read of the whole
+repo, and the docs that misled every session start were brought back
+in line with the code.
+
+### Landed
+- `cycle-of-shells` merged into `dev` after the ii_V_I
+  `concept_specifics` fix; branches `learn-topics`, `voicing-explorer`
+  and `cycle-of-shells` deleted (all merged). `dev` remains the only
+  active branch.
+- `docs/AUDIT-2026-10-27.md` — platform audit: §1 info-pill and
+  /learn explainer bugs (the "definitely wrong" set shows on every
+  bar), the three content systems that don't know about each other;
+  §2 public-pieces pipeline gaps; §3 platform inventory by area,
+  duplication, misleading docs, branch state, the before-any-deploy
+  hardening list; §4 this week's plan.
+- Docs truth pass (`68ce7cc`): STATUS header and current state
+  rewritten (branch list, no deploy, local run on port 5001),
+  CLAUDE.md reference-doc tiers (current / architecture / parked /
+  stale) and rules, README, KNOWN-ISSUES trimmed to a pointer,
+  WORKING_STYLE branch name. Two duplicate docs removed:
+  `docs/TEST_PLAN.md` and `docs/puzzle-paths-spec.md`.
+
+### Diagnosed / decided
+- Roadmap now lives in the audit (§4), not `songlab-build-plan.md`;
+  the build plan is marked stale in CLAUDE.md.
+- `main` is stale (~138 behind dev) and is not production; fast-forward
+  or retire it before any deploy. Railway is gone; nothing is deployed.
+- Remaining branch decisions deferred: `cantor` (merge or archive),
+  `chord-melody-research` (rename to `archive/`), `archive/skratch-integration`
+  (safe to delete).
+
+### Setup for next session
+- `dev` at `68ce7cc`, clean. Start from `docs/STATUS.md` and the audit
+  §4 for this week's work: the explainer bug fixes first.
+
+
 ## 2026-10-22 — learn-topics merged; Cycle of Shells game, stages 1–4 on branch `cycle-of-shells`
 
 `learn-topics` merged into `dev` (`76c50c2`: Phase 1 topics, SOURCES.md,
