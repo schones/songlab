@@ -640,7 +640,8 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
   or `carried`, never `inferred`); `bassSource` authored on the link
   and checked against the fixture; `PUBLIC_PIECES` allowlist
   (maple-leaf-rag, fixture) with fixtures on disk. Four seed examples
-  (C7 shells both ways, a shape-built rootless A-form, an E♭7 shell
+  (C7 shells both ways, a shape-built rootless voicing with the 3rd on
+  the bottom, an E♭7 shell
   linked related to rag 16.2 — no rag E♭7 with a real bass is a
   shell, bars 2/4 have the 5th in the bass). Two examples placed in
   `guide-tones-and-shells`.

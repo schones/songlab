@@ -360,6 +360,11 @@ out of awareness.
 
 ---
 
+## Content fixes (batch, by hand)
+
+- tritone "Where it lives": second paragraph repeats the first sentence —
+  drop "In a dominant 7th … pull." from the second paragraph.
+
 ## Retired
 (items move here when resolved, for short-term reference, then get
 cleared periodically.)

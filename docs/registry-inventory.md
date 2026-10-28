@@ -124,7 +124,7 @@ explicit `chordType`; delegates parsing to
 a consumer whose string vocabulary must stay parseable against the
 canonical symbol set.
 
-### 9. `static/shared/voicing-analysis.js` — `LOCAL_CHORD_TYPES` + `SUFFIX_TO_TYPE` (added 2026-10-14)
+### 9. `static/shared/voicing-analysis.js` — `LOCAL_CHORD_TYPES` + `SUFFIX_TO_TYPE` (added 2026-10-14; extended 2026-10-28)
 
 Voicing Explorer analysis engine. **Not a new interval registry**: it
 imports `CHORD_TYPES` from `transforms.js` for every type transforms
@@ -133,28 +133,52 @@ what transforms lacks.
 
 ```javascript
 const LOCAL_CHORD_TYPES = {
-  '6':       { intervals: [0, 4, 7, 9],       symbol: '6',       base: 'major' },
-  'm6':      { intervals: [0, 3, 7, 9],       symbol: 'm6',      base: 'minor' },
-  '7#11':    { intervals: [0, 4, 7, 10, 18],  symbol: '7♯11',    base: 'major' },
-  '7b9':     { intervals: [0, 4, 7, 10, 13],  symbol: '7♭9',     base: 'major' },
-  '7#9':     { intervals: [0, 4, 7, 10, 15],  symbol: '7♯9',     base: 'major' },
-  'maj7#11': { intervals: [0, 4, 7, 11, 18],  symbol: 'maj7♯11', base: 'major' },
-  'maj9#5':  { intervals: [0, 4, 8, 11, 14],  symbol: 'maj9♯5',  base: 'augmented' },
+  // original seven (2026-10-14)
+  '6':       { intervals: [0, 4, 7, 9],              symbol: '6',       base: 'major' },
+  'm6':      { intervals: [0, 3, 7, 9],              symbol: 'm6',      base: 'minor' },
+  '7#11':    { intervals: [0, 4, 7, 10, 18],         symbol: '7♯11',    base: 'major' },
+  '7b9':     { intervals: [0, 4, 7, 10, 13],         symbol: '7♭9',     base: 'major' },
+  '7#9':     { intervals: [0, 4, 7, 10, 15],         symbol: '7♯9',     base: 'major' },
+  'maj7#11': { intervals: [0, 4, 7, 11, 18],         symbol: 'maj7♯11', base: 'major' },
+  'maj9#5':  { intervals: [0, 4, 8, 11, 14],         symbol: 'maj9♯5',  base: 'augmented' },
+  // eleven added 2026-10-28 (theory-label-fixes, Levine T1–T6)
+  '6/9':     { intervals: [0, 4, 7, 9, 14],          symbol: '6/9',     base: 'major' },      // 6/9, 69, 6add9
+  '7b13':    { intervals: [0, 4, 7, 10, 20],         symbol: '7♭13',    base: 'major' },      // 7♭13, 7-13
+  '7b9#11':  { intervals: [0, 4, 7, 10, 13, 18],     symbol: '7♭9♯11',  base: 'major' },      // 7♭9♯11, 7-9+11
+  '7#5':     { intervals: [0, 4, 8, 10],             symbol: '7♯5',     base: 'augmented' },  // 7♯5, +7, 7+, aug7, 7+5
+  '13':      { intervals: [0, 4, 7, 10, 14, 21],     symbol: '13',      base: 'major' },
+  '13#11':   { intervals: [0, 4, 7, 10, 14, 18, 21], symbol: '13♯11',   base: 'major' },      // 13♯11, 13+11
+  '7alt':    { intervals: [0, 4, 10],                symbol: '7alt',    base: 'major', alt: true },  // Levine T1; see below
+  '9sus4':   { intervals: [0, 5, 7, 10, 14],         symbol: '9sus4',   base: null },         // 9sus4, 9sus
+  'm11':     { intervals: [0, 3, 7, 10, 14, 17],     symbol: 'm11',     base: 'minor' },      // m11, min11, -11
+  'maj7#5':  { intervals: [0, 4, 8, 11],             symbol: 'maj7♯5',  base: 'augmented' },  // maj7♯5, M7♯5, +maj7, maj7+
+  'maj13':   { intervals: [0, 4, 7, 11, 14, 21],     symbol: 'maj13',   base: 'major' },      // maj13, M13, Δ13
 };
 ```
 
+Every entry also carries a display `name` (`'Dominant 7th ♭13'`, …) that
+the `/learn` chord-symbols table prints. `7alt` is the one irregular entry:
+it names only root, 3rd and ♭7 (so none of its alterations is ever reported
+as "left out"), and the `alt: true` flag tells the degree speller and the
+Explore tone pool that its colour is ♭9 ♯9 ♯11 ♭13, never the natural 5, 9
+or 13 (Levine T1, `docs/reference/levine-claims.md`).
+
 - **Also carries:** `SUFFIX_TO_TYPE`, a chord-symbol suffix → type-id
   parse table (`"m7"` → `min7`, `"ø7"` → `half-dim7`, `"°"` →
-  `diminished`, …). This is the only shared symbol parser besides
+  `diminished`, …). Since 2026-10-28 `parseSymbol` normalises the suffix
+  first (`_normaliseSuffix`): `-` after the root is minor and `-`/`+`
+  before 5, 9, 11 or 13 are ♭/♯ (Levine T3, T4), `Δ` is maj7 (T2), and
+  `-` is no longer accepted as a root accidental. This is the only shared symbol parser besides
   `parseChordName()` in `walkthrough-sidebar.js`; a canonical
   `symbolAlternates` list should absorb it.
 - **Slash bass** is handled by `parseSymbol` (root / type / bass), not
   by any registry — consistent with edge case 4 above.
 - **Consumers:** the `/voicings` page (Session 3+), self-test via
   `tests/fixtures/voicing-fixture.json`.
-- **Migration note:** when `chord-types.json` lands, the seven local
+- **Migration note:** when `chord-types.json` lands, the eighteen local
   entries move there (all `detectable: false`, resolver priority 3+)
-  and `LOCAL_CHORD_TYPES` is deleted.
+  and `LOCAL_CHORD_TYPES` is deleted. The `alt` flag needs a home in the
+  canonical schema (edge case for the spec above).
 
 ---
 

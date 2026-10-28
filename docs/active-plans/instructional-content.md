@@ -82,7 +82,7 @@ link) → common confusions → try it (Explore or a game) → sources.
 - C. Theory drafted in the planning chat; Claude Code formats and wires.
 - D. Per-claim verification, checklist kept in each topic's `notes`.
 
-## Open / RADAR highlights (as of 2026-10-20)
+## Open / RADAR highlights (as of 2026-10-28)
 
 - Public pieces track: I Got Rhythm, Body and Soul, Georgia on My Mind
   (1930, US public domain since 2026-01-01). Sources: original 1930
@@ -96,8 +96,11 @@ link) → common confusions → try it (Explore or a game) → sources.
   observer margin). Strict links require a non-inferred bass, so no rag
   E♭7 shell can be strict; `eb7-shell-in-the-rag` is on no topic yet.
 
-- Unverified, on the Levine list: the shape catalogue (especially the
-  dominant A/B rows), the T2 claims, the dominant-rule wording.
+- Verified from own knowledge, not yet against the book: the T1/T2
+  registry claims (chord-tones, guide-tones, tritone — notes dated
+  2026-10-20, status `verified`). Checked against Levine 2026-10-28: the
+  shape catalogue (JPB fig 7-2/7-4, claims R2/R4) and the tone-pool rules
+  (T1, H3–H5). Still unverified: the dominant-rule wording.
 - Private piece data under `static/` is directly fetchable — move
   before any shared deploy.
 - Rag bars 16–17: the late-bar bass dyad never becomes a comp event.

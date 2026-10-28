@@ -384,8 +384,10 @@ const TOPICS = {
     body: `
       Every piece on this page is a JSON document (schema v1,
       \`tools/voicings/schema.md\`) with spelled note names as the source of
-      truth — the written spelling decides degree labels, so a D♯ and an E♭
-      are different things even though they are the same key.
+      truth. A written name is never respelled, and a tone the chord symbol
+      does not name takes its degree label from its letter, so a D♯ and an
+      E♭ are different things even though they are the same key (the full
+      labelling rule is under [named vs played](named-vs-played)).
 
       ## The roles
 
@@ -530,7 +532,7 @@ const TOPICS = {
     title: 'Named vs played',
     status: 'claude-draft', category: 'tool', kind: 'fact', panel: 'nvp',
     see_also: ['chord-symbols', 'chord-tones-and-roles', 'omitting-tones', 'extensions', 'guide-tones-and-shells'],
-    summary: 'The chord symbol’s tones against the pitches actually played: which named tones are present, which are left out, and what was added. Degree labels come from the written spelling.',
+    summary: 'The chord symbol’s tones against the pitches actually played: which named tones are present, which are left out, and what was added. A tone the symbol names takes the chord type’s degree name; an unnamed tone is labelled from its written letter.',
     body: `
       The chord symbol names a set of tones; the player played some set of
       pitches. This panel compares them for the selected event:
@@ -540,8 +542,9 @@ const TOPICS = {
       - **Left out** — named tones that are absent, spelled relative to the
         chord. Leaving out the 5th is routine; leaving out the 3rd or 7th
         changes what the chord says (see [omitting tones](omitting-tones)).
-      - **Added** — played pitches the symbol does not name, labelled as
-        extensions: 9, ♯11, 13 and so on (see [extensions](extensions)).
+      - **Added** — played pitches the symbol does not name, labelled by
+        degree: 9, ♯11, 13 and so on, or 6 over a major 7th chord (see
+        [extensions](extensions)).
 
       The pitches compared are the bass and the voicing — plus the melody
       notes overlapping the event when the melody toggle is on. A **slash
@@ -549,11 +552,20 @@ const TOPICS = {
 
       ## How degrees are labelled
 
-      The label follows the **letter distance** from the root, so the
-      written spelling matters: a 6th above the root reads as 13, a 2nd as 9,
-      a 4th as 11, each with its accidental. In fixture bar 6 (\`A7♯11/C♯\`,
-      bass C♯3, voicing G3 D♯4) the D♯ is labelled ♯11 because it is written
-      D♯; written as E♭ it would read ♭5. Left out: A (R) and E (5).
+      A tone the chord symbol **names** takes the chord type's degree name,
+      however it is written: over A7♯11 a D♯ and an E♭ both read ♯11, and
+      over Cdim7 an A reads ♭♭7. The name shown stays as written (D♯·♯11 or
+      E♭·♯11); nothing is respelled. A tone the symbol does **not** name is
+      labelled by its **letter distance** from the root, with the accidental
+      that fits: a 6th above the root reads 13, a 2nd 9, a 4th 11. The one
+      exception is a 6th over a major 7th chord, which reads 6 rather than
+      13 — the 6 standing in for the major 7th is the 6/9 sound.
+
+      In fixture bar 6 (\`A7♯11/C♯\`, bass C♯3, voicing G3 D♯4) the D♯ is
+      labelled ♯11 because A7♯11 names it; written as E♭ it would still read
+      ♯11. Left out: A (R) and E (5). In fixture bar 8 the B♭ over Gmaj7 is
+      not named, so it reads ♭3 from its letter; written as A♯ it would read
+      ♯9.
 
       Maple Leaf Rag bar 12, second event (\`E♭7/D♭\`, bass E♭4, voicing
       G4 D♭5): played E♭ (R), G (3), D♭ (♭7); left out B♭ (5) — a shell with
@@ -563,6 +575,12 @@ const TOPICS = {
       parser's table (see [chord symbols](chord-symbols)); Explore then has
       nothing to generate from.
     `,
+    notes: `Labelling rule as landed on theory-label-fixes, 2026-10-28 (voicing-analysis.js _degreeOf / _spellDegree): a named
+      tone takes the type's degree and keeps its written name; an unnamed tone is labelled by letter; an unnamed 6th over a
+      maj7-family type reads 6 (Levine T6, fig 7-2 / R2 in docs/reference/levine-claims.md); 7alt's four alterations count as
+      named for labelling (Levine T1). Checked in node 2026-10-28: A7♯11/C♯ with D♯4 → D♯·♯11, with E♭4 → E♭·♯11, left out A·R
+      E·5; Gmaj7 with B♭ → B♭·♭3, with A♯ → A♯·♯9; Cmaj7 with A → A·6; rag bar 12 event 2 unchanged (R 3 ♭7, left out 5).
+      Whether unnamed tones should follow Levine T5/T6 instead of the letter is the open RADAR thread (2026-10-28).`,
   },
 
   'chord-symbols': {
@@ -571,10 +589,28 @@ const TOPICS = {
     see_also: ['named-vs-played', 'explore-panel', 'intro-chords', 'intro-beyond-triads'],
     summary: 'Root, an optional suffix from a fixed table, and an optional slash bass. Unknown suffixes are not guessed: the event shows no named-vs-played and Explore stays empty.',
     body: `
-      A symbol is parsed as **root** (A–G with ♯, ♭, #, b or -), a **suffix**
-      from the table below, and an optional **/bass**. Δ, ° and ø are
-      accepted for maj, dim and half-diminished. Anything else is reported as
-      "not understood" rather than guessed, so a mislabelled bar is visible.
+      A symbol is parsed as **root** (A–G with ♯, ♭, # or b), a **suffix**
+      from the table below, and an optional **/bass**. Anything else is
+      reported as "not understood" rather than guessed, so a mislabelled bar
+      is visible.
+
+      Some common notation is normalised before the table is consulted:
+
+      - **-** straight after the root means minor: \`D-7\` is Dm7 and \`E-Δ7\`
+        is Em(maj7). It is never a flat on the root.
+      - **-** and **+** in front of 5, 9, 11 or 13 lower or raise that degree,
+        the same as ♭ and ♯: \`C7-9\` is C7♭9, \`C7+11\` is C7♯11, \`Cm7-5\` is
+        Cm7♭5. A **+** straight after the root is augmented (\`C+\`, \`C+7\`).
+      - **Δ** means major 7th: \`CΔ\`, \`CΔ7\` and \`Cmaj7\` are the same chord,
+        and \`CΔ9\` is Cmaj9. **°** and **ø** are diminished and
+        half-diminished.
+      - **7alt** is a dominant 7th with ♭9, ♯9, ♯11 and ♭13. Only the root,
+        3rd and ♭7 count as named tones (so none of the four is ever reported
+        as left out), but each alteration is labelled as such when it is
+        played.
+
+      The symbol itself is shown as written; only the analysis reads the
+      normalised form.
 
       | Chord type | Semitones above the root | Suffixes accepted |
       |---|---|---|
@@ -585,6 +621,12 @@ const TOPICS = {
       read from this table, so a symbol's spelling (\`Bb7\` or \`B♭7\`) does not
       change the analysis.
     `,
+    notes: `Normalisation rules as landed on theory-label-fixes, 2026-10-28 (voicing-analysis.js _SYM_RE, _normaliseSuffix,
+      LOCAL_CHORD_TYPES). Sources, Levine The Jazz Theory Book p. ix via docs/reference/levine-claims.md: T1 (G7alt = G7 ♭9 ♯9 ♯11
+      ♭13), T2 (CΔ = Cmaj7 = CM7; D-7 = Dm7 = Dmi7), T3 ("-" after the root means minor), T4 ("+"/"♯" raise and "-"/"♭" lower
+      an alteration: C7+11 = C7♯11, C7-9 = C7♭9). Parser checks in node 2026-10-28: C7-9 → 7b9, C7+11 → 7#11, Cm7-5 → half-dim7,
+      C-7 → min7, E-7 → E min7 (before 2026-10-28 it parsed as E♭7), C-maj7 → minmaj7, CΔ → maj7, CΔ9 → maj9, C7alt → 7alt
+      (intervals 0 4 10, alt flag). The 7alt "never reported as left out" sentence follows from the three named intervals.`,
   },
 
   'explore-panel': {
@@ -596,12 +638,11 @@ const TOPICS = {
       ## Two sources of candidates
 
       1. **The chord symbol.** The tone pool is the symbol's named tones
-         (slash bass included) plus the 9th; a dominant type (major 3rd and
-         minor 7th) also gets the 13th and the ♯11. The 9th is skipped when
-         the symbol already names a ♭9 or ♯9. Extensions sit at fixed
-         offsets above the root: ${extensionList} semitones. Every
-         combination of pool tones in the window below is a candidate — no
-         pitch class twice, and the bass's pitch class is not doubled.
+         (slash bass included) plus extensions chosen by the chord's quality
+         (the rules are listed below). Extensions sit at fixed offsets above
+         the root: ${extensionList} semitones. Every combination of pool
+         tones in the window below is a candidate — no pitch class twice,
+         and the bass's pitch class is not doubled.
       2. **Harvested shapes — your vocabulary.** Every voicing in the loaded
          piece is recorded as a *shape*: its degree labels (R, 3, 7, 9, …)
          and its layout above the bass. Each shape is re-instantiated on the
@@ -612,6 +653,22 @@ const TOPICS = {
          may bring the 6th of a major triad, say — but not from the window,
          span or voice count. A voicing reachable from both sources is one
          row with both tags.
+
+      ### Which extensions join the pool
+
+      - **Every type** gets the 9th, unless the symbol already names a ♭9
+        or ♯9.
+      - A **dominant** type (major 3rd and minor 7th) also gets the 13th
+        and the ♯11. Putting the ♯11 in every dominant's pool is a
+        heuristic of this page, not a rule of harmony: it is one common
+        dominant colour, offered so you can hear it against the others.
+      - **7alt** gets ♭9, ♯9, ♯11 and ♭13 and no natural 9th or 13th — the
+        alterations are what the symbol means. Its named tones are only the
+        root, 3rd and ♭7, so no 5th is in the pool either.
+      - A **half-diminished** type (minor 3rd, ♭5, minor 7th) gets the 9th,
+        the 11th and the ♭13, and never the ♭9: over a half-diminished chord
+        the ♭9 is the avoid note. The natural 9 comes from Locrian ♯2, and
+        the ♭13 is a scale tone in both of the chord's usual modes.
 
       ## The window (a heuristic)
 
@@ -658,6 +715,12 @@ const TOPICS = {
       the window admits 21 candidates; the original F4 A♭4 B4 is also the
       only shape candidate, because the same layout appears in bars 9 and 13.
     `,
+    notes: `Pool rules as landed on theory-label-fixes, 2026-10-28 (voicing-explore.js chordTones). Sources via
+      docs/reference/levine-claims.md: T1 (7alt = ♭9 ♯9 ♯11 ♭13); H3 (♭9 is the avoid note over ø on Locrian), H4 (Locrian ♯2
+      gives ø a natural 9), H5 (♭13 is a scale tone in both modes). The ♯11-on-every-dominant rule has no Levine claim behind
+      it and is labelled a heuristic in the text. Pools checked in node 2026-10-28: C7 → R 3 5 ♭7 + 9 13 ♯11; C7alt → R 3 ♭7 +
+      ♭9 ♯9 ♯11 ♭13; Cm7♭5 → R ♭3 ♭5 ♭7 + 9 11 ♭13; C7♭9 → no natural 9; Cmaj7 and Cm7 → + 9 only; Bdim7/D → + 9 only
+      (bar 9 example unchanged).`,
   },
 
   'explore-ranking': {
@@ -832,7 +895,8 @@ const TOPICS = {
       - **Guide tones vs shells.** Guide tones are two notes, the 3rd and
         7th. A shell is a voicing: root in the bass plus those guide tones.
       - **Two-note shells.** Some books also call root-plus-7th or
-        root-plus-3rd a shell. It's the same idea taken one note further.
+        root-plus-3rd a shell. It's the same idea pared down by one more
+        note: the root and a single guide tone.
       - **Dropping a guide tone loses information.** Without the 7th, root
         and 3rd tell you major or minor but not what kind of seventh chord.
         Without the 3rd, root and ♭7 could be C7 or Cm7. See
@@ -861,7 +925,8 @@ const TOPICS = {
       4. [x] (historical) Shells are closely associated with Bud Powell.
       5. [x] In a dominant 7th, the guide tones form a tritone, the source of its pull.
       6. [x] Through Dm7–G7–Cmaj7 with alternating shells, the guide-tone lines are F→F→E and C→B→B, each holding or moving by half step.
-      7. [x] Some sources call two-note voicings (root + 7th, or root + 3rd) shells.
+      7. [x] Some sources call two-note voicings (root + 7th, or root + 3rd) shells. (Wording fixed 2026-10-28: "one note
+         further" read as adding a note; a two-note shell has one fewer. Claim unchanged. Re-verified by Dustin 2026-10-28.)
       8. [x] Without the 7th, root + 3rd doesn't specify the seventh-chord type; without the 3rd, root + ♭7 doesn't distinguish C7 from Cm7.
       9. [x] Cm7♭5 and Cm7 have identical shells, so the ♭5 must be kept to say m7♭5.
       The rag bar 16 example was checked in code (namedVsPlayed on event 2: played R 3 ♭7, left out 5; the fixture's bassSource there
@@ -933,7 +998,8 @@ const TOPICS = {
         root (Cmaj7 has B).
       - **9 vs 2, 11 vs 4, 13 vs 6.** They're the same letter. With a 7th in
         the chord, the higher numbers are the usual names. Over a plain triad
-        you'll see "add2" or "6" instead.
+        you'll see "6" rather than 13, and an added 2nd is written "add9"
+        (sometimes "add2").
       - **The degree fixes the letter name.** In A♭7 the ♭7 is G♭, not F♯,
         because a 7th above A must be some kind of G. That's also why Cdim7
         has B♭♭, not A.
@@ -958,7 +1024,8 @@ const TOPICS = {
       7. [x] (heuristic) The perfect 5th is the chord tone most often omitted; an altered 5th is usually kept.
       8. [x] 9, 11, 13 are extensions (colour tones).
       9. [x] A plain "7" in a chord symbol means ♭7; "maj7" means the major 7th.
-      10. [x] With a 7th present, 9/11/13 are the usual names; over a triad, "add2" or "6" is common.
+      10. [x] With a 7th present, 9/11/13 are the usual names; over a triad, "6" rather than 13 (Levine T6), and an added 2nd is
+          written add9 or add2. (Reworded 2026-10-28 to match the parser's add9 suffix. Re-verified by Dustin 2026-10-28.)
       11. [x] Degrees are counted from the chord root, not the key or the bass.
       Examples (learn-example.js): cmaj7-close, c7-close, cm7-close (close position over C3; degrees from namedVsPlayed),
       eb7-over-bb-rag (E♭7/B♭ — strict link to rag bar 2 event 1, bassSource voice).
@@ -982,9 +1049,9 @@ const TOPICS = {
   'voicings-as-shapes': stub('Voicings as shapes', 'theory',
     ['rootless-voicings', 'guide-tones-and-shells', 'explore-panel', 'tonnetz-panel'],
     'Clusters, shells, pairs over a slash bass: thinking of a voicing as a reusable layout of degrees.'),
-  'rootless-voicings': stub('Rootless voicings: A-form and B-form', 'theory',
+  'rootless-voicings': stub('Rootless voicings', 'theory',
     ['guide-tones-and-shells', 'voicings-as-shapes', 'extensions'],
-    'Four-note left-hand voicings without the root: 3–5–7–9 (A-form) and 7–9–3–5 (B-form), and how they alternate through a ii–V–I.'),
+    'Four-note left-hand voicings without the root — 3–5–7–9 and 7–9–3–5 on a minor 7th, their dominant and major 7th partners (the 6 in place of the major 7th), and how the two positions alternate through a ii–V–I (Levine’s A and B positions).'),
   'melody-against-harmony': stub('Melody against harmony', 'theory',
     ['melody-toggle', 'explore-panel', 'tension-scoring'],
     'The top voice is what the ear follows; solo piano versus a separate melody instrument; when a rub against the tune is the point.'),
@@ -1015,9 +1082,10 @@ const TOPICS = {
       that's E and B♭. This is what gives a dominant chord its pull: the
       tritone sounds unstable and wants to move.
 
-      Of the five common seventh chords, only the dominant 7th has its
-      tritone between the 3rd and 7th. Cmaj7 and Cm7 have no tritone at all.
-      Cm7♭5 has one between the root and the ♭5, and Cdim7 has two.
+      In a dominant 7th, the 3rd and ♭7 form a tritone, which is what gives
+      the chord its pull. The diminished 7th also has one between its ♭3 and
+      ♭♭7 (E♭–B♭♭), plus a second from the root to the ♭5. Cm7♭5 has one,
+      between the root and the ♭5. Cmaj7 and Cm7 have none.
 
       ## Hear it
 
@@ -1052,8 +1120,8 @@ const TOPICS = {
       - **A tritone doesn't name one chord.** B and F are the 3rd and ♭7 of
         G7, but also the ♭7 and 3rd of D♭7, where B is spelled C♭. B and C♭
         are *enharmonic*: the same key on the piano, written with different
-        letter names. This shared tritone is the basis of tritone
-        substitution, covered later.
+        letter names. This shared tritone is why a D♭7 can stand in for a
+        G7 — the device called tritone substitution.
 
       [[example db7-shell-tritone]]
 
@@ -1074,10 +1142,14 @@ const TOPICS = {
       3. [x] An inverted tritone is still a tritone; no other interval inverts to itself.
       4. [x] Augmented 4th and diminished 5th are the two spellings, named by the letters; they are enharmonic intervals.
       5. [x] In a dominant 7th, the 3rd and ♭7 form a tritone.
-      6. [x] Cmaj7 and Cm7 contain no tritone; Cm7♭5 has one between root and ♭5; Cdim7 has two.
+      6. [x] The dominant 7th's tritone is 3–♭7; Cdim7 has one between ♭3 and ♭♭7 and a second between root and ♭5; Cm7♭5 has
+         one between root and ♭5; Cmaj7 and Cm7 have none. (Reworded 2026-10-28: the old text said only the dominant has a
+         3rd–7th tritone, but dim7's ♭3–♭♭7 is one too. Re-verified by Dustin 2026-10-28.)
       7. [x] In G7 → C, B resolves up to C and F down to E.
       8. [x] A diminished 5th resolves inward, an augmented 4th outward.
       9. [x] G7 and D♭7 share the same tritone (B/C♭ and F). B and C♭ are enharmonic: the same pitch with different letter names.
+      9a. [x] G7 and D♭7 share a tritone, so D♭7 can substitute for G7. (Added 2026-10-28 when "covered later" was dropped;
+          no tritone-substitution topic is written or scheduled. Re-verified by Dustin 2026-10-28.)
       Engine check 2026-10-20: tritone pairs from the parser's interval sets — Cmaj7 none, C7 3–♭7, Cm7 none, Cm7♭5 R–♭5,
       Cdim7 R–♭5 and ♭3–♭♭7; D♭7 with C♭4 spells F = 3, C♭ = ♭7 (midi 53, 59 — the same keys as G7's F3 B3).
       Examples (learn-example.js): g7-shell-tritone, c-resolution, db7-shell-tritone; reused c7-shell-3-below-7,
