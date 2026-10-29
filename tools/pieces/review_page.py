@@ -1,26 +1,46 @@
 #!/usr/bin/env python3
 """
-review_page.py — vote across three normalized reads of a scanned song and build
-the review page (stage 3 of the public piece pilot). Standard library only.
+review_page.py — vote across two or three normalized reads of a scanned song and
+build the review page (stage 3 of the public piece pipeline). Standard library only.
+Norm format: tools/pieces/README.md.
 
-  python3 tools/pieces/review_page.py --claude A.json --audiveris B.json --third C.json \
-      --crops crops --out review.html [--votes votes.json] [--bar-len 4]
+  python3 tools/pieces/review_page.py PRIMARY.json COMPARISON.json [TIEBREAK.json] \
+      --out review.html [--crops crops] [--votes votes.json] [--primary NAME] \
+      [--title T] [--subtitle S] [--key K] [--time N/D] [--bar-len Q]
 
-Vote per disputed bar+staff (claude ≠ audiveris under diff_reads' normalization):
-  claude == third     → resolved, loser audiveris
-  audiveris == third  → resolved, loser claude
-  otherwise           → three-way (or 'no third read' when the third is missing)
+Reads are positional; each column is named by the file's "reader" field. The first
+read is the primary (its per-bar `uncertain` notes are shown), the second is the
+comparison (a bar+staff is disputed when primary ≠ comparison under diff_reads'
+normalization), the third is the optional tie-break. --primary NAME moves that read
+to the front, keeping the others' order.
+
+Vote per disputed bar+staff:
+  primary == tie-break     → resolved, loser comparison
+  comparison == tie-break  → resolved, loser primary
+  otherwise                → three-way (or 'no-<tiebreak>' when the tie-break read
+                             is absent or has no reading for that bar+staff)
 
 Page sections, in priority order:
-  a) three-way splits: crop, the three readings as notation (Verovio, from
-     per-staff MusicXML snippets) with JSON, a choice claude/audiveris/third/none
-  b) resolved by vote where claude lost (collapsed)
-  c) claude ≈ audiveris agree but claude's read listed an uncertain spot (collapsed,
-     "looks wrong" checkbox)
+  a) three-way splits: crop, each reading as notation (Verovio, from per-staff
+     MusicXML snippets) with JSON, a choice among the readers or 'none'
+  b) resolved by vote where the primary lost (collapsed)
+  b′) resolved by vote where the comparison lost (collapsed)
+  c) primary ≈ comparison agree but the primary read listed an uncertain spot
+     (collapsed, "looks wrong" checkbox)
   d) spelling-only differences, one table
 Choices collect into a JSON textarea (copy button). Also writes --votes.
+
+Metadata: --title defaults to the primary read's "piece" (slug → Title Case),
+--subtitle to its "form" (firstPass / secondEnding), --key to its "key" (required
+from one or the other), --time to its "time" (else 4/4, noted on stderr), --bar-len
+to its "beatsPerBar", else numerator × 4 / denominator of the time signature.
+
+Known limits: no --bars range; durations are written at 32nd resolution with no
+tuplets (a triplet bar renders with wrong values; the pitch self-check still
+passes); no pickup-bar handling (a short bar is flagged wrong-length and padded
+at the end); one time signature for the whole piece.
 """
-import argparse, json, os, sys, html
+import argparse, json, os, re, sys, html
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from diff_reads import compare, normalize_staff, midi_of, STAFFS, EPS
 
@@ -35,12 +55,37 @@ def note_type(d):
     nearest = min(TYPES, key=lambda x: abs(x[0] - d))
     return nearest[1], nearest[2], False
 
-KEY_FIFTHS = -2   # B♭ major: B and E flat in the signature
 SHARPS = ['F', 'C', 'G', 'D', 'A', 'E', 'B']
 ACCIDENTAL = {-2: 'flat-flat', -1: 'flat', 0: 'natural', 1: 'sharp', 2: 'double-sharp'}
 LETTER_PC = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
 
-def key_alter(step, fifths=KEY_FIFTHS):
+# ── Key and time signatures ──
+MAJOR_FIFTHS = {'C': 0, 'G': 1, 'D': 2, 'A': 3, 'E': 4, 'B': 5, 'F♯': 6, 'C♯': 7,
+                'F': -1, 'B♭': -2, 'E♭': -3, 'A♭': -4, 'D♭': -5, 'G♭': -6, 'C♭': -7}
+MINOR_FIFTHS = {'A': 0, 'E': 1, 'B': 2, 'F♯': 3, 'C♯': 4, 'G♯': 5, 'D♯': 6, 'A♯': 7,
+                'D': -1, 'G': -2, 'C': -3, 'F': -4, 'B♭': -5, 'E♭': -6, 'A♭': -7}
+
+def key_fifths(text):
+    """'B♭' / 'Bb' / 'B♭m' / 'Bbm' / 'B♭ minor' / 'b♭ min' / 'E major' → fifths. Raises ValueError."""
+    m = re.match(r'^\s*([A-Ga-g])\s*([#♯b♭]?)\s*(m|min|minor|maj|major)?\s*$', text or '', re.I)
+    if not m: raise ValueError(f'bad key {text!r}')
+    root = m.group(1).upper() + m.group(2).replace('#', '♯').replace('b', '♭')
+    mode = (m.group(3) or '').lower()
+    table = MINOR_FIFTHS if mode in ('m', 'min', 'minor') else MAJOR_FIFTHS
+    if root not in table: raise ValueError(f'no key signature for {text!r}')
+    return table[root]
+
+def parse_time(text):
+    """'2/2' → (2, 2). Raises ValueError."""
+    m = re.match(r'^\s*(\d+)\s*/\s*(\d+)\s*$', text or '')
+    if not m: raise ValueError(f'bad time signature {text!r}')
+    return int(m.group(1)), int(m.group(2))
+
+def time_xml(beats, beat_type):
+    sym = ' symbol="cut"' if (beats, beat_type) == (2, 2) else ' symbol="common"' if (beats, beat_type) == (4, 4) else ''
+    return f'<time{sym}><beats>{beats}</beats><beat-type>{beat_type}</beat-type></time>'
+
+def key_alter(step, fifths):
     """Alter the key signature gives a letter: +1 for the first `fifths` sharps, −1 for the first −`fifths` flats."""
     if fifths > 0: return 1 if step in SHARPS[:fifths] else 0
     if fifths < 0: return -1 if step in SHARPS[::-1][:-fifths] else 0
@@ -48,7 +93,6 @@ def key_alter(step, fifths=KEY_FIFTHS):
 
 def parse_pitch(name):
     """'A♭3' → ('A', -1, 3). Accepts ♯ ♭ ♮ # b, doubled."""
-    import re
     m = re.match(r'^([A-G])([♯♭#b♮]*)(-?\d+)$', name)
     if not m: raise ValueError(f'bad pitch {name!r}')
     alter = sum(1 for c in m.group(2) if c in '♯#') - sum(1 for c in m.group(2) if c in '♭b')
@@ -59,7 +103,7 @@ def pitch_xml(name, accidental=None):
     acc = f'<accidental>{ACCIDENTAL[accidental]}</accidental>' if accidental is not None else ''
     return f"<pitch><step>{step}</step>{f'<alter>{alter}</alter>' if alter else ''}<octave>{octave}</octave></pitch>", acc
 
-def assign_accidentals(notes, fifths=KEY_FIFTHS):
+def assign_accidentals(notes, fifths):
     """notes: list of dicts with 'order' (chronological sort key) and 'name'. Sets note['acc'] to the alter to
     display (→ <accidental>) when the note differs from the key signature or from the most recent earlier note
     on the same letter and octave in the bar; None when the reader would already read it right."""
@@ -70,8 +114,9 @@ def assign_accidentals(notes, fifths=KEY_FIFTHS):
         n['acc'] = alter if alter != current else None
         state[(step, octave)] = alter
 
-def staff_musicxml(events, staff, bar_len=4):
-    """One measure, one part, voices assigned greedily; returns (MusicXML string, [json pitch names in writing order])."""
+def staff_musicxml(events, staff, bar_len, fifths, time_sig):
+    """One measure, one part, voices assigned greedily; returns (MusicXML string, [json pitch names in writing order]).
+    time_sig: (beats, beat_type)."""
     sign, line = CLEF[staff]
     items = [e for e in events]
     voices = []   # list of lists of events (non-grace), each with 'g' attached graces
@@ -92,7 +137,7 @@ def staff_musicxml(events, staff, bar_len=4):
                 for pi, p in enumerate(g): notes.append({'key': (vi, ei, 'g', gi, pi), 'order': (e['onset'], 0, gi, pi), 'name': p})
             if not (e.get('rest') or not e['pitches']):
                 for pi, p in enumerate(sorted(e['pitches'], key=midi_of)): notes.append({'key': (vi, ei, 'n', 0, pi), 'order': (e['onset'], 1, 0, pi), 'name': p})
-    assign_accidentals(notes)
+    assign_accidentals(notes, fifths)
     acc_of = {n['key']: n['acc'] for n in notes}
     written = []
     body = []
@@ -123,7 +168,7 @@ def staff_musicxml(events, staff, bar_len=4):
             gap = bar_len - t; ty, dots, _ = note_type(gap)
             body.append(f"<note><rest/><duration>{round(gap * DIV)}</duration><voice>{vi}</voice><type>{ty}</type>{'<dot/>' * dots}</note>")
     xml = ('<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><part-list><score-part id="P1"><part-name></part-name></score-part></part-list>'
-           f'<part id="P1"><measure number="1"><attributes><divisions>{DIV}</divisions><key><fifths>{KEY_FIFTHS}</fifths></key><time symbol="cut"><beats>2</beats><beat-type>2</beat-type></time>'
+           f'<part id="P1"><measure number="1"><attributes><divisions>{DIV}</divisions><key><fifths>{fifths}</fifths></key>{time_xml(*time_sig)}'
            f'<clef><sign>{sign}</sign><line>{line}</line></clef></attributes>{"".join(body)}</measure></part></score-partwise>')
     return xml, written
 
@@ -183,46 +228,104 @@ def brief(events):
         out.append(f"{e['onset']:g}+{e['dur']:g} " + ('R' if e.get('rest') or not e['pitches'] else ' '.join(e['pitches'])) + (f" ~{e['tie']}" if e.get('tie') else ''))
     return ' | '.join(out)
 
+def default_title(doc):
+    piece = doc.get('piece') or 'untitled'
+    return ' '.join(w.capitalize() for w in re.split(r'[-_\s]+', piece) if w)
+
+def default_subtitle(doc):
+    form = doc.get('form') or {}
+    parts = []
+    fp = form.get('firstPass')
+    if isinstance(fp, (list, tuple)) and len(fp) == 2: parts.append(f'bars {fp[0]}–{fp[1]}')
+    if form.get('secondEnding') is not None: parts.append(f'second ending {form["secondEnding"]}')
+    return ', '.join(parts)
+
+NUM_WORDS = {2: 'two', 3: 'three'}
+
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--claude', required=True); ap.add_argument('--audiveris', required=True); ap.add_argument('--third')
-    ap.add_argument('--crops', default='crops'); ap.add_argument('--out', required=True); ap.add_argument('--votes'); ap.add_argument('--bar-len', type=float, default=4.0)
+    ap = argparse.ArgumentParser(description='Vote across 2–3 normalized reads and build the review page.')
+    ap.add_argument('reads', nargs='+', metavar='READ', help='norm JSON files: primary, comparison, [tie-break]')
+    ap.add_argument('--primary', metavar='NAME', help='reader name to treat as primary (moves it to the front)')
+    ap.add_argument('--crops', default='crops', help='crop image dir, relative to the HTML (default: crops)')
+    ap.add_argument('--out', required=True); ap.add_argument('--votes')
+    ap.add_argument('--title', help='default: the primary read\'s "piece", title-cased')
+    ap.add_argument('--subtitle', help='default: from the primary read\'s "form" (firstPass, secondEnding)')
+    ap.add_argument('--key', help='B♭, Bb, B♭m, "B♭ minor"; default: the primary read\'s "key"')
+    ap.add_argument('--time', help='N/D; default: the primary read\'s "time", else 4/4')
+    ap.add_argument('--bar-len', type=float, help='quarters per bar; default: the primary read\'s "beatsPerBar", else from --time')
     a = ap.parse_args()
-    C = {b['bar']: b for b in json.load(open(a.claude))['bars']}
-    A = {b['bar']: b for b in json.load(open(a.audiveris))['bars']}
-    T = {b['bar']: b for b in json.load(open(a.third))['bars']} if a.third and os.path.exists(a.third) else {}
+    if not 2 <= len(a.reads) <= 3: ap.error('give 2 or 3 read files')
+
+    docs = [json.load(open(p, encoding='utf-8')) for p in a.reads]
+    names = []
+    for p, d in zip(a.reads, docs):
+        name = d.get('reader')
+        if not name: ap.error(f'{p}: no "reader" field')
+        if name in names: ap.error(f'{p}: reader name {name!r} used twice')
+        names.append(name)
+    if a.primary:
+        if a.primary not in names: ap.error(f'--primary {a.primary!r} is not one of {names}')
+        i = names.index(a.primary); docs.insert(0, docs.pop(i)); names.insert(0, names.pop(i))
+    A, B = names[0], names[1]
+    C = names[2] if len(names) == 3 else None
+    NO_C = f'no-{C or "tiebreak"}'
+    primary = docs[0]
+
+    # ── metadata ──
+    title = a.title or default_title(primary)
+    subtitle = a.subtitle if a.subtitle is not None else default_subtitle(primary)
+    key_text = a.key or primary.get('key')
+    if not key_text: ap.error('no key: pass --key or put "key" in the primary read')
+    try: fifths = key_fifths(key_text)
+    except ValueError as e: ap.error(str(e))
+    time_text = a.time or primary.get('time') or primary.get('timeSignature')
+    if not time_text:
+        time_text = '4/4'; print('note: no time signature in the primary read or --time; using 4/4', file=sys.stderr)
+    try: time_sig = parse_time(time_text)
+    except ValueError as e: ap.error(str(e))
+    bar_len = a.bar_len if a.bar_len is not None else primary.get('beatsPerBar') or time_sig[0] * 4 / time_sig[1]
+    bar_len = float(bar_len)
+
+    R = [{b['bar']: b for b in d['bars']} for d in docs]   # per read: bar → record
+    P, Q = R[0], R[1]
+    T = R[2] if C else {}
     items = []
-    for n in sorted(C):
+    for n in sorted(P):
         for st in STAFFS:
-            ec, ea = C[n].get(st, []), A.get(n, {}).get(st, [])
-            cls, detail = compare(ec, ea)
-            rec = {'bar': n, 'staff': st, 'class': cls, 'claude': ec, 'audiveris': ea, 'uncertain': [u for u in C[n].get('uncertain', []) if u.startswith(st) or u.startswith('as bar') or u.startswith('same')]}
+            ep, eq = P[n].get(st, []), Q.get(n, {}).get(st, [])
+            cls, detail = compare(ep, eq)
+            rec = {'bar': n, 'staff': st, 'class': cls, 'reads': {A: ep, B: eq},
+                   'uncertain': [u for u in P[n].get('uncertain', []) if u.startswith(st) or u.startswith('as bar') or u.startswith('same')]}
             if cls == 'spelling-only': rec['spellings'] = detail['spellings']
             if cls == 'disagree':
-                endb = normalize_staff(ea)['end']
-                rec['audiveris_broken'] = abs(endb - a.bar_len) > EPS or not any(not e.get('rest') for e in ea if 'grace' not in e)
                 et = T.get(n, {}).get(st) if n in T else None
-                rec['third'] = et
-                if et is None: rec['vote'] = 'no-third'
-                elif compare(ec, et)[0] != 'disagree': rec['vote'] = 'resolved'; rec['winner'] = 'claude+third'; rec['loser'] = 'audiveris'
-                elif compare(ea, et)[0] != 'disagree': rec['vote'] = 'resolved'; rec['winner'] = 'audiveris+third'; rec['loser'] = 'claude'
+                if C: rec['reads'][C] = et
+                broken = []
+                for name, ev in rec['reads'].items():
+                    if ev is None: continue
+                    if abs(normalize_staff(ev)['end'] - bar_len) > EPS or not any(not e.get('rest') for e in ev if 'grace' not in e): broken.append(name)
+                rec['broken'] = broken
+                if et is None: rec['vote'] = NO_C
+                elif compare(ep, et)[0] != 'disagree': rec['vote'] = 'resolved'; rec['winner'] = f'{A}+{C}'; rec['loser'] = B
+                elif compare(eq, et)[0] != 'disagree': rec['vote'] = 'resolved'; rec['winner'] = f'{B}+{C}'; rec['loser'] = A
                 else: rec['vote'] = 'three-way'
             items.append(rec)
-    counts = {'agree': 0, 'spelling-only': 0, 'disputed': 0, 'resolved-claude-lost': 0, 'resolved-audiveris-lost': 0, 'three-way': 0, 'no-third': 0}
+    counts = {'agree': 0, 'spelling-only': 0, 'disputed': 0, f'resolved-{A}-lost': 0, f'resolved-{B}-lost': 0, 'three-way': 0, NO_C: 0}
     for r in items:
         if r['class'] == 'agree': counts['agree'] += 1
         elif r['class'] == 'spelling-only': counts['spelling-only'] += 1
         else:
             counts['disputed'] += 1
-            if r['vote'] == 'resolved': counts['resolved-claude-lost' if r['loser'] == 'claude' else 'resolved-audiveris-lost'] += 1
+            if r['vote'] == 'resolved': counts[f'resolved-{r["loser"]}-lost'] += 1
             else: counts[r['vote']] += 1
     if a.votes:
-        json.dump({'counts': counts, 'items': [{k: v for k, v in r.items() if k not in ('claude', 'audiveris', 'third')} for r in items if r['class'] != 'agree']}, open(a.votes, 'w'), ensure_ascii=False, indent=1)
+        json.dump({'readers': names, 'counts': counts, 'items': [{k: v for k, v in r.items() if k != 'reads'} for r in items if r['class'] != 'agree']},
+                  open(a.votes, 'w'), ensure_ascii=False, indent=1)
 
     # ── page ──
-    sec_a = [r for r in items if r['class'] == 'disagree' and r['vote'] in ('three-way', 'no-third')]
-    sec_b = [r for r in items if r['class'] == 'disagree' and r['vote'] == 'resolved' and r['loser'] == 'claude']
-    sec_b2 = [r for r in items if r['class'] == 'disagree' and r['vote'] == 'resolved' and r['loser'] == 'audiveris']
+    sec_a = [r for r in items if r['class'] == 'disagree' and r['vote'] in ('three-way', NO_C)]
+    sec_b = [r for r in items if r['class'] == 'disagree' and r['vote'] == 'resolved' and r['loser'] == A]
+    sec_b2 = [r for r in items if r['class'] == 'disagree' and r['vote'] == 'resolved' and r['loser'] == B]
     sec_c = [r for r in items if r['class'] in ('agree', 'spelling-only') and r['uncertain']]
     sec_d = [r for r in items if r['class'] == 'spelling-only']
     snippets = {}; check_totals = [0, 0, 0]; check_msgs = []
@@ -231,15 +334,15 @@ def main():
         crop = f"{a.crops}/bar-{r['bar']:02d}-{r['staff']}.png"; whole = f"{a.crops}/bar-{r['bar']:02d}.png"
         cols = []
         for name in readers:
-            ev = r.get(name)
+            ev = r['reads'].get(name)
             if ev is None: cols.append(f'<div class="col"><h4>{name}</h4><p class="muted">no read</p></div>'); continue
-            sid = f"{key}-{name}"; snippets[sid], written = staff_musicxml(ev, r['staff'], a.bar_len)
+            sid = f"{key}-{name}"; snippets[sid], written = staff_musicxml(ev, r['staff'], bar_len, fifths, time_sig)
             aw, dw, msgs = check_snippet(snippets[sid], written, ev, sid); check_totals[0] += aw; check_totals[1] += dw; check_totals[2] += len(written); check_msgs.extend(msgs)
-            cols.append(f'<div class="col"><h4>{name}{" <span class=muted>(wrong length)</span>" if name == "audiveris" and r.get("audiveris_broken") else ""}</h4><div class="svg" data-snippet="{sid}"></div><pre>{html.escape(brief(ev))}</pre><details><summary>JSON</summary><pre class="json">{html.escape(json.dumps(ev, ensure_ascii=False))}</pre></details></div>')
+            cols.append(f'<div class="col"><h4>{name}{" <span class=muted>(wrong length)</span>" if name in r.get("broken", ()) else ""}</h4><div class="svg" data-snippet="{sid}"></div><pre>{html.escape(brief(ev))}</pre><details><summary>JSON</summary><pre class="json">{html.escape(json.dumps(ev, ensure_ascii=False))}</pre></details></div>')
         unc = ''.join(f'<li>{html.escape(u)}</li>' for u in r.get('uncertain', []))
         ch = ''
         if choice == 'pick':
-            ch = ('<div class="choice">' + ''.join(f'<label><input type="radio" name="pick-{key}" value="{v}"> {v}</label>' for v in ('claude', 'audiveris', 'third', 'none'))
+            ch = ('<div class="choice">' + ''.join(f'<label><input type="radio" name="pick-{key}" value="{v}"> {v}</label>' for v in (*names, 'none'))
                   + f'<input type="text" class="none-text" data-key="{key}" placeholder="if none: what it should be"></div>')
         elif choice == 'wrong':
             ch = f'<div class="choice"><label><input type="checkbox" name="wrong-{key}"> looks wrong</label><input type="text" class="none-text" data-key="{key}" placeholder="what it should be"></div>'
@@ -251,7 +354,10 @@ def main():
         inner = ''.join(block(r, readers, choice) for r in recs)
         return f'<section><details {"open" if open_ else ""}><summary><h2>{title} <span class="muted">({len(recs)})</span></h2>{note}</summary>{inner}</details></section>'
     rows = ''.join(f"<tr><td>{r['bar']}</td><td>{r['staff']}</td><td>{html.escape(', '.join(f'{s['a']}↔{s['b']} @{s['onset']:g}' for s in r['spellings']))}</td></tr>" for r in sec_d)
-    page = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><title>I Got Rhythm — refrain review</title>
+    heading = html.escape(title) + (f' — {html.escape(subtitle)}' if subtitle else '')
+    n_word = NUM_WORDS[len(names)]
+    sec_a_title = f'a) Unresolved — all {n_word} reads differ (or no {C} read)' if C else f'a) Unresolved — {A} and {B} differ (no tie-break read)'
+    page = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{html.escape(title)} — review</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body{{font-family:system-ui,sans-serif;margin:0;padding:16px 24px 120px;background:#faf8f2;color:#1f1b16;max-width:1500px}}
@@ -270,15 +376,15 @@ table{{border-collapse:collapse;font-size:.85rem}} td,th{{border-bottom:1px soli
 #out textarea{{flex:1;height:70px;font:12px ui-monospace,monospace}} button{{font:inherit;padding:6px 12px}}
 .imp{{border:1px solid #d9d2c0;border-radius:10px;background:#fff;padding:8px 14px;margin:10px 0}} .imp textarea{{width:100%;height:90px;font:12px ui-monospace,monospace;box-sizing:border-box;margin:6px 0}}
 </style></head><body>
-<h1>I Got Rhythm — refrain (bars 1–34, second ending 35): three-read review</h1>
+<h1>{heading}: {n_word}-read review</h1>
 <p class="muted">Counts: {html.escape(json.dumps(counts))}. Notation is rendered from each read's JSON (Verovio); a read with the wrong bar length renders with filler rests. Click a crop for the whole bar.</p>
 <details class="imp"><summary>Import previous choices</summary><p class="muted">Paste the JSON copied from an earlier version of this page ({{picks, wrong, text}}); it restores the radio picks, the "looks wrong" checks and the free text.</p>
-<textarea id="imp" placeholder='{{"picks": {{"16-lh": "claude"}}, "wrong": ["6-voice"], "text": {{}}}}'></textarea><div><button id="impbtn">Import</button> <span id="impmsg" class="muted"></span></div></details>
-{section('a) Unresolved — all three reads differ (or no third read)', sec_a, ('claude','audiveris','third'), 'pick', True)}
-{section('b) Resolved by vote — claude outvoted', sec_b, ('claude','audiveris','third'), 'wrong', False, '<span class="muted"> audiveris + third agreed</span>')}
-{section('b′) Resolved by vote — audiveris outvoted', sec_b2, ('claude','audiveris','third'), 'wrong', False, '<span class="muted"> claude + third agreed</span>')}
-{section('c) Agreed, but my read flagged an uncertain spot', sec_c, ('claude',), 'wrong', False)}
-<section><h2>d) Spelling-only differences <span class="muted">({len(sec_d)})</span></h2><table><tr><th>bar</th><th>staff</th><th>claude ↔ audiveris @onset</th></tr>{rows}</table></section>
+<textarea id="imp" placeholder='{{"picks": {{"16-lh": "{A}"}}, "wrong": ["6-voice"], "text": {{}}}}'></textarea><div><button id="impbtn">Import</button> <span id="impmsg" class="muted"></span></div></details>
+{section(sec_a_title, sec_a, names, 'pick', True)}
+{section(f'b) Resolved by vote — {A} outvoted', sec_b, names, 'wrong', False, f'<span class="muted"> {B} + {C} agreed</span>')}
+{section(f'b′) Resolved by vote — {B} outvoted', sec_b2, names, 'wrong', False, f'<span class="muted"> {A} + {C} agreed</span>')}
+{section(f'c) Agreed, but the {A} read flagged an uncertain spot', sec_c, (A,), 'wrong', False)}
+<section><h2>d) Spelling-only differences <span class="muted">({len(sec_d)})</span></h2><table><tr><th>bar</th><th>staff</th><th>{A} ↔ {B} @onset</th></tr>{rows}</table></section>
 <div id="out"><textarea id="json" readonly></textarea><button id="copy">Copy JSON</button></div>
 <script type="module">
 const SNIPPETS = {json.dumps(snippets)};
@@ -334,6 +440,7 @@ for (const el of document.querySelectorAll('.svg')) io.observe(el);
         print('\n'.join(check_msgs), file=sys.stderr)
         sys.exit(f'SNIPPET CHECK FAILED: {check_totals[0]} notes with wrong sounding pitch, {check_totals[1]} notes that would be read at the wrong pitch, of {check_totals[2]} notes written; page NOT written')
     open(a.out, 'w', encoding='utf-8').write(page)
+    print(f'reads: {", ".join(names)} (primary {A}); key {key_text} ({fifths:+d}); time {time_sig[0]}/{time_sig[1]}; bar {bar_len:g} quarters')
     print('counts:', counts); print('wrote', a.out, f'({len(snippets)} notation snippets)')
     print(f'snippet check: {check_totals[2]} notes written, all with the right sounding and displayed pitch')
 

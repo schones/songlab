@@ -22,9 +22,12 @@ order as voice, rh, lh. Measure numbers are per page; the offset shifts them
 to refrain bar numbers.
 
 Usage (from the repo root):
-  python3 tools/pieces/mxl_to_norm.py --out sources/work/igr-read-audiveris.json \
+  python3 tools/pieces/mxl_to_norm.py --piece i-got-rhythm --key B♭ --time 2/2 --beats-per-bar 4 \
+      --out sources/work/igr-read-audiveris.json \
       sources/work/audiveris/igr-p3.mxl:0 sources/work/audiveris/igr-p4.mxl:17
-  (each input is <file>[:<bar offset>]; offset is added to the measure number)
+  (each input is <file>[:<bar offset>]; offset is added to the measure number;
+  --key/--time/--beats-per-bar are optional and are written to the output
+  metadata when given — review_page.py reads them from the primary read)
 """
 import argparse, json, re, sys, zipfile
 import xml.etree.ElementTree as ET
@@ -153,13 +156,21 @@ def convert(path, offset):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('inputs', nargs='+', help='<file.mxl|file.xml>[:<bar offset>]')
-    ap.add_argument('--out', required=True); ap.add_argument('--piece', default='i-got-rhythm')
+    ap.add_argument('--out', required=True); ap.add_argument('--piece', required=True, help='piece slug, e.g. i-got-rhythm')
+    ap.add_argument('--reader', default='audiveris', help='reader name written to the output (default: audiveris)')
+    ap.add_argument('--key', help='key string for the output metadata, e.g. "B♭" or "B♭ minor"')
+    ap.add_argument('--time', help='time signature N/D for the output metadata')
+    ap.add_argument('--beats-per-bar', type=float, help='quarters per bar for the output metadata')
     a = ap.parse_args()
     bars = []
     for spec in a.inputs:
         path, _, off = spec.partition(':')
         bars += convert(path, int(off or 0))
-    doc = {'piece': a.piece, 'source': ', '.join(s.split(':')[0] for s in a.inputs), 'reader': 'audiveris', 'bars': bars}
+    doc = {'piece': a.piece, 'source': ', '.join(s.split(':')[0] for s in a.inputs), 'reader': a.reader}
+    if a.key: doc['key'] = a.key
+    if a.time: doc['time'] = a.time
+    if a.beats_per_bar is not None: doc['beatsPerBar'] = int(a.beats_per_bar) if a.beats_per_bar == int(a.beats_per_bar) else a.beats_per_bar
+    doc['bars'] = bars
     json.dump(doc, open(a.out, 'w'), ensure_ascii=False, indent=1)
     print(f'wrote {a.out}: {len(bars)} bars')
 
