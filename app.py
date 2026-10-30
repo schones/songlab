@@ -362,6 +362,81 @@ def voicings_data(name):
     return jsonify(error="not found", piece=name), 404
 
 
+@app.route("/player")
+def player():
+    # Follow-along MIDI player: a norm piece (tools/pieces/README.md) on a
+    # grand staff + keyboard, waiting for each expected note from a MIDI
+    # keyboard. Loads a piece by slug (?piece=) through /player/data/<name>.
+    # See /tmp/player-report.md §7 (step plan). Not /play: that is the
+    # legacy POST audio scorer below.
+    return render_template("player.html")
+
+
+_PLAYER_PRIVATE_DIR = ("static", "private", "pieces")
+_PLAYER_PUBLIC_DIR = ("tests", "fixtures")
+
+
+@app.route("/player/pieces")
+def player_pieces():
+    """List the norm pieces /player/data/<name> can serve: [{ name, title,
+    source, key, time, bars }], source 'private' (static/private/pieces/
+    <name>.norm.json, gitignored) or 'public' (tests/fixtures/norm-<name>.json).
+    Same folders and precedence as the data route; a name present in both is
+    listed once, as private. Title from the JSON's "title", else the slug.
+    Scanned from disk: nothing hardcoded."""
+    base = os.path.dirname(os.path.abspath(__file__))
+    folders = (
+        ("private", os.path.join(base, *_PLAYER_PRIVATE_DIR), r"^([a-z0-9-]+)\.norm\.json$"),
+        ("public", os.path.join(base, *_PLAYER_PUBLIC_DIR), r"^norm-([a-z0-9-]+)\.json$"),
+    )
+    pieces, seen = [], set()
+    for source, directory, pattern in folders:
+        if not os.path.isdir(directory):
+            continue
+        for filename in sorted(os.listdir(directory)):
+            m = re.match(pattern, filename)
+            if not m or m.group(1) in seen:
+                continue
+            path = os.path.join(directory, filename)
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    data = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(data, dict) or not isinstance(data.get("bars"), list):
+                continue
+            name = m.group(1)
+            seen.add(name)
+            title = data.get("title")
+            pieces.append({
+                "name": name,
+                "title": title if isinstance(title, str) and title.strip() else name,
+                "source": source,
+                "key": data.get("key"),
+                "time": data.get("time"),
+                "bars": len(data["bars"]),
+            })
+    pieces.sort(key=lambda p: (p["source"] != "private", p["title"].lower()))
+    return jsonify(pieces)
+
+
+@app.route("/player/data/<name>")
+def player_data(name):
+    """Serve a norm JSON: static/private/pieces/<name>.norm.json first
+    (gitignored, local only), then tests/fixtures/norm-<name>.json."""
+    if not _VOICING_PIECE_RE.match(name):
+        return jsonify(error="invalid piece name", piece=name), 404
+    base = os.path.dirname(os.path.abspath(__file__))
+    candidates = (
+        (os.path.join(base, *_PLAYER_PRIVATE_DIR), f"{name}.norm.json"),
+        (os.path.join(base, *_PLAYER_PUBLIC_DIR), f"norm-{name}.json"),
+    )
+    for directory, filename in candidates:
+        if os.path.isfile(os.path.join(directory, filename)):
+            return send_from_directory(directory, filename, mimetype="application/json")
+    return jsonify(error="not found", piece=name), 404
+
+
 @app.route("/tutorial")
 def tutorial():
     return render_template("tutorial.html")

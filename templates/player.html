@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Player · SongLab{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='shared/game-shell.css') }}">
+<!-- Tone.js (same pinned build as the other games; voicing-player reuses window.Tone) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+<style>
+  /* ── Page frame: light, sized for reading from a piano bench (as Cycle of Shells) ── */
+  .pl-page {
+    --pl-bg: #FCFBF8;
+    --text-primary:   #141210;
+    --text-secondary: #2B2824;
+    --text-muted:     #4E4A43;
+    --accent-blue:    #2D5F8A;
+    --accent-green:   #1E7B34;
+    --accent-coral:   #B9341F;
+    max-width: none;
+    background: var(--pl-bg);
+    color: var(--text-primary);
+    padding: 0.5rem 1rem 3rem;
+    font-size: 1.1rem;
+    min-height: calc(100vh - 72px);
+    box-sizing: border-box;
+  }
+  .pl-column { max-width: 1100px; margin: 0 auto; }
+  .pl-page .game-title { font-size: 1.75rem; }
+  .pl-page .game-top-bar { margin-bottom: 0.5rem; }
+
+  /* ── Header: title + piece meta ──────────────────────────── */
+  .pl-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; margin-bottom: 0.75rem; }
+  .pl-piece-title { font-size: 1.5rem; font-weight: 800; margin: 0; }
+  .pl-meta { margin: 0; color: var(--text-secondary); font-size: 1rem; }
+  .pl-meta span + span::before { content: '·'; margin: 0 8px; color: var(--text-muted); }
+
+  .pl-banner { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 0.75rem; }
+  .pl-banner--error { border-color: var(--accent-coral); color: var(--accent-coral); }
+  .pl-banner[hidden] { display: none; }
+
+  /* ── Controls row: piece, device, hands ──────────────────── */
+  .pl-controls {
+    display: flex; flex-wrap: wrap; align-items: end; gap: 0.75rem 1.5rem;
+    background: #FFFFFF; border: 1px solid var(--border, #D8D4CC); border-radius: 12px;
+    padding: 0.75rem 1rem; margin-bottom: 1rem;
+  }
+  .pl-control { display: flex; flex-direction: column; gap: 0.25rem; }
+  .pl-control > label, .pl-control__label { font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .pl-control select {
+    min-width: 14em; padding: 6px 10px; font: inherit; font-size: 1rem;
+    border-radius: 8px; border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary);
+  }
+  .pl-control select:disabled { opacity: 0.6; }
+  .pl-status { font-size: 0.85rem; color: var(--text-muted); min-height: 1.2em; }
+
+  /* Hand toggle: a radio group styled as pills (game-pill from game-shell.css) */
+  .pl-hands { display: inline-flex; gap: 0; border: 1px solid var(--border, #D8D4CC); border-radius: 999px; overflow: hidden; }
+  .pl-hands label { padding: 6px 14px; cursor: pointer; font-size: 1rem; font-weight: 700; color: var(--text-secondary); background: #FFFFFF; user-select: none; }
+  .pl-hands label + label { border-left: 1px solid var(--border, #D8D4CC); }
+  .pl-hands input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .pl-hands input:checked + span { color: #FFFFFF; }
+  .pl-hands label:has(input:checked) { background: var(--accent-blue); color: #FFFFFF; }
+  .pl-hands label:has(input:focus-visible) { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+
+  /* ── Hosts: staff and keyboard (empty until step 3 / step 5) ── */
+  .pl-panel { background: #FFFFFF; border: 1px solid var(--border, #D8D4CC); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+  .pl-panel__label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: 0 0 0.5rem; }
+  .pl-staff-host { min-height: 220px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+  .pl-keyboard-host { min-height: 120px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+  .pl-staff-host svg { max-width: 100%; height: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pl-page game-page">
+  <div class="pl-column">
+
+    <div class="game-top-bar">
+      <h1 class="game-title">Player</h1>
+      <a href="/" class="game-back-link">&larr; Back</a>
+    </div>
+
+    <header class="pl-header">
+      <h2 class="pl-piece-title" id="pl-piece-title">…</h2>
+      <p class="pl-meta" id="pl-meta"></p>
+    </header>
+
+    <div class="pl-banner" id="pl-banner" hidden role="status"></div>
+
+    <!-- Controls: piece picker (from /player/pieces), MIDI device (wired in step 5), hands -->
+    <div class="pl-controls">
+      <div class="pl-control">
+        <label for="pl-piece-select">Piece</label>
+        <select id="pl-piece-select" aria-label="Piece"><option value="">(loading…)</option></select>
+      </div>
+
+      <div class="pl-control">
+        <label for="pl-device-select">MIDI device</label>
+        <select id="pl-device-select" aria-label="MIDI device" disabled><option value="">(none)</option></select>
+        <div class="pl-status" id="pl-device-status">Not connected yet</div>
+      </div>
+
+      <div class="pl-control">
+        <span class="pl-control__label" id="pl-hands-label">Hands</span>
+        <div class="pl-hands" role="radiogroup" aria-labelledby="pl-hands-label" id="pl-hands">
+          <label><input type="radio" name="pl-hands" value="lh"><span>LH</span></label>
+          <label><input type="radio" name="pl-hands" value="rh"><span>RH</span></label>
+          <label><input type="radio" name="pl-hands" value="both" checked><span>Both</span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Staff host: step 3 renders the current bar here (Verovio) -->
+    <section class="pl-panel" aria-label="Staff">
+      <p class="pl-panel__label">Staff</p>
+      <div class="pl-staff-host" id="pl-staff">Staff appears here (step 3).</div>
+    </section>
+
+    <!-- Keyboard host: step 5 mounts VoicingKeyboard here -->
+    <section class="pl-panel" aria-label="Keyboard">
+      <p class="pl-panel__label">Keyboard</p>
+      <div class="pl-keyboard-host" id="pl-keyboard">Keyboard appears here (step 5).</div>
+    </section>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  // Step 2 shell: list pieces, load the selected norm JSON, show its header.
+  // No MIDI, staff or keyboard wiring yet (steps 3–5).
+  const els = {
+    title:  document.getElementById('pl-piece-title'),
+    meta:   document.getElementById('pl-meta'),
+    banner: document.getElementById('pl-banner'),
+    select: document.getElementById('pl-piece-select'),
+  };
+  const state = { piece: null, norm: null, pieces: [] };
+
+  function banner(text, isError = false) {
+    els.banner.hidden = !text;
+    els.banner.textContent = text || '';
+    els.banner.classList.toggle('pl-banner--error', isError);
+  }
+
+  function showHeader(name, norm) {
+    els.title.textContent = (typeof norm.title === 'string' && norm.title.trim()) ? norm.title : name;
+    const parts = [];
+    if (norm.key)  parts.push(norm.key);
+    if (norm.time) parts.push(norm.time);
+    if (norm.tempo) parts.push(`${norm.tempo} bpm`);
+    parts.push(`${Array.isArray(norm.bars) ? norm.bars.length : 0} bars`);
+    els.meta.textContent = '';
+    for (const p of parts) { const s = document.createElement('span'); s.textContent = p; els.meta.appendChild(s); }
+  }
+
+  async function load(name) {
+    banner('');
+    els.title.textContent = '…';
+    els.meta.textContent = '';
+    try {
+      const res = await fetch(`/player/data/${encodeURIComponent(name)}`, { headers: { Accept: 'application/json' } });
+      if (!res.ok) {
+        state.piece = name; state.norm = null;
+        els.title.textContent = name;
+        banner(`No data for “${name}” (${res.status}). Expected static/private/pieces/${name}.norm.json or tests/fixtures/norm-${name}.json.`, true);
+        return;
+      }
+      const norm = await res.json();
+      state.piece = name; state.norm = norm;
+      showHeader(name, norm);
+      const url = new URL(window.location.href);
+      url.searchParams.set('piece', name);
+      history.replaceState(null, '', url);
+    } catch (err) {
+      banner(`Could not load “${name}”: ${err.message}`, true);
+    }
+  }
+
+  function fillPicker(list, selected) {
+    els.select.textContent = '';
+    for (const source of ['private', 'public']) {
+      const group = list.filter(p => p.source === source);
+      if (!group.length) continue;
+      const og = document.createElement('optgroup');
+      og.label = source === 'private' ? 'local (private)' : 'public';
+      for (const p of group) {
+        const o = document.createElement('option');
+        o.value = p.name;
+        o.textContent = source === 'private' ? `${p.title} (local)` : p.title;
+        og.appendChild(o);
+      }
+      els.select.appendChild(og);
+    }
+    const has = [...els.select.options].some(o => o.value === selected);
+    if (has) els.select.value = selected; else els.select.selectedIndex = -1;
+  }
+
+  async function loadPieceList() {
+    try {
+      const res = await fetch('/player/pieces', { headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const list = await res.json();
+      state.pieces = Array.isArray(list) ? list : [];
+    } catch (_) {
+      state.pieces = [];
+    }
+    if (!state.pieces.length) {
+      els.select.textContent = '';
+      const o = document.createElement('option'); o.value = ''; o.textContent = '(no pieces found)';
+      els.select.appendChild(o);
+    }
+    return state.pieces;
+  }
+
+  els.select.addEventListener('change', () => { if (els.select.value) load(els.select.value); });
+
+  const requested = new URLSearchParams(window.location.search).get('piece');
+  const pieces = await loadPieceList();
+  const first = requested || (pieces[0] && pieces[0].name) || null;
+  if (pieces.length) fillPicker(pieces, first);
+  if (first) load(first);
+  else banner('No pieces available. Run tools/pieces/midi_to_norm.py to write static/private/pieces/<slug>.norm.json.', true);
+
+  // Debug handle for the browser console (no behaviour depends on it).
+  window.__player = { state, load, pieces: () => state.pieces };
+</script>
+{% endblock %}
