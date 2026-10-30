@@ -52,8 +52,13 @@ Converter rules
   8. Pitch spelling. From --key (the file's FF 59 key signature is ignored:
      the prelude's says C). Diatonic notes take their key-signature spelling;
      chromatic notes are spelled with the key's accidental direction (flats in
-     flat keys and C major / A minor except F♯; sharps in sharp keys). Unicode
-     ♭ / ♯, scientific octave (C4 = 60).
+     flat keys and C major / A minor except F♯; sharps in sharp keys). In a
+     minor key the raised 6th and 7th degrees (melodic / harmonic minor) are
+     spelled as that degree's letter raised one step from the signature — a
+     natural where the signature flattens it, otherwise a sharp (G minor: E
+     and F♯, not F♭ and G♭; A minor: F♯ and G♯; G♯ minor: E♯ and F♯♯) — rather
+     than as the flat of the next letter. Major keys and every other chromatic
+     note keep the direction rule. Unicode ♭ / ♯, scientific octave (C4 = 60).
   9. Ignored. Control changes (sustain pedal), velocity, channel, program and
      pitch-bend data. Grace notes are not detected: an ornament that was
      recorded as a short early attack simply snaps like any other note (and is
@@ -163,19 +168,29 @@ FLAT_SPELLING = {0: 'C', 1: 'D♭', 2: 'D', 3: 'E♭', 4: 'E', 5: 'F', 6: 'G♭'
 SHARP_SPELLING = {0: 'C', 1: 'C♯', 2: 'D', 3: 'D♯', 4: 'E', 5: 'F', 6: 'F♯', 7: 'G', 8: 'G♯', 9: 'A', 10: 'A♯', 11: 'B'}
 
 
-def key_fifths(text):
-    """'B♭' / 'Bb' / 'B♭m' / 'Bbm' / 'B♭ minor' / 'b♭ min' / 'E major' → fifths (as review_page.key_fifths)."""
+def parse_key(text):
+    """'B♭' / 'Bb' / 'B♭m' / 'Bbm' / 'B♭ minor' / 'b♭ min' / 'E major' → (fifths, minor, tonic), tonic e.g. 'B♭'."""
     m = re.match(r'^\s*([A-Ga-g])\s*([#♯b♭]?)\s*(m|min|minor|maj|major)?\s*$', text or '', re.I)
     if not m: raise ValueError(f'bad key {text!r}')
     root = m.group(1).upper() + m.group(2).replace('#', '♯').replace('b', '♭')
     mode = (m.group(3) or '').lower()
-    table = MINOR_FIFTHS if mode in ('m', 'min', 'minor') else MAJOR_FIFTHS
+    minor = mode in ('m', 'min', 'minor')
+    table = MINOR_FIFTHS if minor else MAJOR_FIFTHS
     if root not in table: raise ValueError(f'no key signature for {text!r}')
-    return table[root]
+    return table[root], minor, root
 
 
-def spelling_table(fifths):
-    """pitch class → spelled name without octave, for a key signature of `fifths`."""
+def key_fifths(text):
+    """key text → fifths (as review_page.key_fifths)."""
+    return parse_key(text)[0]
+
+
+def spelling_table(fifths, minor_tonic=None):
+    """pitch class → spelled name without octave, for a key signature of `fifths`.
+
+    `minor_tonic` (the tonic of a minor key, e.g. 'G' or 'B♭') also spells the
+    raised 6th and 7th degrees as that letter raised one step from the signature
+    (G minor: 4 → 'E', 6 → 'F♯'), overriding the key's accidental direction."""
     table = dict(FLAT_SPELLING if fifths <= 0 else SHARP_SPELLING)
     if fifths == 0:
         table[6] = 'F♯'
@@ -184,6 +199,14 @@ def spelling_table(fifths):
     for letter in signature:
         pc = (LETTER_PC[letter] + (1 if fifths > 0 else -1)) % 12
         table[pc] = letter + acc
+    if minor_tonic:
+        letters = 'CDEFGAB'
+        tonic_pc = (LETTER_PC[minor_tonic[0]] + {'': 0, '♯': 1, '♭': -1}[minor_tonic[1:]]) % 12
+        for degree, semitones in ((5, 9), (6, 11)):          # raised 6th, raised 7th (0-based degree)
+            letter = letters[(letters.index(minor_tonic[0]) + degree) % 7]
+            pc = (tonic_pc + semitones) % 12
+            raise_by = (pc - LETTER_PC[letter] + 1) % 12 - 1  # 0 natural, 1 sharp, 2 double sharp
+            table[pc] = letter + {0: '', 1: '♯', 2: '♯♯'}[raise_by]
     return table
 
 
@@ -384,8 +407,8 @@ def convert(path, *, piece, reader, key, grid, min_rest=None, time=None, beats_p
             title=None, clefs=None):
     division, tracks, meta = read_midi(path)
     clefs = parse_clefs(clefs)
-    fifths = key_fifths(key)
-    table = spelling_table(fifths)
+    fifths, minor, tonic = parse_key(key)
+    table = spelling_table(fifths, tonic if minor else None)
     time_sig = parse_time(time) if time else meta['time']
     if time_sig is None:
         raise SystemExit('no time signature in the file: pass --time N/D')

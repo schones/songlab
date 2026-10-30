@@ -66,8 +66,22 @@
   .pl-panel { background: #FFFFFF; border: 1px solid var(--border, #D8D4CC); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
   .pl-panel__label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: 0 0 0.5rem; }
   .pl-staff-host { min-height: 220px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+  .pl-staff-host > .pl-staff-wrap { align-self: stretch; }
   .pl-keyboard-host { min-height: 120px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
-  .pl-staff-host svg { max-width: 100%; height: auto; }
+
+  /* Bar navigation (step 3): Prev / Next, "Bar N / M", debug state cycler */
+  .pl-barnav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.5rem; }
+  .pl-barnav button {
+    font: inherit; font-size: 1rem; font-weight: 700; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary);
+  }
+  .pl-barnav button:hover:not(:disabled) { border-color: var(--accent-blue); color: var(--accent-blue); }
+  .pl-barnav button:disabled { opacity: 0.4; cursor: default; }
+  .pl-barnav button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+  .pl-bar-label { font-weight: 700; min-width: 7em; }
+  .pl-barnav__hint { font-size: 0.85rem; color: var(--text-muted); }
+  .pl-debug { margin-left: auto; font-size: 0.85rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 0.4rem; }
+  .pl-debug__state { min-width: 5em; font-variant-numeric: tabular-nums; }
 </style>
 {% endblock %}
 
@@ -110,10 +124,17 @@
       </div>
     </div>
 
-    <!-- Staff host: step 3 renders the current bar here (Verovio) -->
+    <!-- Staff: one bar at a time (PlayerStaff, Verovio); Prev / Next or ← / → -->
     <section class="pl-panel" aria-label="Staff">
       <p class="pl-panel__label">Staff</p>
-      <div class="pl-staff-host" id="pl-staff">Staff appears here (step 3).</div>
+      <div class="pl-barnav">
+        <button type="button" id="pl-prev" aria-label="Previous bar" disabled>&larr; Prev</button>
+        <span class="pl-bar-label" id="pl-bar-label" aria-live="polite">Bar – / –</span>
+        <button type="button" id="pl-next" aria-label="Next bar" disabled>Next &rarr;</button>
+        <span class="pl-barnav__hint">← / → keys move too</span>
+        <label class="pl-debug"><input type="checkbox" id="pl-debug-states"> debug: cycle note states <span class="pl-debug__state" id="pl-debug-state"></span></label>
+      </div>
+      <div class="pl-staff-host" id="pl-staff">Staff loads with the piece.</div>
     </section>
 
     <!-- Keyboard host: step 5 mounts VoicingKeyboard here -->
@@ -129,14 +150,87 @@
 {% block scripts %}
 <script type="module">
   // Step 2 shell: list pieces, load the selected norm JSON, show its header.
-  // No MIDI, staff or keyboard wiring yet (steps 3–5).
+  // Step 3: engrave one bar at a time with PlayerStaff; Prev / Next, ← / →.
+  // No MIDI or keyboard wiring yet (steps 4–5).
+  import { PlayerStaff } from "{{ url_for('static', filename='player/player-staff.js') }}";
+
   const els = {
     title:  document.getElementById('pl-piece-title'),
     meta:   document.getElementById('pl-meta'),
     banner: document.getElementById('pl-banner'),
     select: document.getElementById('pl-piece-select'),
+    prev:   document.getElementById('pl-prev'),
+    next:   document.getElementById('pl-next'),
+    barLabel: document.getElementById('pl-bar-label'),
+    debug:  document.getElementById('pl-debug-states'),
+    debugState: document.getElementById('pl-debug-state'),
   };
-  const state = { piece: null, norm: null, pieces: [] };
+  const state = { piece: null, norm: null, pieces: [], bar: null };
+  const staff = new PlayerStaff('pl-staff');
+
+  // ── Bar navigation ──────────────────────────────────────────────
+  const barNumbers = () => (state.norm && Array.isArray(state.norm.bars) ? state.norm.bars.map(b => b.bar) : []);
+
+  function updateBarNav() {
+    const bars = barNumbers();
+    const i = bars.indexOf(state.bar);
+    els.barLabel.textContent = bars.length && i >= 0 ? `Bar ${state.bar} / ${bars[bars.length - 1]}` : 'Bar – / –';
+    els.prev.disabled = !(i > 0);
+    els.next.disabled = !(i >= 0 && i < bars.length - 1);
+  }
+
+  async function showBar(bar) {
+    if (!state.norm) return;
+    state.bar = bar;
+    updateBarNav();
+    stopDebug();
+    const result = await staff.render(state.norm, bar);
+    if (result && result.warnings.length) banner(`Bar ${bar}: ${result.warnings.join('; ')}`);
+    else if (result) banner('');
+    if (els.debug.checked) startDebug();
+  }
+
+  function stepBar(delta) {
+    const bars = barNumbers();
+    const i = bars.indexOf(state.bar);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= bars.length) return;
+    showBar(bars[j]);
+  }
+
+  els.prev.addEventListener('click', () => stepBar(-1));
+  els.next.addEventListener('click', () => stepBar(1));
+  document.addEventListener('keydown', e => {
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    const t = e.target;
+    if (t instanceof Element && t.closest('input, select, textarea, [contenteditable]')) return;
+    if (e.key === 'ArrowLeft') { stepBar(-1); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { stepBar(1); e.preventDefault(); }
+  });
+
+  // ── Debug: cycle the bar's first note through expected → correct → wrong → clear ──
+  const DEBUG_STATES = ['expected', 'correct', 'wrong', null];
+  let debugTimer = null, debugIndex = 0;
+  function firstNoteId() {
+    const ids = staff.noteIds({ bar: state.bar });
+    return ids.length ? ids[0] : null;
+  }
+  function debugTick() {
+    const id = firstNoteId();
+    if (!id) { els.debugState.textContent = '(no notes)'; return; }
+    const s = DEBUG_STATES[debugIndex % DEBUG_STATES.length];
+    staff.setNoteState(id, s);
+    els.debugState.textContent = `${id}: ${s || 'clear'}`;
+    debugIndex++;
+  }
+  function startDebug() { stopDebug(); debugIndex = 0; debugTick(); debugTimer = setInterval(debugTick, 900); }
+  function stopDebug() {
+    if (debugTimer) clearInterval(debugTimer);
+    debugTimer = null;
+    staff.clearStates();
+    els.debugState.textContent = '';
+  }
+  els.debug.addEventListener('change', () => { if (els.debug.checked) startDebug(); else stopDebug(); });
 
   function banner(text, isError = false) {
     els.banner.hidden = !text;
@@ -162,7 +256,8 @@
     try {
       const res = await fetch(`/player/data/${encodeURIComponent(name)}`, { headers: { Accept: 'application/json' } });
       if (!res.ok) {
-        state.piece = name; state.norm = null;
+        state.piece = name; state.norm = null; state.bar = null;
+        updateBarNav(); staff.clear();
         els.title.textContent = name;
         banner(`No data for “${name}” (${res.status}). Expected static/private/pieces/${name}.norm.json or tests/fixtures/norm-${name}.json.`, true);
         return;
@@ -170,6 +265,9 @@
       const norm = await res.json();
       state.piece = name; state.norm = norm;
       showHeader(name, norm);
+      const bars = barNumbers();
+      if (bars.length) showBar(bars[0]);
+      else { state.bar = null; updateBarNav(); staff.clear(); banner('This piece has no bars.', true); }
       const url = new URL(window.location.href);
       url.searchParams.set('piece', name);
       history.replaceState(null, '', url);
@@ -224,6 +322,6 @@
   else banner('No pieces available. Run tools/pieces/midi_to_norm.py to write static/private/pieces/<slug>.norm.json.', true);
 
   // Debug handle for the browser console (no behaviour depends on it).
-  window.__player = { state, load, pieces: () => state.pieces };
+  window.__player = { state, load, pieces: () => state.pieces, staff, showBar };
 </script>
 {% endblock %}

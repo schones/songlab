@@ -34,7 +34,12 @@ const VEROVIO_OPTIONS = {
 };
 
 let _toolkit = null;
-/** Lazily import Verovio's ES module build; the promise is shared and reset on failure. */
+/**
+ * Lazily import Verovio's ES module build; the promise is shared and reset on
+ * failure. Exported so other pages (the player) reuse the one toolkit; the
+ * options set here are VoicingStaff's, and another user sets its own before
+ * each render.
+ */
 function loadToolkit() {
   if (!_toolkit) {
     _toolkit = (async () => {
@@ -192,7 +197,7 @@ class VoicingStaff {
 
 const CSS_escape = s => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(s) : s.replace(/[^\w-]/g, '\\$&'));
 
-export { VoicingStaff, VEROVIO_VERSION };
+export { VoicingStaff, VEROVIO_VERSION, loadToolkit };
 
 if (typeof window !== 'undefined') {
   window.VoicingStaff = VoicingStaff;
