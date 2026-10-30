@@ -52,6 +52,7 @@
   }
   .pl-control select:disabled { opacity: 0.6; }
   .pl-status { font-size: 0.85rem; color: var(--text-muted); min-height: 1.2em; }
+  .pl-check { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 1rem; color: var(--text-secondary); padding: 6px 0; cursor: pointer; }
 
   /* Hand toggle: a radio group styled as pills (game-pill from game-shell.css) */
   .pl-hands { display: inline-flex; gap: 0; border: 1px solid var(--border, #D8D4CC); border-radius: 999px; overflow: hidden; }
@@ -62,14 +63,24 @@
   .pl-hands label:has(input:checked) { background: var(--accent-blue); color: #FFFFFF; }
   .pl-hands label:has(input:focus-visible) { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 
-  /* ── Hosts: staff and keyboard (empty until step 3 / step 5) ── */
+  /* ── Hosts: staff and keyboard ─────────────────────────────── */
   .pl-panel { background: #FFFFFF; border: 1px solid var(--border, #D8D4CC); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
   .pl-panel__label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: 0 0 0.5rem; }
   .pl-staff-host { min-height: 220px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
   .pl-staff-host > .pl-staff-wrap { align-self: stretch; }
   .pl-keyboard-host { min-height: 120px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+  .pl-keyboard-host > .vk-wrap { align-self: stretch; }
 
-  /* Bar navigation (step 3): Prev / Next, "Bar N / M", debug state cycler */
+  /* Keyboard states (player's own; vk-key--hit's white ring is invisible on white keys).
+     Later rules win: held < expected < correct < wrong. */
+  .pl-page .vk-key.pl-key--held     { background: #B9B4A8; }
+  .pl-page .vk-key--black.pl-key--held { background: #5C5751; }
+  .pl-page .vk-key.pl-key--expected { background: var(--accent-blue);  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25); }
+  .pl-page .vk-key.pl-key--correct  { background: var(--accent-green); box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25); }
+  .pl-page .vk-key.pl-key--wrong    { background: var(--accent-coral); box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25); }
+  .pl-page .vk-key.pl-key--expected .vk-key__label, .pl-page .vk-key.pl-key--correct .vk-key__label, .pl-page .vk-key.pl-key--wrong .vk-key__label { opacity: 1; color: #fff; }
+
+  /* Bar navigation: Prev / Next, "Bar N / M", status line, Restart (at the end) */
   .pl-barnav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.5rem; }
   .pl-barnav button {
     font: inherit; font-size: 1rem; font-weight: 700; padding: 6px 14px; border-radius: 8px; cursor: pointer;
@@ -80,8 +91,9 @@
   .pl-barnav button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
   .pl-bar-label { font-weight: 700; min-width: 7em; }
   .pl-barnav__hint { font-size: 0.85rem; color: var(--text-muted); }
-  .pl-debug { margin-left: auto; font-size: 0.85rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 0.4rem; }
-  .pl-debug__state { min-width: 5em; font-variant-numeric: tabular-nums; }
+  .pl-status-line { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .pl-barnav .pl-restart { border-color: var(--accent-green); color: var(--accent-green); }
+  .pl-barnav .pl-restart[hidden] { display: none; }
 </style>
 {% endblock %}
 
@@ -101,7 +113,7 @@
 
     <div class="pl-banner" id="pl-banner" hidden role="status"></div>
 
-    <!-- Controls: piece picker (from /player/pieces), MIDI device (wired in step 5), hands -->
+    <!-- Controls: piece picker (from /player/pieces), MIDI device, hands, sound -->
     <div class="pl-controls">
       <div class="pl-control">
         <label for="pl-piece-select">Piece</label>
@@ -122,6 +134,11 @@
           <label><input type="radio" name="pl-hands" value="both" checked><span>Both</span></label>
         </div>
       </div>
+
+      <div class="pl-control">
+        <span class="pl-control__label">Sound</span>
+        <label class="pl-check"><input type="checkbox" id="pl-sound"> Sound for MIDI notes</label>
+      </div>
     </div>
 
     <!-- Staff: one bar at a time (PlayerStaff, Verovio); Prev / Next or ← / → -->
@@ -131,16 +148,17 @@
         <button type="button" id="pl-prev" aria-label="Previous bar" disabled>&larr; Prev</button>
         <span class="pl-bar-label" id="pl-bar-label" aria-live="polite">Bar – / –</span>
         <button type="button" id="pl-next" aria-label="Next bar" disabled>Next &rarr;</button>
-        <span class="pl-barnav__hint">← / → keys move too</span>
-        <label class="pl-debug"><input type="checkbox" id="pl-debug-states"> debug: cycle note states <span class="pl-debug__state" id="pl-debug-state"></span></label>
+        <span class="pl-barnav__hint">← / → move · R restarts</span>
+        <span class="pl-status-line" id="pl-status" aria-live="polite"></span>
+        <button type="button" id="pl-restart" class="pl-restart" hidden>Restart</button>
       </div>
       <div class="pl-staff-host" id="pl-staff">Staff loads with the piece.</div>
     </section>
 
-    <!-- Keyboard host: step 5 mounts VoicingKeyboard here -->
+    <!-- Keyboard: VoicingKeyboard, clickable; player.js adds pl-key--expected / --correct / --wrong / --held -->
     <section class="pl-panel" aria-label="Keyboard">
       <p class="pl-panel__label">Keyboard</p>
-      <div class="pl-keyboard-host" id="pl-keyboard">Keyboard appears here (step 5).</div>
+      <div class="pl-keyboard-host" id="pl-keyboard">Keyboard appears with the piece.</div>
     </section>
 
   </div>
@@ -148,180 +166,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script type="module">
-  // Step 2 shell: list pieces, load the selected norm JSON, show its header.
-  // Step 3: engrave one bar at a time with PlayerStaff; Prev / Next, ← / →.
-  // No MIDI or keyboard wiring yet (steps 4–5).
-  import { PlayerStaff } from "{{ url_for('static', filename='player/player-staff.js') }}";
-
-  const els = {
-    title:  document.getElementById('pl-piece-title'),
-    meta:   document.getElementById('pl-meta'),
-    banner: document.getElementById('pl-banner'),
-    select: document.getElementById('pl-piece-select'),
-    prev:   document.getElementById('pl-prev'),
-    next:   document.getElementById('pl-next'),
-    barLabel: document.getElementById('pl-bar-label'),
-    debug:  document.getElementById('pl-debug-states'),
-    debugState: document.getElementById('pl-debug-state'),
-  };
-  const state = { piece: null, norm: null, pieces: [], bar: null };
-  const staff = new PlayerStaff('pl-staff');
-
-  // ── Bar navigation ──────────────────────────────────────────────
-  const barNumbers = () => (state.norm && Array.isArray(state.norm.bars) ? state.norm.bars.map(b => b.bar) : []);
-
-  function updateBarNav() {
-    const bars = barNumbers();
-    const i = bars.indexOf(state.bar);
-    els.barLabel.textContent = bars.length && i >= 0 ? `Bar ${state.bar} / ${bars[bars.length - 1]}` : 'Bar – / –';
-    els.prev.disabled = !(i > 0);
-    els.next.disabled = !(i >= 0 && i < bars.length - 1);
-  }
-
-  async function showBar(bar) {
-    if (!state.norm) return;
-    state.bar = bar;
-    updateBarNav();
-    stopDebug();
-    const result = await staff.render(state.norm, bar);
-    if (result && result.warnings.length) banner(`Bar ${bar}: ${result.warnings.join('; ')}`);
-    else if (result) banner('');
-    if (els.debug.checked) startDebug();
-  }
-
-  function stepBar(delta) {
-    const bars = barNumbers();
-    const i = bars.indexOf(state.bar);
-    const j = i + delta;
-    if (i < 0 || j < 0 || j >= bars.length) return;
-    showBar(bars[j]);
-  }
-
-  els.prev.addEventListener('click', () => stepBar(-1));
-  els.next.addEventListener('click', () => stepBar(1));
-  document.addEventListener('keydown', e => {
-    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
-    const t = e.target;
-    if (t instanceof Element && t.closest('input, select, textarea, [contenteditable]')) return;
-    if (e.key === 'ArrowLeft') { stepBar(-1); e.preventDefault(); }
-    else if (e.key === 'ArrowRight') { stepBar(1); e.preventDefault(); }
-  });
-
-  // ── Debug: cycle the bar's first note through expected → correct → wrong → clear ──
-  const DEBUG_STATES = ['expected', 'correct', 'wrong', null];
-  let debugTimer = null, debugIndex = 0;
-  function firstNoteId() {
-    const ids = staff.noteIds({ bar: state.bar });
-    return ids.length ? ids[0] : null;
-  }
-  function debugTick() {
-    const id = firstNoteId();
-    if (!id) { els.debugState.textContent = '(no notes)'; return; }
-    const s = DEBUG_STATES[debugIndex % DEBUG_STATES.length];
-    staff.setNoteState(id, s);
-    els.debugState.textContent = `${id}: ${s || 'clear'}`;
-    debugIndex++;
-  }
-  function startDebug() { stopDebug(); debugIndex = 0; debugTick(); debugTimer = setInterval(debugTick, 900); }
-  function stopDebug() {
-    if (debugTimer) clearInterval(debugTimer);
-    debugTimer = null;
-    staff.clearStates();
-    els.debugState.textContent = '';
-  }
-  els.debug.addEventListener('change', () => { if (els.debug.checked) startDebug(); else stopDebug(); });
-
-  function banner(text, isError = false) {
-    els.banner.hidden = !text;
-    els.banner.textContent = text || '';
-    els.banner.classList.toggle('pl-banner--error', isError);
-  }
-
-  function showHeader(name, norm) {
-    els.title.textContent = (typeof norm.title === 'string' && norm.title.trim()) ? norm.title : name;
-    const parts = [];
-    if (norm.key)  parts.push(norm.key);
-    if (norm.time) parts.push(norm.time);
-    if (norm.tempo) parts.push(`${norm.tempo} bpm`);
-    parts.push(`${Array.isArray(norm.bars) ? norm.bars.length : 0} bars`);
-    els.meta.textContent = '';
-    for (const p of parts) { const s = document.createElement('span'); s.textContent = p; els.meta.appendChild(s); }
-  }
-
-  async function load(name) {
-    banner('');
-    els.title.textContent = '…';
-    els.meta.textContent = '';
-    try {
-      const res = await fetch(`/player/data/${encodeURIComponent(name)}`, { headers: { Accept: 'application/json' } });
-      if (!res.ok) {
-        state.piece = name; state.norm = null; state.bar = null;
-        updateBarNav(); staff.clear();
-        els.title.textContent = name;
-        banner(`No data for “${name}” (${res.status}). Expected static/private/pieces/${name}.norm.json or tests/fixtures/norm-${name}.json.`, true);
-        return;
-      }
-      const norm = await res.json();
-      state.piece = name; state.norm = norm;
-      showHeader(name, norm);
-      const bars = barNumbers();
-      if (bars.length) showBar(bars[0]);
-      else { state.bar = null; updateBarNav(); staff.clear(); banner('This piece has no bars.', true); }
-      const url = new URL(window.location.href);
-      url.searchParams.set('piece', name);
-      history.replaceState(null, '', url);
-    } catch (err) {
-      banner(`Could not load “${name}”: ${err.message}`, true);
-    }
-  }
-
-  function fillPicker(list, selected) {
-    els.select.textContent = '';
-    for (const source of ['private', 'public']) {
-      const group = list.filter(p => p.source === source);
-      if (!group.length) continue;
-      const og = document.createElement('optgroup');
-      og.label = source === 'private' ? 'local (private)' : 'public';
-      for (const p of group) {
-        const o = document.createElement('option');
-        o.value = p.name;
-        o.textContent = source === 'private' ? `${p.title} (local)` : p.title;
-        og.appendChild(o);
-      }
-      els.select.appendChild(og);
-    }
-    const has = [...els.select.options].some(o => o.value === selected);
-    if (has) els.select.value = selected; else els.select.selectedIndex = -1;
-  }
-
-  async function loadPieceList() {
-    try {
-      const res = await fetch('/player/pieces', { headers: { Accept: 'application/json' } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const list = await res.json();
-      state.pieces = Array.isArray(list) ? list : [];
-    } catch (_) {
-      state.pieces = [];
-    }
-    if (!state.pieces.length) {
-      els.select.textContent = '';
-      const o = document.createElement('option'); o.value = ''; o.textContent = '(no pieces found)';
-      els.select.appendChild(o);
-    }
-    return state.pieces;
-  }
-
-  els.select.addEventListener('change', () => { if (els.select.value) load(els.select.value); });
-
-  const requested = new URLSearchParams(window.location.search).get('piece');
-  const pieces = await loadPieceList();
-  const first = requested || (pieces[0] && pieces[0].name) || null;
-  if (pieces.length) fillPicker(pieces, first);
-  if (first) load(first);
-  else banner('No pieces available. Run tools/pieces/midi_to_norm.py to write static/private/pieces/<slug>.norm.json.', true);
-
-  // Debug handle for the browser console (no behaviour depends on it).
-  window.__player = { state, load, pieces: () => state.pieces, staff, showBar };
-</script>
+<script type="module" src="{{ url_for('static', filename='player/player.js') }}"></script>
 {% endblock %}

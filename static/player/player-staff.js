@@ -13,11 +13,13 @@
  *   await staff.render(norm, 15, { to: 16 });    // a range
  *   staff.setNoteState('pl-b1-1-0', 'expected'); // 'expected' | 'correct' | 'wrong' | null
  *   staff.clearStates();
+ *   staff.setDimmed(ids);                        // the other hand, drawn faint (pl-note--dim); [] clears
  *   staff.hits                                   // { id → { midi, bar, staff, hand, onset, at, tieStop } }
  *   staff.noteIds({ bar, hand })                 // ids in drawing order, optionally filtered
  *
  * States are classes on g.note (pl-note--expected / --correct / --wrong);
- * the CSS colours them blue / green / red, as the keyboard will. No MIDI,
+ * the CSS colours them blue / green / red, as the keyboard does. pl-note--dim
+ * is independent of the state (an unselected hand stays dim whatever happens). No MIDI,
  * no sound, no clicks here: the page wires those.
  */
 
@@ -41,6 +43,7 @@ const CSS = /* css */ `
 .pl-staff-svg g.note.pl-note--expected { color: var(--accent-blue, #2D5F8A); fill: var(--accent-blue, #2D5F8A); }
 .pl-staff-svg g.note.pl-note--correct  { color: var(--accent-green, #1E7B34); fill: var(--accent-green, #1E7B34); }
 .pl-staff-svg g.note.pl-note--wrong    { color: var(--accent-coral, #B9341F); fill: var(--accent-coral, #B9341F); }
+.pl-staff-svg g.note.pl-note--dim      { opacity: 0.35; }
 .pl-staff-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; color: var(--text-muted, #4E4A43); pointer-events: none; }
 .pl-staff-wrap[data-state="ready"] .pl-staff-status { display: none; }
 .pl-staff-wrap[data-state="loading"] .pl-staff-svg, .pl-staff-wrap[data-state="error"] .pl-staff-svg { opacity: 0.3; }
@@ -120,6 +123,13 @@ class PlayerStaff {
   getNoteState(id) { return this._states.get(id) || null; }
 
   clearStates() { for (const id of [...this._states.keys()]) this.setNoteState(id, null); }
+
+  /** Draw exactly these notes faint (pl-note--dim); orthogonal to setNoteState. */
+  setDimmed(ids) {
+    const want = new Set(ids || []);
+    for (const el of this._svgHost.querySelectorAll('g.note.pl-note--dim')) if (!want.has(el.id)) el.classList.remove('pl-note--dim');
+    for (const id of want) { const el = this._svgHost.querySelector(`#${CSS_escape(id)}`); if (el) el.classList.add('pl-note--dim'); }
+  }
 
   /** Drawn note ids in document order, optionally for one bar / hand. */
   noteIds({ bar, hand } = {}) {
