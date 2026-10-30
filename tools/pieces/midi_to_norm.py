@@ -6,10 +6,11 @@ Standard library only; the SMF reader is an extended copy of the one in
 tools/voicings/check_midi.py (per-track notes, track names, time signature,
 tempo and key signature meta events).
 
-Output document: { "piece", "reader": "midi", "source", "date", "key", "time",
-"beatsPerBar", "tempo" (bpm, optional), "bars": [ { "bar", "voice": [],
-"rh": [...], "lh": [...], "uncertain": [...] } ] } — the norm shape, plus the
-optional `tempo` this converter adds.
+Output document: { "piece", "title" (optional), "reader": "midi", "source",
+"date", "key", "time", "beatsPerBar", "tempo" (bpm, optional), "clefs"
+(optional), "bars": [ { "bar", "voice": [], "rh": [...], "lh": [...],
+"uncertain": [...] } ] } — the norm shape, plus the optional `tempo` this
+converter adds and the optional `title` / `clefs` passed on the command line.
 
 Converter rules
   1. Units. Ticks become quarters (ticks / division). Every value is kept as a
@@ -65,7 +66,11 @@ Usage (from the repo root):
   Flags: --time N/D and --beats-per-bar override the file's time signature;
   --grid 0.5 (quarters); --min-rest Q (quarters, default = --grid) is the
   shortest gap written as a rest; --rh-track RH --lh-track LH name the tracks
-  (case-insensitive); --reader midi names the read.
+  (case-insensitive); --reader midi names the read; --title "..." writes the
+  document's `title`; --clef HAND:CLEF@BAR[,CLEF@BAR...] (repeatable, one per
+  hand; clefs treble / bass; bars ascending and within the piece), e.g.
+  --clef lh:treble@1,bass@9 --clef rh:treble@1, writes `clefs`:
+  {"lh": [{"bar": 1, "clef": "treble"}, {"bar": 9, "clef": "bass"}], "rh": [...]}.
 """
 import argparse
 import datetime
@@ -337,6 +342,36 @@ def parse_time(text):
     return int(m.group(1)), int(m.group(2))
 
 
+CLEFS = ('treble', 'bass')
+HANDS = ('lh', 'rh')
+
+
+def parse_clefs(specs):
+    """['lh:treble@1,bass@9', 'rh:treble@1'] → {'lh': [{'bar': 1, 'clef': 'treble'}, ...], 'rh': [...]}.
+    Bars must ascend within a hand; the upper bound is checked once the bar count is known."""
+    clefs = {}
+    for spec in specs or []:
+        hand, sep, rest = spec.partition(':')
+        hand = hand.strip().lower()
+        if not sep or hand not in HANDS:
+            raise ValueError(f'bad --clef {spec!r}: expected HAND:CLEF@BAR[,CLEF@BAR...] with HAND lh or rh')
+        if hand in clefs:
+            raise ValueError(f'bad --clef {spec!r}: {hand} given twice')
+        changes = []
+        for item in rest.split(','):
+            m = re.match(r'^\s*([A-Za-z]+)\s*@\s*(\d+)\s*$', item)
+            if not m:
+                raise ValueError(f'bad --clef {spec!r}: {item.strip()!r} is not CLEF@BAR')
+            clef, bar = m.group(1).lower(), int(m.group(2))
+            if clef not in CLEFS:
+                raise ValueError(f'bad --clef {spec!r}: clef {clef!r} (allowed: {", ".join(CLEFS)})')
+            if bar < 1 or (changes and bar <= changes[-1]['bar']):
+                raise ValueError(f'bad --clef {spec!r}: bars must be ascending from 1')
+            changes.append({'bar': bar, 'clef': clef})
+        clefs[hand] = changes
+    return clefs
+
+
 def find_track(tracks, name):
     hits = [t for t in tracks if t['name'].lower() == name.lower()]
     if len(hits) != 1:
@@ -345,8 +380,10 @@ def find_track(tracks, name):
     return hits[0]
 
 
-def convert(path, *, piece, reader, key, grid, min_rest=None, time=None, beats_per_bar=None, rh_track='RH', lh_track='LH'):
+def convert(path, *, piece, reader, key, grid, min_rest=None, time=None, beats_per_bar=None, rh_track='RH', lh_track='LH',
+            title=None, clefs=None):
     division, tracks, meta = read_midi(path)
+    clefs = parse_clefs(clefs)
     fifths = key_fifths(key)
     table = spelling_table(fifths)
     time_sig = parse_time(time) if time else meta['time']
@@ -367,6 +404,10 @@ def convert(path, *, piece, reader, key, grid, min_rest=None, time=None, beats_p
             uncertain.setdefault(1, []).append(f'{staff}: {spell_midi(pitch, table)} had no note-off; closed at the end of the track')
 
     last = max([b for d in per_staff.values() for b in d] + [1])
+    for hand, changes in clefs.items():
+        for c in changes:
+            if c['bar'] > last:
+                raise SystemExit(f"--clef {hand}: bar {c['bar']} is past the last bar ({last})")
     bars, problems = [], []
     for n in range(1, last + 1):
         bar = {'bar': n, 'voice': [], 'rh': [], 'lh': []}
@@ -380,18 +421,22 @@ def convert(path, *, piece, reader, key, grid, min_rest=None, time=None, beats_p
     if problems:
         raise SystemExit('validation failed:\n  ' + '\n  '.join(problems))
 
-    doc = {
-        'piece': piece,
+    doc = {'piece': piece}
+    if title:
+        doc['title'] = title
+    doc.update({
         'reader': reader,
         'source': f'{path} ({rh_track} → rh, {lh_track} → lh; {fmt(grid)}-quarter grid, rests ≥ {fmt(min_rest)} q)',
         'date': datetime.date.today().isoformat(),
         'key': key,
         'time': f'{time_sig[0]}/{time_sig[1]}',
         'beatsPerBar': fmt(bpb),
-    }
+    })
     if meta['tempo_us']:
         bpm = round(60_000_000 / meta['tempo_us'], 1)
         doc['tempo'] = int(bpm) if abs(bpm - round(bpm)) < 0.05 else bpm
+    if clefs:
+        doc['clefs'] = clefs
     doc['bars'] = bars
     stats = {'division': division, 'tracks': {s: len(t['notes']) for s, t in staves.items()},
              'bars': last, 'uncertain': sum(len(b['uncertain']) for b in bars), 'file_key': meta['key']}
@@ -411,9 +456,17 @@ def main():
     ap.add_argument('--rh-track', default='RH', help='name of the right-hand track (default RH)')
     ap.add_argument('--lh-track', default='LH', help='name of the left-hand track (default LH)')
     ap.add_argument('--reader', default='midi', help='reader name written to the output (default midi)')
+    ap.add_argument('--title', help='piece title written to the output (optional)')
+    ap.add_argument('--clef', action='append', metavar='HAND:CLEF@BAR[,CLEF@BAR...]',
+                    help='clef changes for one hand (lh or rh), e.g. lh:treble@1,bass@9; clefs treble / bass; '
+                         'bars ascending and within the piece; repeat the flag for the other hand (optional)')
     a = ap.parse_args()
-    doc, stats = convert(a.input, piece=a.piece, reader=a.reader, key=a.key, grid=a.grid, min_rest=a.min_rest, time=a.time,
-                         beats_per_bar=a.beats_per_bar, rh_track=a.rh_track, lh_track=a.lh_track)
+    try:
+        doc, stats = convert(a.input, piece=a.piece, reader=a.reader, key=a.key, grid=a.grid, min_rest=a.min_rest, time=a.time,
+                             beats_per_bar=a.beats_per_bar, rh_track=a.rh_track, lh_track=a.lh_track,
+                             title=a.title, clefs=a.clef)
+    except ValueError as e:
+        raise SystemExit(str(e))
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     with open(a.out, 'w', encoding='utf-8') as fh:
         json.dump(doc, fh, ensure_ascii=False, indent=1)
