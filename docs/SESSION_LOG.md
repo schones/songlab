@@ -3,6 +3,93 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-10-30 — follow-along MIDI player: first piece recorded, midi_to_norm, /player Milestone 1
+
+Guided-practice track. The first piece was recorded in Logic from the
+RD-2000 and turned into norm by a new MIDI reader; a new `/player` page
+plays it back in wait-for-me mode on a grand staff with an on-screen
+keyboard. Built in steps from a read-and-report (`/tmp/player-report.md`),
+each with Node self-tests; Milestone 1 checked in Chrome with the
+RD-2000 at the end of the day. All on `dev`.
+
+### Landed
+- First piece: Carol of the Bells (George Winston, easy piano,
+  Musicnotes), lines 1–2 = 16 bars, G minor (two flats — the earlier
+  notes saying B♭ minor were wrong), 3/4. Private data, gitignored:
+  `static/private/pieces/prelude-winston-first-16.mid` and
+  `.norm.json`.
+- `tools/pieces/midi_to_norm.py` (new, standard-library SMF reader, no
+  mido in the pipeline): MIDI tracks RH / LH → norm. Flags `--key` (the
+  file's key meta is ignored), `--grid`, `--min-rest` (gaps shorter
+  than this extend the note instead of becoming rests), `--title`,
+  `--clef HAND:CLEF@BAR`. Minor keys spell the raised 6th / 7th with
+  sharps. New optional norm fields `tempo`, `title`, `clefs` documented
+  in `tools/pieces/README.md`. Command used for the prelude:
+  `--key "G minor" --grid 0.25 --min-rest 0.5 --clef lh:treble@1,bass@9
+  --clef rh:treble@1`.
+- `/player`: `app.py` routes `/player`, `/player/pieces`,
+  `/player/data/<name>`; `templates/player.html`; `static/player/`
+  `player-staff-model.js` (norm → MEI, hand-based staves, bar ranges,
+  cross-bar ties, clef changes; 34/34), `player-staff.js` (PlayerStaff
+  on the shared Verovio toolkit, note states, `setDimmed`),
+  `player-follow.js` (steps, `attachIds`, wait-for-me follower; 39/39),
+  `player.js` (page glue). `voicing-staff.js` now exports
+  `loadToolkit` so the two staves share one WASM instance.
+- Milestone 1 behaviour: one bar at a time on a grand staff, MIDI in,
+  notes blue / green / red, wait-for-me (a chord = all notes attacked
+  since the step began, any order), LH / RH / Both with the other hand
+  dimmed, Prev / Next and ← / →, R restart, on-screen keyboard (clicks
+  = attack + release, always sound), optional "Sound for MIDI notes"
+  echo through the shared Salamander sampler (off by default — the
+  RD-2000 sounds itself), status line and Done + Restart.
+
+### Diagnosed / decided
+- MIDI input reuses `createShellInput` from Cycle of Shells as-is. It
+  has a fixed storage key and no key option, but its `storage`
+  dependency is injectable, so the player passes a storage view that
+  maps to `songlab_player_midi_device`. No shared-module change.
+- Chord semantics in wait-for-me: attacked-since-step, not
+  held-together, so a released note never blocks a chord (decided
+  before step 4; recorded in `player-follow.js`).
+- The player's staff gets its own model (staves by hand, not the
+  `/voicings` E4 pitch split) and pages one bar at a time for
+  Milestone 1; the model already accepts a bar range.
+- The `.mid` is the source of truth; the norm is regenerated from it.
+  Recording errors are fixed in Logic's Event List (not by dragging),
+  then re-exported under the exact same file name.
+- Keyboard states are the player's own classes (`pl-key--*`):
+  `vk-key--hit`'s white ring is invisible on white keys.
+- `parseNote(midi).name` gives `♯`; Tone's note parser wants `#`. The
+  player uses ASCII names. Cycle of Shells passes the `♯` form —
+  flagged below.
+
+### Setup for next session
+- `dev`, working tree with today's player work (Dustin commits).
+  Nothing on other branches.
+- Next, in order: tempo + loop; a warm-up screen in the song's key;
+  practice logging (`createResultLog` with key
+  `songlab_results_player`).
+
+### Calibration notes
+- AirPods add ~200 ms of latency in Logic; record wired.
+- Logic numbers octaves one lower than SongLab: its C3 = MIDI 60 =
+  our C4. Check this before trusting any pitch read off Logic's UI.
+- Build-by-numbered-steps with a report file per step and Node
+  self-tests on the pure modules worked well again; the browser check
+  came once at the end, with the piano.
+
+### Flagged for later
+- Move the step-2 route smoke script from the Claude Code scratchpad
+  to `tools/check_player_routes.py`.
+- Cycle of Shells echo may not sound black keys (passes `♯` note names
+  to Tone; `player.js` uses ASCII names). Added to Known Issues.
+- `VoicingStaff` should set its Verovio options per render, now that
+  it shares the toolkit with `PlayerStaff`.
+- Staff splitting is not beat-aware (fine for 3/4; revisit for 4/4
+  pieces).
+- Multi-bar view (the model already takes a bar range).
+
+
 ## 2026-10-28 — theory-label fixes merged; Levine claims reference; learning-path thesis
 
 Theory-label branch merged into `dev` (Prompts 1, 2, 2.5, 3; branch

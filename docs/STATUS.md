@@ -1,6 +1,6 @@
 # SongLab Project Status
 
-**Last updated:** 2026-10-27
+**Last updated:** 2026-10-30
 **Branch:** `dev` — all active work. Cycle of Shells merged 2026-10-27;
 Voicing Explorer Sessions 1–6.5 merged `df0e2fc`; Learn Phase 0 + Phase 1
 topics merged via `learn-topics`; Cantor v1; MIDI multi-port fix `57afaa9`.
@@ -29,7 +29,7 @@ is parked with Cantor.
 **Platform name:** SongLab · SkratchLab (rebrand complete)
 
 
-## Current state (2026-10-27)
+## Current state (2026-10-30)
 
 Full audit: `docs/AUDIT-2026-10-27.md`. This section is the short form.
 
@@ -73,11 +73,27 @@ default, sharp labels on held notes, double accidentals on held
 non-chord tones). It is the third hand-rolled game loop; `game-flow.js`
 extraction is deferred to the consolidation phase.
 
+### Follow-along player — `/player` (new 2026-10-30, guided-practice track)
+Wait-for-me practice of a recorded piece on the RD-2000: one bar at a
+time on a grand staff (Verovio, hand-based staves), MIDI in, notes blue /
+green / red, a chord counts once every note has been attacked since the
+step began (any order), LH / RH / Both, paging, on-screen keyboard, optional
+sound echo (off by default). Milestone 1 checked in Chrome with the
+RD-2000. Pieces come from `tools/pieces/midi_to_norm.py` (new, stdlib SMF
+reader) over a Logic recording; the first is Carol of the Bells (Winston,
+lines 1–2, 16 bars, G minor, 3/4), private and gitignored under
+`static/private/pieces/`. Routes `/player`, `/player/pieces`,
+`/player/data/<name>`; code in `static/player/`. Next: tempo + loop, a
+warm-up screen in the song's key, practice logging. Detail below under
+"What's Working".
+
 ### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
 Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
 gitignored). Toolchain: `mxl_to_norm`, `diff_reads`, `collect_third`,
-`review_page` (3-way vote, Verovio render, pitch self-check). I Got Rhythm
-is mid-review. Missing: a `norm_to_voicing.py` converter to the `/voicings`
+`review_page` (3-way vote, Verovio render, pitch self-check), and since
+2026-10-30 `midi_to_norm` (MIDI recording → norm; optional `tempo`,
+`title`, `clefs` fields documented in `tools/pieces/README.md`). I Got
+Rhythm is mid-review. Missing: a `norm_to_voicing.py` converter to the `/voicings`
 piece format (biggest gap); `review_page.py` is hard-wired to I Got
 Rhythm; no tracked record of where the IGR review stopped; schema needs a
 reduction rule for song-sheet piano parts. Proposed order: I Got Rhythm →
@@ -119,13 +135,26 @@ torus math in two (audit §3).
 4. Timeboxed pieces pipeline: generalize the review page,
    `norm_to_voicing.py`, finish I Got Rhythm.
 5. Write `extensions`, then `omitting-tones`.
+6. (added 2026-10-30) Guided-practice track: follow-along player.
+   Milestone 1 done; next tempo + loop, then the warm-up screen, then
+   practice logging.
 
 ---
 
 ## Current Focus
 
+**Guided-practice track — follow-along MIDI player (2026-10-30, `dev`)**
+is the newest workstream. The first piece (Carol of the Bells, Winston,
+lines 1–2) was recorded in Logic from the RD-2000 and turned into norm
+by the new `tools/pieces/midi_to_norm.py`; `/player` plays it back in
+wait-for-me mode with the staff, keyboard and follower pieces under
+`static/player/`. Milestone 1 is done and checked with the RD-2000. Next,
+in order: tempo + loop; a warm-up screen in the song's key; practice
+logging (`createResultLog` with key `songlab_results_player`). Current
+state block below.
+
 **Voicing Explorer analysis arc (2026-10-14, branch `voicing-explorer`)**
-is the active workstream. Motivated by a voiced practice score of
+was the active workstream before that. Motivated by a voiced practice score of
 Brad Mehldau's "Don't Be Sad" (private, gitignored), the arc adds an
 Analyze view that loads a voiced progression and shows per-bar
 interval tension, intervals that rub, named-vs-played chord tones,
@@ -836,8 +865,91 @@ headless Chrome; not yet merged to dev):**
   MIDI hot-plug, site-wide device default, sharp labels on held notes,
   ii_V_I walkthrough steps without concept_specifics.
 
+### Follow-along player — current state (updated 2026-10-30)
+
+**Landed and verified on dev (Node self-tests; Milestone 1 checked in
+Chrome with the RD-2000):**
+- `/player` (`app.py` routes `/player`, `/player/pieces`,
+  `/player/data/<name>`; `templates/player.html`): piece picker (private
+  pieces from `static/private/pieces/*.norm.json`, public from
+  `tests/fixtures/norm-*.json`), MIDI device select remembered under
+  `songlab_player_midi_device`, LH / RH / Both, Prev / Next and ← / →
+  by bar, R to restart, status line "Bar N · step k / total · wrong: n",
+  Done + Restart at the end.
+- `static/player/player-staff-model.js` (34/34): norm → MEI with staff 1
+  = RH, staff 2 = LH (hand-based, not pitch-split), a bar or a bar range,
+  ties across bars, per-hand clef changes from the norm's `clefs`;
+  `hits` map id → { midi, bar, hand, onset, at, tieStop }.
+  `player-staff.js`: PlayerStaff on the shared Verovio toolkit
+  (`voicing-staff.js` now exports `loadToolkit`), note states
+  `pl-note--expected / --correct / --wrong`, `setDimmed` for the
+  unselected hand.
+- `static/player/player-follow.js` (39/39): `buildSteps` (one step per
+  distinct attack onset across the selected hands; tie continuations
+  and graces make no step), `attachIds` (cumulative per rendered bar),
+  `createFollower` (wait-for-me: a step completes when every expected
+  midi has been attacked since the step began, any order; wrong never
+  advances; re-strikes ignored; `jumpTo(bar)`, `reset`).
+- `static/player/player.js`: page glue over `createShellInput` (its
+  injectable storage mapped to the player's own key), `VoicingKeyboard`
+  (range from the piece ± 3 keys, snapped to white keys; own state
+  classes `pl-key--expected / --correct / --wrong / --held`, since
+  `vk-key--hit`'s white ring is invisible on white keys), `loadSampler`
+  echo as in Cycle of Shells; on-screen clicks = attack + release and
+  always sound; "Sound for MIDI notes" off by default (the RD-2000
+  sounds itself); Tone.start on the first click / key press.
+- `tools/pieces/midi_to_norm.py` (new, stdlib SMF reader, no mido in the
+  pipeline): MIDI tracks RH / LH → norm. Flags `--key` (the file's key
+  meta is ignored), `--grid`, `--min-rest` (gaps shorter than this
+  extend the note instead of becoming rests), `--title`, `--clef
+  HAND:CLEF@BAR`. Minor keys spell the raised 6th / 7th with sharps. New
+  optional norm fields `tempo`, `title`, `clefs` in `tools/pieces/README.md`.
+  Prelude command: `--key "G minor" --grid 0.25 --min-rest 0.5 --clef
+  lh:treble@1,bass@9 --clef rh:treble@1`.
+- First piece: Carol of the Bells (George Winston, easy piano,
+  Musicnotes), lines 1–2 = 16 bars, G minor (two flats; the earlier
+  "B♭ minor" notes were wrong), 3/4. Recorded in Logic from the RD-2000;
+  `static/private/pieces/prelude-winston-first-16.mid` and `.norm.json`,
+  gitignored. The `.mid` is the source of truth; the norm is regenerated
+  from it.
+
+**In progress:**
+- Nothing mid-flight; Milestone 1 closed 2026-10-30.
+
+**Open / deferred:**
+- Next, in order: tempo + loop; warm-up screen in the song's key;
+  practice logging (`createResultLog` with key `songlab_results_player`,
+  per the game-engine spec envelope).
+- Multi-bar view: the model already takes a bar range; the page shows one
+  bar.
+- Staff splitting is not beat-aware (fine for 3/4; revisit for 4/4
+  pieces).
+- `VoicingStaff` should set its Verovio options per render now that it
+  shares the toolkit with `PlayerStaff` (PlayerStaff re-applies its own
+  before every render; VoicingStaff does not).
+- Move the step-2 route smoke script from the Claude Code scratchpad to
+  `tools/check_player_routes.py`.
+- Cycle of Shells echo may not sound black keys: it passes `♯` note names
+  to Tone (`cycle-of-shells.js` `noteName`); `player.js` uses ASCII names.
+  Listed in Known Issues.
+
+**Public surfaces (test harness / debugging):**
+- `window.__player` — `state`, `load(name)`, `showBar(bar, {keep})`,
+  `restart()`, `staff`, `keyboard`, `input`, `follower`, `steps`,
+  `noteOn(midi)` / `noteOff(midi)` (drive the follower from the console
+  without a piano).
+- Self-tests: `node --input-type=module -e "import('./static/player/player-staff-model.js').then(m => m.selfTest())"`
+  and the same for `player-follow.js`.
+
+**Standing rules:**
+- Private pieces stay under `static/private/pieces/` (gitignored); move
+  them to a non-static folder before any shared deploy (RADAR).
+- Fix recording errors in Logic's Event List, re-export under the exact
+  same file name, regenerate the norm. Don't hand-edit the norm.
+
 ### Games & Tools
 - Harmony Trainer, Chord Walks (4 tiers), Rhythm Lab, Strum Patterns, Chord Spotter, Scale Builder, Melody Match
+- **Follow-along player** `/player` (2026-10-30): wait-for-me practice of a recorded piece from MIDI; see the current-state block above
 - **Cycle of Shells** (2026-10-22, branch `cycle-of-shells`): ii–V–I shell voicings round the cycle from MIDI; see the current-state block above
 - **Swing Trainer**: ear-training for jazz swing feel (rotary knob, waveform viz, Practice/Test)
 - **Polyrhythm Trainer** (new): Guitar Hero-style falling-note game. Practice Mode (phase-based BPM ramp: Listen → Layer A → Layer B → Both → Victory) and Challenge Mode (arcade adaptive with leaderboard). Dark DAW theme, drum pads, lane breathing waves. First game on `input-provider.js` + `onset-detection.js`. Spec: `docs/polyrhythm-trainer-spec.md`
@@ -888,6 +1000,12 @@ itemised in `docs/AUDIT-2026-10-27.md` §1 and summarised here.
   7♯5, maj7♯5, 6/9, maj13, -7b5. Duplicate `'mmaj7'` key.
 - Tritone topic (verified) says only the dominant 7th has its tritone
   between 3rd and 7th; dim7 does too.
+
+**Games (2026-10-30):**
+- Cycle of Shells MIDI echo may be silent on black keys: `noteName` in
+  `cycle-of-shells.js` builds `A♯3`-style names from `parseNote`, which
+  Tone's note parser does not read. `static/player/player.js` uses ASCII
+  names (`A#3`); do the same there. Unverified at the piano.
 - `/learn` is not in the site nav; `/learn/<unknown-slug>` returns 200.
 - Every Theory card links to at least one stub (extensions,
   omitting-tones, voice-leading, voicings-as-shapes, rootless-voicings).
@@ -951,6 +1069,7 @@ itemised in `docs/AUDIT-2026-10-27.md` §1 and summarised here.
 | `docs/active-plans/instructional-content.md` | **Learn plan** — topic order, verification status |
 | `docs/active-plans/explainer-content.md` | Explainer registry drafts (Session 6.5 + Phase 0) |
 | `sources/SOURCES.md` | Public-domain scans, PD reasoning, pieces pipeline notes |
+| `tools/pieces/README.md` | Norm format (incl. `tempo`, `title`, `clefs` added 2026-10-30) and the pieces toolchain, `midi_to_norm.py` included |
 | `tools/voicings/schema.md` | Voiced-progression JSON schema (v1) consumed by `voicing-analysis.js` |
 | `docs/registry-inventory.md` | Chord-type registry audit + canonical JSON spec (§9: voicing-analysis local types) |
 | `docs/content-architecture.md` | Content model, topic schema, lens system |
