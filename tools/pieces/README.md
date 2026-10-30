@@ -13,8 +13,7 @@ Everything here is standard-library Python 3.
 One JSON document per read of a piece. A *read* is one reader's
 transcription of the same source: a Claude session working from page
 images, Audiveris (`mxl_to_norm.py`), a per-bar third read
-(`collect_third.py`), or a MIDI recording (converter not yet written; see
-"Sources" below). All reads of a piece share bar numbers so they can be
+(`collect_third.py`), or a MIDI recording (`midi_to_norm.py`). All reads of a piece share bar numbers so they can be
 compared bar by bar and staff by staff.
 
 ### Document
@@ -28,6 +27,7 @@ compared bar by bar and staff by staff.
 | `key` | string, optional | key with optional mode: `"B♭"`, `"Bb"`, `"B♭m"`, `"B♭ minor"`, `"E major"`. Major when no mode is given. |
 | `time` | string, optional | time signature `"N/D"`, any N/D (`"2/2"`, `"4/4"`, `"3/4"`, `"6/8"`). One per piece. |
 | `beatsPerBar` | number, optional | quarter notes per bar (4 for 2/2 and 4/4, 3 for 3/4 and 6/8). When absent, tools derive N × 4 / D. |
+| `tempo` | number, optional | quarter notes per minute. Written by `midi_to_norm.py` from the file's first `set_tempo`; absent from scan reads. Not used by the review tools; for playback (the follow-along player). |
 | `form` | object, optional | `firstPass: [a, b]`, `secondEnding: n`, `playOrder: [bar, …]` (repeats expanded). Used for the review page subtitle; the next-step converter will translate it to the Voicing Explorer `form` block. |
 | `bars` | array | one entry per written bar, ascending |
 | `notes` | object, optional | `{ "<bar>": "prose" }` — reader remarks per bar (third reads) |
@@ -116,9 +116,19 @@ Norm is the note model every source converges on:
 - **Audiveris** — `mxl_to_norm.py` converts its MusicXML: the part named
   Piano → `rh` (staff 1) and `lh` (staff 2), the Voice part with notes →
   `voice`.
-- **MIDI recordings** — two tracks named `RH` and `LH` map to `rh` and
-  `lh`; `voice` is `[]`. Quantised onsets and durations in quarters;
-  pitches spelled from the key. (Converter not yet written.)
+- **MIDI recordings** — `midi_to_norm.py`: the tracks named `RH` and `LH`
+  (`--rh-track` / `--lh-track`) map to `rh` and `lh`; `voice` is `[]`.
+  Onsets and durations snap to the recording's quantisation grid (`--grid`,
+  default 0.5 = 8th notes), a gap shorter than `--min-rest` (default =
+  `--grid`) extends the note to the next onset in that hand, notes are cut
+  at bar lines with ties, filler rests are written, and each staff is
+  validated to sum to `beatsPerBar`.
+  Pitches are spelled from `--key` (the file's key-signature meta is
+  ignored); `time` and `tempo` come from the file unless overridden. Every
+  off-grid onset, duration bumped to one grid, clip at a re-struck note, or
+  dropped duplicate attack is recorded in the bar's `uncertain` list with
+  the raw and written values. Sustain pedal, velocity and channel are
+  ignored; grace notes are not detected. Rules in the module docstring.
 
 ### Known limits
 
@@ -134,6 +144,7 @@ Norm is the note model every source converges on:
 | Script | Role |
 |---|---|
 | `mxl_to_norm.py` | Audiveris MusicXML (`.mxl`/`.xml`, per page with a bar offset) → norm |
+| `midi_to_norm.py` | two-track (`RH`/`LH`) piano MIDI recording → norm, quantised to `--grid`, with `tempo` and per-bar `uncertain` flags; refuses to write when a staff does not sum to the bar |
 | `collect_third.py` | per-bar JSON files (`DIR/bar-NN.json`, each `{bar, voice?, rh?, lh?, notes?}`) → norm |
 | `diff_reads.py` | compare two reads bar by bar and staff by staff: `agree`, `spelling-only`, `disagree` (pitches as midi, ties merged, graces as an ordered list, rests ignored) |
 | `review_page.py` | vote across 2–3 reads, render every disputed reading as notation (Verovio) next to the crop, collect choices; self-checks every snippet's sounding and displayed pitch and refuses to write the page on failure |
@@ -149,6 +160,14 @@ are produced ad hoc (no crop script yet).
 python3 tools/pieces/mxl_to_norm.py --piece i-got-rhythm --key B♭ --time 2/2 --beats-per-bar 4 \
     --out sources/work/igr-read-audiveris.json \
     sources/work/audiveris/igr-p3.mxl:0 sources/work/audiveris/igr-p4.mxl:17
+
+# 1b. MIDI recording → norm (key from the flag; time, tempo from the file; 8th-note grid)
+python3 tools/pieces/midi_to_norm.py --piece prelude-winston-first-16 --key "B♭ minor" \
+    --out static/private/pieces/prelude-winston-first-16.norm.json \
+    static/private/pieces/prelude-winston-first-16.mid
+# Flags: --grid 0.5, --min-rest 0.5 (shortest gap written as a rest, in quarters; default = --grid;
+#   shorter gaps extend the note to the next onset), --time 3/4, --beats-per-bar 3,
+#   --rh-track RH --lh-track LH, --reader midi.
 
 # 2. Per-bar third read → norm
 python3 tools/pieces/collect_third.py --dir sources/work/third --piece i-got-rhythm \
