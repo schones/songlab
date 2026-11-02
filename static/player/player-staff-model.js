@@ -14,6 +14,11 @@
  *   splitDur(quarters)          → [{ q, dur, dots }] longest first (exported for tests)
  *   keyFifths(text)             → fifths from 'B♭ minor' / 'Bbm' / 'F' …; null when unparseable
  *   clefFor(norm, hand, bar, bars) → 'treble' | 'bass'
+ *   lineRanges(norm, { barsPerLine = 4 }) → { ranges: [{ from, to }], warnings }
+ *       the staff lines the player shows: norm.lines (line-start bars) when
+ *       valid, else the sorted bars chunked positionally by barsPerLine (with a
+ *       warning when norm.lines was present but invalid)
+ *   lineIndexFor(ranges, bar)   → index of the range holding bar, or -1
  *   selfTest()                  → console report, { passed, total }
  *
  * Layout: staff 1 = rh, staff 2 = lh, one braced staffGrp. Key signature from
@@ -118,6 +123,51 @@ function clefFor(norm, hand, bar, bars) {
   }
   if (low === Infinity) return hand === 'lh' ? 'bass' : 'treble';
   return low >= 60 ? 'treble' : 'bass';
+}
+
+// ════════════════════════════════════════════════════════════════════
+// LINES
+// ════════════════════════════════════════════════════════════════════
+
+const DEFAULT_BARS_PER_LINE = 4;
+
+/**
+ * The staff lines the player shows, as inclusive bar ranges. norm.lines is a
+ * list of line-start bars (tools/pieces/README.md): line k runs from lines[k]
+ * to lines[k + 1] - 1, the last to the final bar. It is used when it is a
+ * non-empty array that starts at the first bar, is strictly increasing and
+ * names only bars in the piece; otherwise the sorted bar numbers are chunked
+ * positionally, `barsPerLine` at a time (default 4), and a warning says why
+ * norm.lines was ignored when it was present.
+ */
+function lineRanges(norm, { barsPerLine = DEFAULT_BARS_PER_LINE } = {}) {
+  const warnings = [];
+  const bars = (Array.isArray(norm && norm.bars) ? norm.bars : [])
+    .filter(b => b && typeof b.bar === 'number').map(b => b.bar).sort((a, b) => a - b);
+  if (!bars.length) return { ranges: [], warnings };
+  const last = bars[bars.length - 1];
+  const lines = norm.lines;
+  if (lines !== undefined) {
+    const present = new Set(bars);
+    const missing = Array.isArray(lines) ? lines.find(b => !present.has(b)) : undefined;
+    const why = !Array.isArray(lines) ? 'not an array'
+      : !lines.length ? 'empty'
+      : lines[0] !== bars[0] ? `does not start at the first bar (${bars[0]})`
+      : lines.some((b, i) => i > 0 && !(b > lines[i - 1])) ? 'not strictly increasing'
+      : missing !== undefined ? `names a bar not in the piece (${JSON.stringify(missing)})`
+      : null;
+    if (!why) return { ranges: lines.map((from, i) => ({ from, to: i + 1 < lines.length ? lines[i + 1] - 1 : last })), warnings };
+    warnings.push(`lines ${JSON.stringify(lines)} ignored: ${why}; using ${barsPerLine} bars per line`);
+  }
+  const n = Number.isInteger(barsPerLine) && barsPerLine >= 1 ? barsPerLine : DEFAULT_BARS_PER_LINE;
+  const ranges = [];
+  for (let i = 0; i < bars.length; i += n) ranges.push({ from: bars[i], to: bars[Math.min(i + n, bars.length) - 1] });
+  return { ranges, warnings };
+}
+
+/** Index of the range that holds `bar`, or -1. */
+function lineIndexFor(ranges, bar) {
+  return (Array.isArray(ranges) ? ranges : []).findIndex(r => r && bar >= r.from && bar <= r.to);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -358,7 +408,7 @@ function toMEI(norm, { from, to } = {}) {
 // EXPORTS
 // ════════════════════════════════════════════════════════════════════
 
-export { toMEI, splitDur, keyFifths, parseTime, clefFor, selfTest };
+export { toMEI, splitDur, keyFifths, parseTime, clefFor, lineRanges, lineIndexFor, selfTest };
 
 // ════════════════════════════════════════════════════════════════════
 // SELF-TEST
@@ -475,6 +525,27 @@ async function selfTest() {
   try { toMEI(PRELUDE, { from: 40, to: 41 }); } catch (e) { threw = e.message; }
   assert('a range outside the piece throws', threw, 'toMEI: no bars in 40..41');
 
+  // ── Lines: norm.lines, the positional default, lineIndexFor ──────
+  const barsOf = ns => ({ key: 'C', time: '4/4', bars: ns.map(bar => ({ bar, rh: [rest(0, 4)], lh: [] })) });
+  const R = (...pairs) => pairs.map(([from, to]) => ({ from, to }));
+  const SIXTEEN = barsOf(Array.from({ length: 16 }, (_, i) => i + 1));
+  const FOUR_BY_FOUR = R([1, 4], [5, 8], [9, 12], [13, 16]);
+  assert('lineRanges: no norm.lines, 16 bars → four lines of 4, no warnings', lineRanges(SIXTEEN), { ranges: FOUR_BY_FOUR, warnings: [] });
+  assert('lineRanges: no norm.lines, 10 bars → the last line is short (9–10)', lineRanges(barsOf([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).ranges, R([1, 4], [5, 8], [9, 10]));
+  assert('lineRanges: lines [1,5,9,13] → as the default; [1,7] → 1–6, 7–16', [lineRanges({ ...SIXTEEN, lines: [1, 5, 9, 13] }).ranges, lineRanges({ ...SIXTEEN, lines: [1, 7] })], [FOUR_BY_FOUR, { ranges: R([1, 6], [7, 16]), warnings: [] }]);
+  assert('lineRanges: lines [3,7] (not starting at the first bar) → default chunking + one warning', lineRanges({ ...SIXTEEN, lines: [3, 7] }), { ranges: FOUR_BY_FOUR, warnings: ['lines [3,7] ignored: does not start at the first bar (1); using 4 bars per line'] });
+  const reason = r => (/ignored: (.*); using/.exec(r.warnings[0] || '') || [])[1] || null;
+  assert('lineRanges: invalid shapes (not an array, empty, non-increasing, past the end, duplicate) → default + one warning each',
+    ['1,5', [], [1, 9, 5], [1, 5, 40], [1, 5, 5]].map(lines => { const r = lineRanges({ ...SIXTEEN, lines }); return [r.ranges.length, r.warnings.length, reason(r)]; }),
+    [[4, 1, 'not an array'], [4, 1, 'empty'], [4, 1, 'not strictly increasing'], [4, 1, 'names a bar not in the piece (40)'], [4, 1, 'not strictly increasing']]);
+  const SPARSE = barsOf([1, 8, 9, 15, 16]);
+  assert('lineRanges: non-contiguous fixture bars chunk by position, not by bar arithmetic (2 per line → 1–8, 9–15, 16–16)', lineRanges(SPARSE, { barsPerLine: 2 }).ranges, R([1, 8], [9, 15], [16, 16]));
+  assert('lineRanges: explicit lines over non-contiguous bars → 1–8, 9–16', lineRanges({ ...SPARSE, lines: [1, 9] }).ranges, R([1, 8], [9, 16]));
+  assert('lineRanges: barsPerLine 1 → one line per bar (today\'s behaviour); 0 / junk → 4', [lineRanges(barsOf([1, 2, 3]), { barsPerLine: 1 }).ranges, lineRanges(SIXTEEN, { barsPerLine: 0 }).ranges.length, lineRanges(SIXTEEN, { barsPerLine: 'x' }).ranges.length], [R([1, 1], [2, 2], [3, 3]), 4, 4]);
+  assert('lineRanges: no bars / no norm → no ranges, no warnings', [lineRanges({ bars: [] }), lineRanges(null)], [{ ranges: [], warnings: [] }, { ranges: [], warnings: [] }]);
+  assert('lineRanges: the PRELUDE fixture (1–16, no lines) → four lines; lineIndexFor finds bar 9 in line 2', (() => { const r = lineRanges(PRELUDE); return [r.ranges, r.warnings, lineIndexFor(r.ranges, 9)]; })(), [FOUR_BY_FOUR, [], 2]);
+  assert('lineIndexFor: first bar → 0, a middle bar → 1, the last bar → 3, outside → -1, empty / junk ranges → -1', [lineIndexFor(FOUR_BY_FOUR, 1), lineIndexFor(FOUR_BY_FOUR, 6), lineIndexFor(FOUR_BY_FOUR, 16), lineIndexFor(FOUR_BY_FOUR, 17), lineIndexFor([], 1), lineIndexFor(null, 1)], [0, 1, 3, -1, -1, -1]);
+
   // ── Smoke pass over the real prelude norm when present ───────────
   try {
     const fs = await import('node:fs');
@@ -488,6 +559,8 @@ async function selfTest() {
       assert('prelude: hit counts agree between single bars and the whole range', singles.reduce((s, r) => s + Object.keys(r.hits).length, 0), Object.keys(whole.hits).length);
       assert('prelude (G minor): bar 1 rh D6 2.5 q splits half + 8th, D is diatonic so no ♮ (the fixture is B♭ minor); lh bass clef from bar 9', [staffBody(singles[0].mei, 1, 1), staffDefs(singles[8].mei)],
         ['<layer n="1"><note xml:id="pl-b1-1-0" dur="2" pname="d" oct="6"/><note xml:id="pl-b1-1-1" dur="8" pname="d" oct="6"/><note xml:id="pl-b1-1-2" dur="8" pname="d" oct="6"/></layer>', ['G', 'F']]);
+      const pl = lineRanges(norm);
+      assert(`prelude: lines (${'lines' in norm ? 'norm.lines ' + JSON.stringify(norm.lines) : 'default, 4 per line'}) → 1–4, 5–8, 9–12, 13–16, no warnings`, [pl.ranges, pl.warnings], [[{ from: 1, to: 4 }, { from: 5, to: 8 }, { from: 9, to: 12 }, { from: 13, to: 16 }], []]);
     } else console.log('  · static/private/pieces/prelude-winston-first-16.norm.json not present; smoke pass skipped');
   } catch (e) { console.log(`  · smoke pass skipped (${e.message})`); }
 

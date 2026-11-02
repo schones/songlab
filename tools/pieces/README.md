@@ -30,6 +30,7 @@ compared bar by bar and staff by staff.
 | `beatsPerBar` | number, optional | quarter notes per bar (4 for 2/2 and 4/4, 3 for 3/4 and 6/8). When absent, tools derive N × 4 / D. |
 | `tempo` | number, optional | quarter notes per minute. Written by `midi_to_norm.py` from the file's first `set_tempo`; absent from scan reads. Not used by the review tools; for playback (the follow-along player). |
 | `clefs` | object, optional | clef changes per piano staff: `{ "lh": [{ "bar": 1, "clef": "treble" }, { "bar": 9, "clef": "bass" }], "rh": [{ "bar": 1, "clef": "treble" }] }`. Clefs `treble` / `bass`; bars ascending and within the piece; a change holds until the next. Written by `midi_to_norm.py --clef`. Not used by the review tools; for notation in the player. |
+| `lines` | number[], optional | line-start bar numbers for the follow-along player, e.g. `[1, 5, 9, 13]`: line k runs from `lines[k]` to `lines[k+1] - 1`, the last to the final bar. The first is 1, strictly increasing, within the piece. Written by `midi_to_norm.py --lines` or `--bars-per-line`. When absent the player uses 4 bars per line. Not used by the review tools. |
 | `form` | object, optional | `firstPass: [a, b]`, `secondEnding: n`, `playOrder: [bar, …]` (repeats expanded). Used for the review page subtitle; the next-step converter will translate it to the Voicing Explorer `form` block. |
 | `bars` | array | one entry per written bar, ascending |
 | `notes` | object, optional | `{ "<bar>": "prose" }` — reader remarks per bar (third reads) |
@@ -164,18 +165,20 @@ python3 tools/pieces/mxl_to_norm.py --piece i-got-rhythm --key B♭ --time 2/2 -
     sources/work/audiveris/igr-p3.mxl:0 sources/work/audiveris/igr-p4.mxl:17
 
 # 1b. MIDI recording → norm (key from the flag; time, tempo from the file; 16th-note grid,
-#     gaps under a half-beat extend the note; optional title and per-hand clef changes)
+#     gaps under a half-beat extend the note; optional title, per-hand clef changes and line starts)
 python3 tools/pieces/midi_to_norm.py --piece prelude-winston-first-16 --key "B♭ minor" \
     --grid 0.25 --min-rest 0.5 \
     --title "Carol of the Bells (Winston), lines 1–2" \
     --clef lh:treble@1,bass@9 --clef rh:treble@1 \
+    --lines 1,5,9,13 \
     --out static/private/pieces/prelude-winston-first-16.norm.json \
     static/private/pieces/prelude-winston-first-16.mid
 # Flags: --grid 0.5 (default), --min-rest 0.5 (shortest gap written as a rest, in quarters; default = --grid;
 #   shorter gaps extend the note to the next onset), --time 3/4, --beats-per-bar 3,
 #   --rh-track RH --lh-track LH, --reader midi, --title "..." (optional),
 #   --clef HAND:CLEF@BAR[,CLEF@BAR...] (optional; one flag per hand, lh or rh; clefs treble / bass;
-#   bars ascending and within the piece).
+#   bars ascending and within the piece), --lines 1,5,9,13 or --bars-per-line 4 (optional, mutually exclusive;
+#   line-start bars for the player: the first 1, strictly increasing, within the piece).
 
 # 2. Per-bar third read → norm
 python3 tools/pieces/collect_third.py --dir sources/work/third --piece i-got-rhythm \

@@ -8,9 +8,10 @@ tempo and key signature meta events).
 
 Output document: { "piece", "title" (optional), "reader": "midi", "source",
 "date", "key", "time", "beatsPerBar", "tempo" (bpm, optional), "clefs"
-(optional), "bars": [ { "bar", "voice": [], "rh": [...], "lh": [...],
-"uncertain": [...] } ] } — the norm shape, plus the optional `tempo` this
-converter adds and the optional `title` / `clefs` passed on the command line.
+(optional), "lines" (optional), "bars": [ { "bar", "voice": [], "rh": [...],
+"lh": [...], "uncertain": [...] } ] } — the norm shape, plus the optional
+`tempo` this converter adds and the optional `title` / `clefs` / `lines`
+passed on the command line.
 
 Converter rules
   1. Units. Ticks become quarters (ticks / division). Every value is kept as a
@@ -76,6 +77,12 @@ Usage (from the repo root):
   hand; clefs treble / bass; bars ascending and within the piece), e.g.
   --clef lh:treble@1,bass@9 --clef rh:treble@1, writes `clefs`:
   {"lh": [{"bar": 1, "clef": "treble"}, {"bar": 9, "clef": "bass"}], "rh": [...]}.
+  --lines 1,5,9,13 (line-start bars: integers, the first 1, strictly increasing,
+  within the piece) or --bars-per-line N (expanded to explicit starts 1, 1+N, …),
+  mutually exclusive, writes `lines`: [1, 5, 9, 13], the staff lines the
+  follow-along player shows; line k runs from lines[k] to lines[k+1] - 1, the
+  last to the final bar. Without either flag nothing is written (the player
+  defaults to 4 bars per line).
 """
 import argparse
 import datetime
@@ -395,6 +402,36 @@ def parse_clefs(specs):
     return clefs
 
 
+def parse_lines(text):
+    """'1,5,9,13' → [1, 5, 9, 13]: line-start bars. Integers, the first 1, strictly
+    increasing (so no duplicates); the upper bound is checked once the bar count is known."""
+    items = [s.strip() for s in (text or '').split(',')]
+    if any(not s for s in items):
+        raise ValueError(f'bad --lines {text!r}: expected BAR[,BAR...] e.g. 1,5,9,13')
+    starts = []
+    for s in items:
+        if not re.match(r'^\d+$', s):
+            raise ValueError(f'bad --lines {text!r}: {s!r} is not a bar number')
+        starts.append(int(s))
+    if starts[0] != 1:
+        raise ValueError(f'bad --lines {text!r}: the first line must start at bar 1')
+    for a, b in zip(starts, starts[1:]):
+        if b <= a:
+            raise ValueError(f'bad --lines {text!r}: bars must be strictly increasing')
+    return starts
+
+
+def parse_bars_per_line(value):
+    """'4' / 4 → 4: a positive integer."""
+    try:
+        n = int(str(value).strip())
+    except ValueError:
+        raise ValueError(f'bad --bars-per-line {value!r}: expected a positive integer') from None
+    if n < 1:
+        raise ValueError(f'bad --bars-per-line {value!r}: expected a positive integer')
+    return n
+
+
 def find_track(tracks, name):
     hits = [t for t in tracks if t['name'].lower() == name.lower()]
     if len(hits) != 1:
@@ -404,9 +441,13 @@ def find_track(tracks, name):
 
 
 def convert(path, *, piece, reader, key, grid, min_rest=None, time=None, beats_per_bar=None, rh_track='RH', lh_track='LH',
-            title=None, clefs=None):
+            title=None, clefs=None, lines=None, bars_per_line=None):
     division, tracks, meta = read_midi(path)
     clefs = parse_clefs(clefs)
+    if lines is not None and bars_per_line is not None:
+        raise ValueError('--lines and --bars-per-line are mutually exclusive')
+    line_starts = parse_lines(lines) if lines is not None else None
+    bars_per_line = parse_bars_per_line(bars_per_line) if bars_per_line is not None else None
     fifths, minor, tonic = parse_key(key)
     table = spelling_table(fifths, tonic if minor else None)
     time_sig = parse_time(time) if time else meta['time']
@@ -431,6 +472,10 @@ def convert(path, *, piece, reader, key, grid, min_rest=None, time=None, beats_p
         for c in changes:
             if c['bar'] > last:
                 raise SystemExit(f"--clef {hand}: bar {c['bar']} is past the last bar ({last})")
+    if line_starts is not None and line_starts[-1] > last:
+        raise SystemExit(f'--lines: bar {line_starts[-1]} is past the last bar ({last})')
+    if bars_per_line is not None:
+        line_starts = list(range(1, last + 1, bars_per_line))
     bars, problems = [], []
     for n in range(1, last + 1):
         bar = {'bar': n, 'voice': [], 'rh': [], 'lh': []}
@@ -460,6 +505,8 @@ def convert(path, *, piece, reader, key, grid, min_rest=None, time=None, beats_p
         doc['tempo'] = int(bpm) if abs(bpm - round(bpm)) < 0.05 else bpm
     if clefs:
         doc['clefs'] = clefs
+    if line_starts:
+        doc['lines'] = line_starts
     doc['bars'] = bars
     stats = {'division': division, 'tracks': {s: len(t['notes']) for s, t in staves.items()},
              'bars': last, 'uncertain': sum(len(b['uncertain']) for b in bars), 'file_key': meta['key']}
@@ -483,18 +530,25 @@ def main():
     ap.add_argument('--clef', action='append', metavar='HAND:CLEF@BAR[,CLEF@BAR...]',
                     help='clef changes for one hand (lh or rh), e.g. lh:treble@1,bass@9; clefs treble / bass; '
                          'bars ascending and within the piece; repeat the flag for the other hand (optional)')
+    lines_group = ap.add_mutually_exclusive_group()
+    lines_group.add_argument('--lines', metavar='BAR[,BAR...]',
+                             help='line-start bars for the follow-along player, e.g. 1,5,9,13 (the first 1, strictly '
+                                  'increasing, within the piece); writes `lines` (optional)')
+    lines_group.add_argument('--bars-per-line', metavar='N',
+                             help='write `lines` as every Nth bar from 1 (1, 1+N, …) instead of listing them (optional)')
     a = ap.parse_args()
     try:
         doc, stats = convert(a.input, piece=a.piece, reader=a.reader, key=a.key, grid=a.grid, min_rest=a.min_rest, time=a.time,
                              beats_per_bar=a.beats_per_bar, rh_track=a.rh_track, lh_track=a.lh_track,
-                             title=a.title, clefs=a.clef)
+                             title=a.title, clefs=a.clef, lines=a.lines, bars_per_line=a.bars_per_line)
     except ValueError as e:
         raise SystemExit(str(e))
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     with open(a.out, 'w', encoding='utf-8') as fh:
         json.dump(doc, fh, ensure_ascii=False, indent=1)
     print(f"wrote {a.out}: {stats['bars']} bars, {doc['time']} ({doc['beatsPerBar']} q/bar), key {doc['key']}"
-          f"{', tempo ' + str(doc['tempo']) + ' bpm' if 'tempo' in doc else ''}; "
+          f"{', tempo ' + str(doc['tempo']) + ' bpm' if 'tempo' in doc else ''}"
+          f"{', lines ' + ','.join(map(str, doc['lines'])) if 'lines' in doc else ''}; "
           f"notes rh {stats['tracks']['rh']} lh {stats['tracks']['lh']}; {stats['uncertain']} uncertain; "
           f"division {stats['division']}; file key meta {stats['file_key']} (ignored)")
 
