@@ -2,9 +2,10 @@
 
 `tools/pieces/` turns a source for a piece — a public-domain scan, an
 Audiveris export, a MIDI recording — into **norm**, SongLab's shared note
-model, reviews competing reads of the same source against each other, and
-(next step, `norm_to_voicing.py`, not yet written) reduces a reviewed norm
-file to the Voicing Explorer piece format (`tools/voicings/schema.md`).
+model, reviews competing reads of the same source against each other, merges
+them with the reviewer's choices into one resolved read (`apply_votes.py`),
+and (next step, `norm_to_voicing.py`, not yet written) reduces the resolved
+norm file to the Voicing Explorer piece format (`tools/voicings/schema.md`).
 
 Everything here is standard-library Python 3.
 
@@ -34,6 +35,7 @@ compared bar by bar and staff by staff.
 | `form` | object, optional | `firstPass: [a, b]`, `secondEnding: n`, `playOrder: [bar, …]` (repeats expanded). Used for the review page subtitle; the next-step converter will translate it to the Voicing Explorer `form` block. |
 | `bars` | array | one entry per written bar, ascending |
 | `notes` | object, optional | `{ "<bar>": "prose" }` — reader remarks per bar (third reads) |
+| `provenance` | object, optional | `{ "<bar>-<staff>": { "source": "<reader>", "how": "agree" \| "pick" \| "vote" } }` — written by `apply_votes.py` (reader `"resolved"`), one entry per staff of every bar: which read the events were copied from and why (`agree`: every read with a reading agreed; `pick`: the reviewer's choice on the review page; `vote`: a two-of-three majority over a dissenter). Not used by the review tools. |
 
 The review page takes `key`, `time`, `beatsPerBar`, `piece` and `form`
 from the **primary** read; flags override them. Only `key` is required
@@ -151,6 +153,7 @@ Norm is the note model every source converges on:
 | `collect_third.py` | per-bar JSON files (`DIR/bar-NN.json`, each `{bar, voice?, rh?, lh?, notes?}`) → norm |
 | `diff_reads.py` | compare two reads bar by bar and staff by staff: `agree`, `spelling-only`, `disagree` (pitches as midi, ties merged, graces as an ordered list, rests ignored) |
 | `review_page.py` | vote across 2–3 reads, render every disputed reading as notation (Verovio) next to the crop, collect choices; self-checks every snippet's sounding and displayed pitch and refuses to write the page on failure |
+| `apply_votes.py` | 2–3 reads + the choices JSON from the review page → one resolved norm read (reader `resolved`) with a `provenance` map; per staff: all agree → take it, else the reviewer's pick, else the two-of-three majority; a `none` pick, a "looks wrong" flag, a free-text correction or a three-way split with no pick blocks the write (exit 1) and is listed. Validates every staff's length, the bar run, each staff against its source and that every pick was used (exit 2 / 3, nothing written). Deterministic output. |
 
 ## Pipeline commands
 
@@ -198,13 +201,25 @@ python3 tools/pieces/review_page.py \
 
 Open `review.html` next to the `crops/` folder (on the dev server, through
 the `static/private/igr-review` symlink to `sources/work/`). Choices
-collect in the textarea at the bottom; copy the JSON and keep it — the page
-does not save it. The `--votes` file records the vote outcome per disputed
-bar+staff (`readers`, `counts`, `items`).
+collect in the textarea at the bottom; copy the JSON and keep it (e.g.
+`sources/work/igr-choices-2026-11-02.json`) — the page does not save it. The
+`--votes` file records the vote outcome per disputed bar+staff (`readers`,
+`counts`, `items`).
+
+```sh
+# 5. Resolved read: reads in the same order as step 4, plus the saved choices. Metadata from the primary read.
+python3 tools/pieces/apply_votes.py \
+    sources/work/igr-read-claude.json sources/work/igr-read-audiveris.json sources/work/igr-read-third.json \
+    --choices sources/work/igr-choices-2026-11-02.json --out sources/work/igr-resolved.norm.json
+# Prints the agree / pick / vote counts and the bar range. Writes nothing and exits non-zero when a
+# staff is unresolved (a "none" pick, a "looks wrong" flag, a correction text, a three-way split without
+# a pick — each listed with the correction text), when validation fails, or when a pick went unused
+# (typo, stale bar, unknown reader). Fix the choices file and re-run. --bar-len Q overrides beatsPerBar.
+```
 
 ## Next step
 
-`norm_to_voicing.py` (not yet written): reviewed norm → Voicing Explorer
+`norm_to_voicing.py` (not yet written): resolved norm (`apply_votes.py` output) → Voicing Explorer
 piece JSON with the song-sheet reduction melody = `voice`, comp = `rh`
 below the melody + `lh` chords, bassLine = `lh` bass. See
 `docs/AUDIT-2026-10-27.md` §2.
