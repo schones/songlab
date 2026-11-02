@@ -22,15 +22,21 @@
  *   selfTest()                  → console report, { passed, total }
  *
  * Layout: staff 1 = rh, staff 2 = lh, one braced staffGrp. Key signature from
- * norm.key, meter from norm.time. Clefs from norm.clefs (the clef in force at
+ * norm.key, meter from norm.time; when the range does not start at the
+ * piece's first bar the meter stays in the staffDefs (Verovio needs it for
+ * mRest and spacing) but is not drawn (meter.visible="false", MEI 5
+ * att.meterSigDefault.vis), as in printed music where the key signature
+ * repeats on every line and the time signature only opens the piece.
+ * Clefs from norm.clefs (the clef in force at
  * each bar, per hand; a change inside the range is written as a <clef> at the
  * start of that bar) or, without norm.clefs, by range: treble when the hand's
  * lowest note in the rendered range is C4 (MIDI 60) or above, else bass.
  *
  * Events whose onsets overlap inside a hand go to a second layer (greedy, as
  * review_page.staff_musicxml). Durations are split into tied pieces by the
- * meter's beat hierarchy (meter-rules.js splitSpan: a note may hide a beat
- * only as the displaced-beat syncopation ♪ ♩ ♪ / ♩ 𝅗𝅥 ♩; rests never do), and
+ * meter's beat hierarchy (meter-rules.js splitSpan: by default a note that
+ * starts off the beat never hides a beat — 3/4 ♩ ♪ ♩ ♪ is written ♩ ♪ ♪⌒♪ ♪;
+ * norm.syncopation "displaced" allows ♪ ♩ ♪ and ♩ 𝅗𝅥 ♩; rests never hide one), and
  * runs of two or more eighths or shorter inside one beat group are wrapped in
  * <beam> (meter-rules.js beamRuns; `beams: false` turns this off for
  * comparison). A rest is <rest>; a hand that does not sound in the bar is
@@ -49,7 +55,7 @@
  */
 
 import { parseNote } from '../shared/voicing-analysis.js';
-import { splitDur, splitSpan, beamRuns, meterLevels, parseTime } from './meter-rules.js';
+import { splitDur, splitSpan, beamRuns, meterLevels, parseTime, SYNCOPATIONS } from './meter-rules.js';
 
 const EPS = 1e-6;   // norm values sit on a 0.125-quarter grid
 
@@ -173,7 +179,7 @@ function assignLayers(events) {
  * note:  { id, midi, name, letter, acc, octave, bar, staff, hand, onset, at, q,
  *          tieStop, tieIn, tieOut, tieNext, accidShow }
  */
-function layoutHand(norm, barData, { hand, staff, beatsPerBar, grid, warnings, counter }) {
+function layoutHand(norm, barData, { hand, staff, beatsPerBar, grid, syncopation, warnings, counter }) {
   const bar = barData.bar;
   const raw = Array.isArray(barData[hand]) ? barData[hand] : [];
   const events = [];
@@ -206,7 +212,7 @@ function layoutHand(norm, barData, { hand, staff, beatsPerBar, grid, warnings, c
     };
     for (const e of evs) {
       if (e.onset > cursor + EPS) fill(cursor, e.onset - cursor);
-      const parts = splitSpan(e.onset, e.dur, grid, { strict: e.rest });   // rests never hide a beat
+      const parts = splitSpan(e.onset, e.dur, grid, { strict: e.rest, syncopation });   // rests never hide a beat
       if (Math.abs(parts.reduce((s, d) => s + d.q, 0) - e.dur) > EPS) warnings.push(`bar ${bar} ${hand}: duration ${e.dur} q at ${e.onset} q is finer than 1/32, remainder dropped`);
       parts.forEach((d, pi) => {
         const c = d.at;
@@ -322,6 +328,9 @@ function toMEI(norm, { from, to, beams = true } = {}) {
   const beatsPerBar = typeof norm.beatsPerBar === 'number' ? norm.beatsPerBar : meter.count * 4 / meter.unit;
   const grid = meterLevels(`${meter.count}/${meter.unit}`, beatsPerBar);
   if (grid.warning) warnings.push(grid.warning);
+  let syncopation = norm.syncopation === undefined ? 'beats' : norm.syncopation;
+  if (!SYNCOPATIONS.includes(syncopation)) { warnings.push(`syncopation ${JSON.stringify(norm.syncopation)} not understood (beats | displaced); using beats`); syncopation = 'beats'; }
+  const meterShown = bars[0].bar === allBars[0].bar;   // the time signature opens the piece only
   const keyAcc = keyAccidentals(fifths);
   const lastBar = allBars[allBars.length - 1].bar;
 
@@ -335,7 +344,7 @@ function toMEI(norm, { from, to, beams = true } = {}) {
     const hands = {};
     for (const { hand, staff } of HANDS) {
       counter.n = 0;
-      hands[hand] = layoutHand(norm, barData, { hand, staff, beatsPerBar, grid, warnings, counter });
+      hands[hand] = layoutHand(norm, barData, { hand, staff, beatsPerBar, grid, syncopation, warnings, counter });
     }
     return { bar: barData.bar, hands };
   });
@@ -376,7 +385,7 @@ function toMEI(norm, { from, to, beams = true } = {}) {
   });
 
   const staffDef = (n, clef) =>
-    `<staffDef n="${n}" lines="5" clef.shape="${CLEF_DEF[clef].shape}" clef.line="${CLEF_DEF[clef].line}" keysig="${keysigAttr(fifths)}" meter.count="${meter.count}" meter.unit="${meter.unit}"/>`;
+    `<staffDef n="${n}" lines="5" clef.shape="${CLEF_DEF[clef].shape}" clef.line="${CLEF_DEF[clef].line}" keysig="${keysigAttr(fifths)}" meter.count="${meter.count}" meter.unit="${meter.unit}"${meterShown ? '' : ' meter.visible="false"'}/>`;
   const title = escapeXML(norm.title || norm.piece || 'untitled');
 
   const mei = `<?xml version="1.0" encoding="UTF-8"?>
@@ -406,8 +415,8 @@ export { toMEI, splitDur, keyFifths, parseTime, clefFor, lineRanges, lineIndexFo
 //
 // Runs a fixture copied from the prelude norm (bars 1, 4, 5, 6, 8, 9, 11, 13,
 // 15, 16 of static/private/pieces/prelude-winston-first-16.norm.json,
-// 2026-10-30) plus synthetic bars, then a smoke pass over that file when it
-// exists. Beat-aware splitting and beaming rules themselves are tested in
+// 2026-10-30; bar 9 rh refreshed 2026-11-02 to the resolved reading ♩ ♪ ♩ ♪)
+// plus synthetic bars, then a smoke pass over that file when it exists. Beat-aware splitting and beaming rules themselves are tested in
 // meter-rules.js against tests/fixtures/meter-rules-cases.json; here the
 // asserts cover their effect on the MEI (ids, ties, <beam> placement).
 
@@ -439,7 +448,7 @@ async function selfTest() {
       { bar: 6, voice: [], rh: [ev(0, 1, ['D5']), ev(1, 1.5, ['C5']), ev(2.5, 0.5, ['D5'])], lh: [ev(0, 0.5, ['B♭3']), ev(0.5, 2.5, ['F4'])], uncertain: [] },
       { bar: 7, voice: [], rh: [rest(0, 3)], lh: [rest(0, 3)], uncertain: [] },
       { bar: 8, voice: [], rh: [ev(0, 1, ['F5']), ev(1, 1, ['E♭5']), ev(2, 1, ['D5'])], lh: [ev(0, 0.5, ['B♭3']), ev(0.5, 2.5, ['F4'])], uncertain: [] },
-      { bar: 9, voice: [], rh: [ev(0, 0.5, ['D5']), ev(0.5, 0.5, ['E♭5']), ev(1, 1, ['F5']), ev(2, 1, ['D5'])], lh: [ev(0, 0.5, ['B♭2']), ev(0.5, 2.5, ['F3'])], uncertain: [] },
+      { bar: 9, voice: [], rh: [ev(0, 1, ['C5']), ev(1, 0.5, ['A4']), ev(1.5, 1, ['B♭4']), ev(2.5, 0.5, ['B♭4'])], lh: [ev(0, 0.5, ['B♭2']), ev(0.5, 2.5, ['F3'])], uncertain: [] },
       { bar: 10, voice: [], rh: [rest(0, 3)], lh: [rest(0, 3)], uncertain: [] },
       { bar: 11, voice: [], rh: [ev(0, 1, ['D5']), ev(1, 0.5, ['F4']), ev(1.5, 0.5, ['G4']), ev(2, 0.5, ['B♭4']), ev(2.5, 0.5, ['C5'])], lh: [ev(0, 0.5, ['E♭3']), ev(0.5, 2.5, ['B♭3'])], uncertain: [] },
       { bar: 12, voice: [], rh: [rest(0, 3)], lh: [rest(0, 3)], uncertain: [] },
@@ -489,10 +498,24 @@ async function selfTest() {
   assert('bar 11: every id once, hits in piece order', [Object.keys(b11.hits), Object.keys(b11.hits).every(id => count(b11.mei, new RegExp(`xml:id="${id}"`, 'g')) === 1)],
     [['pl-b11-1-0', 'pl-b11-1-1', 'pl-b11-1-2', 'pl-b11-1-3', 'pl-b11-1-4', 'pl-b11-2-0', 'pl-b11-2-1', 'pl-b11-2-2'], true]);
   const b9 = toMEI(PRELUDE, { from: 9, to: 9 });
-  assert('bar 9 rh: ♪ ♪ ♩ ♩ → beat-1 eighths beam; lh ♪ ♪⌒𝅗𝅥 beams beat 1', [beams(staffBody(b9.mei, 9, 1)), beams(staffBody(b9.mei, 9, 2))], [[['pl-b9-1-0', 'pl-b9-1-1']], [['pl-b9-2-0', 'pl-b9-2-1']]]);
+  assert('bar 9 rh: ♩ ♪ ♩ ♪ — the quarter from the and-of-2 hides beat 3, so it is ♪⌒♪ and the bar beams A4–B♭4, B♭4–B♭4 (the printed sheet); lh ♪ ♪⌒𝅗𝅥 beams beat 1', [staffBody(b9.mei, 9, 1), measureTies(b9.mei, 9), beams(staffBody(b9.mei, 9, 2))],
+    ['<layer n="1"><note xml:id="pl-b9-1-0" dur="4" pname="c" oct="5"/><beam><note xml:id="pl-b9-1-1" dur="8" pname="a" oct="4" accid="n"/><note xml:id="pl-b9-1-2" dur="8" pname="b" oct="4" accid.ges="f"/></beam><beam><note xml:id="pl-b9-1-3" dur="8" pname="b" oct="4" accid.ges="f"/><note xml:id="pl-b9-1-4" dur="8" pname="b" oct="4" accid.ges="f"/></beam></layer>',
+     ['<tie startid="#pl-b9-1-2" endid="#pl-b9-1-3"/>', '<tie startid="#pl-b9-2-1" endid="#pl-b9-2-2"/>'], [['pl-b9-2-0', 'pl-b9-2-1']]]);
+  const b9d = toMEI({ ...PRELUDE, syncopation: 'displaced' }, { from: 9, to: 9 });
+  assert('bar 9 rh with norm.syncopation "displaced": the quarter stays (♩ ♪ ♩ ♪), no beams, no rh tie', [staffBody(b9d.mei, 9, 1), measureTies(b9d.mei, 9).length, b9d.warnings],
+    ['<layer n="1"><note xml:id="pl-b9-1-0" dur="4" pname="c" oct="5"/><note xml:id="pl-b9-1-1" dur="8" pname="a" oct="4" accid="n"/><note xml:id="pl-b9-1-2" dur="4" pname="b" oct="4" accid.ges="f"/><note xml:id="pl-b9-1-3" dur="8" pname="b" oct="4" accid.ges="f"/></layer>', 1, []]);
+  assert('norm.syncopation: junk value → warning and beats behaviour', toMEI({ ...PRELUDE, syncopation: 'yes' }, { from: 9, to: 9 }).warnings, ['syncopation "yes" not understood (beats | displaced); using beats']);
   const b13 = toMEI(PRELUDE, { from: 13, to: 13 });
-  assert('bar 13 rh: ♩. ♩. (a dotted quarter from the and-of-2 is the displaced beat) — no split, no beam', [staffBody(b13.mei, 13, 1), measureTies(b13.mei, 13)],
-    ['<layer n="1"><note xml:id="pl-b13-1-0" dur="4" dots="1" pname="e" oct="5" accid.ges="f"/><note xml:id="pl-b13-1-1" dur="4" dots="1" pname="g" oct="5" accid="n"/></layer>', []]);
+  assert('bar 13 rh: ♩. then a dotted quarter from the and-of-2 → ♪ tied to ♩ at beat 3 (it would hide beat 3); the lone eighth keeps its flag', [staffBody(b13.mei, 13, 1), measureTies(b13.mei, 13)],
+    ['<layer n="1"><note xml:id="pl-b13-1-0" dur="4" dots="1" pname="e" oct="5" accid.ges="f"/><note xml:id="pl-b13-1-1" dur="8" pname="g" oct="5" accid="n"/><note xml:id="pl-b13-1-2" dur="4" pname="g" oct="5"/></layer>', ['<tie startid="#pl-b13-1-1" endid="#pl-b13-1-2"/>']]);
+  assert('bar 13 rh with "displaced": ♩. ♩. unsplit', staffBody(toMEI({ ...PRELUDE, syncopation: 'displaced' }, { from: 13, to: 13 }).mei, 13, 1),
+    '<layer n="1"><note xml:id="pl-b13-1-0" dur="4" dots="1" pname="e" oct="5" accid.ges="f"/><note xml:id="pl-b13-1-1" dur="4" dots="1" pname="g" oct="5" accid="n"/></layer>');
+
+  // ── Time signature only where the piece starts ───────────────────
+  const meterVis = mei => (mei.match(/<staffDef [^>]*\/>/g) || []).map(s => /meter\.visible="false"/.test(s));
+  assert('meter: a range from bar 1 draws the time signature (no meter.visible); from bar 5, 9 or 16 it stays in the staffDefs but is hidden on both staves',
+    [meterVis(b1.mei), meterVis(toMEI(PRELUDE, { from: 1, to: 4 }).mei), meterVis(toMEI(PRELUDE, { from: 5, to: 8 }).mei), meterVis(b9.mei), meterVis(toMEI(PRELUDE, { from: 16, to: 16 }).mei), count(toMEI(PRELUDE, { from: 5, to: 8 }).mei, /meter\.count="3" meter\.unit="4" meter\.visible="false"/g)],
+    [[false, false], [false, false], [true, true], [true, true], [true, true], 2]);
 
   // ── Chord, rest, cross-bar tie: bars 15 and 16 ────────────────────
   const b15 = toMEI(PRELUDE, { from: 15, to: 15 });
@@ -553,12 +576,19 @@ async function selfTest() {
     { bar: 5, rh: [ev(0, 4, ['G5']), ev(0, 0.5, ['C5']), ev(1, 0.5, ['D5']), ev(1.5, 0.5, ['E5']), ev(2, 2, ['F5'])], lh: [[0, 0.5], [0.5, 0.5], [1, 0.5], [1.5, 0.5], [2, 1], [3, 0.5], [3.5, 0.5]].map(([t, d]) => ev(t, d, ['C3'])) },
   ] };
   const s1 = toMEI(S, { from: 1, to: 1 }), s2 = toMEI(S, { from: 2, to: 2 }), s3 = toMEI(S, { from: 3, to: 3 }), s4 = toMEI(S, { from: 4, to: 4 }), s5 = toMEI(S, { from: 5, to: 5 });
-  assert('S1 rh: ♪ ♩ ♪⌒♩ ♩ — the and-of-2 note splits at beat 3, nothing beams, one tie', [staffBody(s1.mei, 1, 1), measureTies(s1.mei, 1)],
+  assert('S1 rh (beats): ♪ ♪⌒♪ ♪⌒♩ ♩ — both off-beat notes split at the beat they would hide; the half-bar of plain eighths is one beam of four; two ties', [staffBody(s1.mei, 1, 1), measureTies(s1.mei, 1)],
+    ['<layer n="1"><beam><note xml:id="pl-b1-1-0" dur="8" pname="c" oct="5"/><note xml:id="pl-b1-1-1" dur="8" pname="d" oct="5"/><note xml:id="pl-b1-1-2" dur="8" pname="d" oct="5"/><note xml:id="pl-b1-1-3" dur="8" pname="e" oct="5"/></beam><note xml:id="pl-b1-1-4" dur="4" pname="e" oct="5"/><note xml:id="pl-b1-1-5" dur="4" pname="f" oct="5"/></layer>',
+     ['<tie startid="#pl-b1-1-1" endid="#pl-b1-1-2"/>', '<tie startid="#pl-b1-1-3" endid="#pl-b1-1-4"/>']]);
+  assert('S1 hits: split notes keep their attack onsets (0.5, 1.5) on every piece; continuations are tieStop', [s1.hits['pl-b1-1-1'], s1.hits['pl-b1-1-2'], s1.hits['pl-b1-1-3'], s1.hits['pl-b1-1-4']].map(h => [h.onset, h.at, h.q, h.tieStop]), [[0.5, 0.5, 0.5, false], [0.5, 1, 0.5, true], [1.5, 1.5, 0.5, false], [1.5, 2, 1, true]]);
+  const s1d = toMEI({ ...S, syncopation: 'displaced' }, { from: 1, to: 1 });
+  assert('S1 rh (displaced): ♪ ♩ ♪⌒♩ ♩ — the and-of-1 quarter stays, only the half-bar crossing splits, nothing beams', [staffBody(s1d.mei, 1, 1), measureTies(s1d.mei, 1)],
     ['<layer n="1"><note xml:id="pl-b1-1-0" dur="8" pname="c" oct="5"/><note xml:id="pl-b1-1-1" dur="4" pname="d" oct="5"/><note xml:id="pl-b1-1-2" dur="8" pname="e" oct="5"/><note xml:id="pl-b1-1-3" dur="4" pname="e" oct="5"/><note xml:id="pl-b1-1-4" dur="4" pname="f" oct="5"/></layer>', ['<tie startid="#pl-b1-1-2" endid="#pl-b1-1-3"/>']]);
-  assert('S1 hits: the split note keeps its attack onset 1.5 on both pieces; the second is tieStop', [s1.hits['pl-b1-1-2'], s1.hits['pl-b1-1-3']].map(h => [h.onset, h.at, h.q, h.tieStop]), [[1.5, 1.5, 0.5, false], [1.5, 2, 1, true]]);
-  assert('S2 rh: ♩ 𝅗𝅥 ♩ unsplit; lh: ♪ ♩.⌒♪ ♩. (half from the and-of-1 shows the middle), no beams', [staffBody(s2.mei, 2, 1), staffBody(s2.mei, 2, 2), count(s2.mei, /<beam>/g)],
+  assert('S2 rh: ♩ 𝅗𝅥 ♩ unsplit (starts on a beat); lh (beats): ♪ ♪⌒♩⌒♪ ♪⌒♩ — the off-beat half and dotted quarter show beats 2 and 4; beams on beats 1 and 3', [staffBody(s2.mei, 2, 1), staffBody(s2.mei, 2, 2), measureTies(s2.mei, 2)],
     ['<layer n="1"><note xml:id="pl-b2-1-0" dur="4" pname="c" oct="5"/><note xml:id="pl-b2-1-1" dur="2" pname="d" oct="5"/><note xml:id="pl-b2-1-2" dur="4" pname="e" oct="5"/></layer>',
-     '<layer n="1"><note xml:id="pl-b2-2-0" dur="8" pname="c" oct="3"/><note xml:id="pl-b2-2-1" dur="4" dots="1" pname="d" oct="3"/><note xml:id="pl-b2-2-2" dur="8" pname="d" oct="3"/><note xml:id="pl-b2-2-3" dur="4" dots="1" pname="e" oct="3"/></layer>', 0]);
+     '<layer n="1"><beam><note xml:id="pl-b2-2-0" dur="8" pname="c" oct="3"/><note xml:id="pl-b2-2-1" dur="8" pname="d" oct="3"/></beam><note xml:id="pl-b2-2-2" dur="4" pname="d" oct="3"/><beam><note xml:id="pl-b2-2-3" dur="8" pname="d" oct="3"/><note xml:id="pl-b2-2-4" dur="8" pname="e" oct="3"/></beam><note xml:id="pl-b2-2-5" dur="4" pname="e" oct="3"/></layer>',
+     ['<tie startid="#pl-b2-2-1" endid="#pl-b2-2-2"/>', '<tie startid="#pl-b2-2-2" endid="#pl-b2-2-3"/>', '<tie startid="#pl-b2-2-4" endid="#pl-b2-2-5"/>']]);
+  assert('S2 lh (displaced): ♪ ♩.⌒♪ ♩., no beams', [staffBody(toMEI({ ...S, syncopation: 'displaced' }, { from: 2, to: 2 }).mei, 2, 2)],
+    ['<layer n="1"><note xml:id="pl-b2-2-0" dur="8" pname="c" oct="3"/><note xml:id="pl-b2-2-1" dur="4" dots="1" pname="d" oct="3"/><note xml:id="pl-b2-2-2" dur="8" pname="d" oct="3"/><note xml:id="pl-b2-2-3" dur="4" dots="1" pname="e" oct="3"/></layer>']);
   assert('S3 rh: eight eighths → two beams of four (half-bar rule); lh: ♪ 𝅘𝅥𝅯𝅘𝅥𝅯 ♪ ♪ 𝄻 → a mixed beam of three, a beam of two, then one half rest', [beams(staffBody(s3.mei, 3, 1)).map(b => b.length), beams(staffBody(s3.mei, 3, 2)), staffBody(s3.mei, 3, 2).endsWith('</beam><rest dur="2"/></layer>')],
     [[4, 4], [['pl-b3-2-0', 'pl-b3-2-1', 'pl-b3-2-2'], ['pl-b3-2-3', 'pl-b3-2-4']], true]);
   assert('S4: rests break beams (rh ♪ 𝄾 ♪ 𝄾); eighths at 0.5 and 1.0 straddle a beat boundary (lh 𝄾 ♪ ♪ 𝄾) → no beams at all', [count(s4.mei, /<beam>/g), staffBody(s4.mei, 4, 2)],
@@ -574,8 +604,10 @@ async function selfTest() {
   assert('7/8: staffDef keeps 7/8, the grid falls back to 1-quarter beats with a warning; the half on beat 2 is one value', [count(fb.mei, /meter\.count="7" meter\.unit="8"/g), fb.warnings, count(staffBody(fb.mei, 1, 1), /dur="2"/g)],
     [2, ['meter "7/8" has no beat table; splitting and beaming use 1-quarter beats'], 1]);
   const ovr = toMEI({ key: 'C', time: '4/4', beatsPerBar: 3, bars: [{ bar: 1, rh: [ev(0, 1.5, ['C5']), ev(1.5, 1.5, ['D5'])], lh: [] }] }, { from: 1, to: 1 });
-  assert('beatsPerBar 3 under 4/4: fallback grid (no half-bar) with a warning; 1.5:1.5 stays a dotted quarter', [ovr.warnings, count(staffBody(ovr.mei, 1, 1), /dots="1"/g), count(ovr.mei, /<tie /g)],
-    [['beatsPerBar 3 overrides 4/4 (4 q); splitting and beaming use 1-quarter beats'], 2, 0]);
+  assert('beatsPerBar 3 under 4/4: fallback grid with a warning; ♩. then the off-beat 1.5:1.5 → ♪ tied to ♩ at beat 3', [ovr.warnings, count(staffBody(ovr.mei, 1, 1), /dots="1"/g), count(ovr.mei, /<tie /g)],
+    [['beatsPerBar 3 overrides 4/4 (4 q); splitting and beaming use 1-quarter beats'], 1, 1]);
+  const ovrD = toMEI({ key: 'C', time: '4/4', beatsPerBar: 3, syncopation: 'displaced', bars: [{ bar: 1, rh: [ev(0, 1.5, ['C5']), ev(1.5, 1.5, ['D5'])], lh: [] }] }, { from: 1, to: 1 });
+  assert('… and with "displaced" the fallback grid (no half-bar level) keeps ♩. ♩.', [count(staffBody(ovrD.mei, 1, 1), /dots="1"/g), count(ovrD.mei, /<tie /g)], [2, 0]);
   const bad = toMEI({ key: 'C', time: '4/4', bars: [{ bar: 1, rh: [ev(0, 5, ['C5'])], lh: [ev(3, 1, ['C3'])] }] }, { from: 1, to: 1 });
   assert('overrun is clipped and warned; a late first event gets a leading rest (3 q → dotted half, largest first)', [bad.warnings, staffBody(bad.mei, 1, 2)], [['bar 1 rh: event at 0 q runs past the bar, clipped'], '<layer n="1"><rest dur="2" dots="1"/><note xml:id="pl-b1-2-0" dur="4" pname="c" oct="3"/></layer>']);
   let threw = null;
@@ -619,8 +651,12 @@ async function selfTest() {
       const by = r => Object.values(r.hits).map(h => [h.id, h.at, h.q, h.tieStop]);
       assert('prelude: lh bars 5–12 (2.5 q from the and-of-1) → 8th at 0.5 tied to half at 1, every bar', [5, 6, 7, 8, 9, 10, 11, 12].map(b => by(singles[b - 1]).filter(h => h[0].startsWith(`pl-b${b}-2-`))),
         [5, 6, 7, 8, 9, 10, 11, 12].map(b => [[`pl-b${b}-2-0`, 0, 0.5, false], [`pl-b${b}-2-1`, 0.5, 0.5, false], [`pl-b${b}-2-2`, 1, 2, true]]));
-      assert('prelude: <beam> count per bar (lh beat 1 everywhere but 16; rh beat 3 in 1–4 and 15, two in 11, one in 10 and 12)', norm.bars.map(b => count(staffBody(whole.mei, b.bar, 1), /<beam>/g) + count(staffBody(whole.mei, b.bar, 2), /<beam>/g)),
-        [2, 2, 2, 2, 1, 1, 1, 1, 1, 2, 3, 2, 1, 2, 2, 0]);
+      assert('prelude: <beam> count per bar (lh beat 1 everywhere but 16; rh beat 3 in 1–4 and 15, two in 9 and 11, one in 10 and 12)', norm.bars.map(b => count(staffBody(whole.mei, b.bar, 1), /<beam>/g) + count(staffBody(whole.mei, b.bar, 2), /<beam>/g)),
+        [2, 2, 2, 2, 1, 1, 1, 1, 3, 2, 3, 2, 1, 2, 2, 0]);
+      assert('prelude: bar 9 rh is ♩ ⟨♪ ♪⟩⌒⟨♪ ♪⟩ and bar 13 rh is ♩. ♪⌒♩; the time signature is hidden on lines 2–4 and shown on line 1',
+        [staffBody(singles[8].mei, 9, 1).replace(/ xml:id="[^"]+"/g, ''), staffBody(singles[12].mei, 13, 1).replace(/ xml:id="[^"]+"/g, ''), lineRanges(norm).ranges.map(r => count(toMEI(norm, r).mei, /meter\.visible="false"/g))],
+        ['<layer n="1"><note dur="4" pname="c" oct="5"/><beam><note dur="8" pname="a" oct="4"/><note dur="8" pname="b" oct="4" accid.ges="f"/></beam><beam><note dur="8" pname="b" oct="4" accid.ges="f"/><note dur="8" pname="b" oct="4" accid.ges="f"/></beam></layer>',
+         '<layer n="1"><note dur="4" dots="1" pname="e" oct="5" accid.ges="f"/><note dur="8" pname="g" oct="5"/><note dur="4" pname="g" oct="5"/></layer>', [0, 2, 2, 2]]);
       const bare = toMEI(norm, { from: norm.bars[0].bar, to: norm.bars[norm.bars.length - 1].bar, beams: false });
       assert('prelude: beams: false → identical hits, identical ties, no <beam>, same MEI once the wrappers are removed', [JSON.stringify(bare.hits) === JSON.stringify(whole.hits), count(bare.mei, /<beam>/g), bare.mei === whole.mei.replace(/<\/?beam>/g, '')], [true, 0, true]);
       const pl = lineRanges(norm);
