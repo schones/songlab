@@ -3,7 +3,9 @@
  * =========
  * Page glue for /player (Milestone 1): wires the existing pieces together.
  *
- *   PlayerStaff            player-staff.js            one bar engraved, note states
+ *   PlayerStaff            player-staff.js            one line engraved, note states, bar marker
+ *   lineRanges / lineIndexFor
+ *                          player-staff-model.js      norm.lines → the lines the staff shows
  *   buildSteps / attachIds / createFollower
  *                          player-follow.js           step list + wait-for-me matcher
  *   createShellInput       games/cycle-of-shells-input.js   MIDI device + de-duplicated notes
@@ -15,11 +17,20 @@
  * device <select>, the keyboard state classes (pl-key--*), the status line
  * and the sound switches.
  *
- * Debug handle: window.__player (state, load, showBar, staff, keyboard, …).
+ * Render unit: a line (state.lines from lineRanges(norm); state.line is its
+ * index). state.bar is the active bar within the line: only its notes are
+ * coloured (earlier steps green, the current step blue / green) and it gets
+ * the staff's bar marker; the other bars of the line stay plain. The
+ * follower is per piece; it advances through the line, and showLine() is
+ * called when its next step leaves the drawn range. ← / → page by line,
+ * Shift+← / → move by bar.
+ *
+ * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, staff, keyboard, …).
  */
 
 import { PlayerStaff } from './player-staff.js';
 import { buildSteps, attachIds, createFollower } from './player-follow.js';
+import { lineRanges, lineIndexFor } from './player-staff-model.js';
 import { createShellInput } from '../games/cycle-of-shells-input.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
 import { loadSampler } from '../shared/voicing-player.js';
@@ -50,7 +61,10 @@ const els = {
 };
 
 const state = {
-  piece: null, norm: null, pieces: [], bar: null,
+  piece: null, norm: null, pieces: [],
+  lines: [], lineWarnings: [],   // lineRanges(norm): [{ from, to }] and why norm.lines was ignored, if it was
+  line: -1,                      // index into lines of the drawn line
+  bar: null,                     // the active bar within the drawn line
   hands: 'both',
   steps: [], follower: null,
   wrong: 0,
@@ -170,25 +184,34 @@ function rebuildFollower(bar) {
 }
 
 /**
- * Paint the staff and keyboard from the follower: steps of the drawn bar
- * before the current one → correct; the current step → pressed notes
- * correct, the rest expected; the unselected hand dimmed.
+ * Colours live in the current bar only: an id is painted when it is drawn
+ * in state.bar, or when `step` is the follower's current step (its tied
+ * continuations in the next bar belong to it). Everything else stays plain.
+ */
+function paintable(id, step) {
+  if (state.follower && step === state.follower.current()) return true;
+  const h = staff.hits[id];
+  return !!h && h.bar === state.bar;
+}
+
+/**
+ * Paint the staff and keyboard from the follower: steps before the current
+ * one → correct (their notes in the current bar only); the current step →
+ * pressed notes correct, the rest expected; the unselected hand dimmed
+ * within the current bar; the bar marker behind the current bar.
  */
 function paintStates() {
   staff.clearStates();
   clearKeys(['expected']);   // green and red flashes end on their own (or on release)
   const other = otherHand();
-  staff.setDimmed(other ? staff.noteIds({ hand: other }) : []);
+  staff.setDimmed(other && state.bar != null ? staff.noteIds({ hand: other, bar: state.bar }) : []);
+  staff.setBarMarker(state.bar);
   const f = state.follower;
   if (!f) { updateStatus(); return; }
   const cur = f.current();
-  const drawn = staff.range;
-  if (drawn) {
-    for (const s of state.steps) {
-      if (cur && s.index >= cur.index) break;
-      if (s.bar < drawn.from || s.bar > drawn.to) continue;
-      for (const n of s.notes) for (const id of n.ids) staff.setNoteState(id, 'correct');
-    }
+  for (const s of state.steps) {
+    if (cur && s.index >= cur.index) break;
+    for (const n of s.notes) for (const id of n.ids) if (paintable(id, s)) staff.setNoteState(id, 'correct');
   }
   if (cur) {
     const pressed = f.pressed();
@@ -211,7 +234,7 @@ function updateStatus() {
     return;
   }
   const cur = f.current();
-  const where = cur.bar === state.bar ? `Bar ${cur.bar}` : `Bar ${cur.bar} (showing ${state.bar})`;   // a paged-to bar with no steps for this hand
+  const where = cur.bar === state.bar ? `Bar ${cur.bar}` : `Bar ${cur.bar} (showing line ${state.line + 1}, bar ${state.bar})`;   // a paged-to line with no steps for this hand at its first bar
   els.status.textContent = `${where} · step ${cur.index + 1} / ${state.steps.length} · wrong: ${state.wrong}`;
   els.restart.hidden = true;
 }
@@ -228,14 +251,16 @@ function judge(midi) {
     return;
   }
   if (r.result !== 'correct') return;
-  for (const n of r.step.notes) if (n.midi === midi) for (const id of n.ids) staff.setNoteState(id, 'correct');   // both hands when the pitch is doubled
+  for (const n of r.step.notes) if (n.midi === midi) for (const id of n.ids) if (paintable(id, r.step)) staff.setNoteState(id, 'correct');   // both hands when the pitch is doubled
   setKey(midi, 'expected', false);
   flashKey(midi, 'correct', CORRECT_FLASH_MS);
   if (!r.completed) { updateStatus(); return; }
   const next = f.current();
-  const drawn = staff.range;
-  if (next && (!drawn || next.bar < drawn.from || next.bar > drawn.to)) showBar(next.bar, { keep: true });
-  else paintStates();
+  if (next && !inDrawnRange(next.bar)) showLine(lineOf(next.bar), { bar: next.bar, keep: true });   // the next step is on another line
+  else {
+    if (next && next.bar !== state.bar) { state.bar = next.bar; updateBarNav(); }   // bar change within the line: repaint, no re-render
+    paintStates();
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -316,46 +341,78 @@ els.hands.addEventListener('change', e => {
   if (!state.norm) return;
   rebuildFollower(state.bar);
   const cur = state.follower.current();
-  if (cur && cur.bar !== state.bar) showBar(cur.bar, { keep: true });   // this bar has nothing for that hand
-  else paintStates();
+  if (cur && !inDrawnRange(cur.bar)) showLine(lineOf(cur.bar), { bar: cur.bar, keep: true });   // this line has nothing for that hand from here on
+  else {
+    if (cur && cur.bar !== state.bar) { state.bar = cur.bar; updateBarNav(); }   // this bar has nothing for that hand
+    paintStates();
+  }
 });
 
 // ════════════════════════════════════════════════════════════════════
-// BAR NAVIGATION
+// LINE / BAR NAVIGATION
 // ════════════════════════════════════════════════════════════════════
 
+const lineOf = bar => lineIndexFor(state.lines, bar);
+const inDrawnRange = bar => { const d = staff.range; return !!d && bar >= d.from && bar <= d.to; };
+/** The follower's current bar when it lies in `range`, else `fallback` (a paged-to line with nothing for this hand at its start). */
+function activeBar(range, fallback) {
+  const cur = state.follower ? state.follower.current() : null;
+  return cur && range && cur.bar >= range.from && cur.bar <= range.to ? cur.bar : fallback;
+}
+
 function updateBarNav() {
-  const bars = barNumbers();
-  const i = bars.indexOf(state.bar);
-  els.barLabel.textContent = bars.length && i >= 0 ? `Bar ${state.bar} / ${bars[bars.length - 1]}` : 'Bar – / –';
-  els.prev.disabled = !(i > 0);
-  els.next.disabled = !(i >= 0 && i < bars.length - 1);
+  const k = state.line, K = state.lines.length;
+  els.barLabel.textContent = K && k >= 0 ? `Line ${k + 1} / ${K} · Bar ${state.bar}` : 'Line – / – · Bar –';
+  els.prev.disabled = !(k > 0);
+  els.next.disabled = !(k >= 0 && k < K - 1);
 }
 
 /**
- * Engrave `bar`, attach its ids to the steps and repaint. With `keep` the
- * follower stays where it is (auto-paging after a step completes);
- * otherwise it jumps to the bar's first step (Prev / Next / ← / →).
+ * Engrave line `index` (state.lines[index]), attach its ids to the steps
+ * and repaint, with `bar` (default: the line's first bar) as the active
+ * bar. With `keep` the follower stays where it is (auto-paging after a
+ * step completes, restart, a hands change); otherwise it jumps to `bar`'s
+ * first step and the pressed notes are cleared (Prev / Next, arrows).
+ * A re-render of the drawn line (same range) has no transition.
  */
-async function showBar(bar, { keep = false } = {}) {
+async function showLine(index, { bar, keep = false } = {}) {
   if (!state.norm) return;
-  state.bar = bar;
+  const range = state.lines[index];
+  if (!range) return;
+  state.line = index;
+  const want = bar != null ? bar : range.from;
+  if (!keep) { if (state.follower) state.follower.jumpTo(want); clearKeys(['expected', 'correct', 'wrong']); }
+  state.bar = activeBar(range, want);
   updateBarNav();
-  if (!keep) { if (state.follower) state.follower.jumpTo(bar); clearKeys(['expected', 'correct', 'wrong']); }
-  const result = await staff.render(state.norm, bar);
+  const result = await staff.render(state.norm, range.from, { to: range.to });
   if (!result) return;   // superseded by a later render, or failed (the staff shows why)
-  if (result.warnings.length) banner(`Bar ${bar}: ${result.warnings.join('; ')}`);
-  else banner('');
+  const warnings = [...state.lineWarnings, ...result.warnings.map(w => `line ${index + 1}: ${w}`)];
+  banner(warnings.join('; '));
   attachIds(state.steps, result.hits);
   paintStates();
 }
 
+/** ← / → and the buttons: the previous / next line, from its first bar. */
+function stepLine(delta) {
+  const j = state.line + delta;
+  if (state.line < 0 || j < 0 || j >= state.lines.length) return;
+  showLine(j);
+}
+
+/** Shift+← / →: the previous / next bar; re-rendered (with the transition) only when it is on another line. */
 function stepBar(delta) {
   const bars = barNumbers();
   const i = bars.indexOf(state.bar);
   const j = i + delta;
   if (i < 0 || j < 0 || j >= bars.length) return;
-  showBar(bars[j]);
+  const bar = bars[j];
+  const line = lineOf(bar);
+  if (line !== state.line || !inDrawnRange(bar)) { showLine(line, { bar }); return; }
+  if (state.follower) state.follower.jumpTo(bar);
+  clearKeys(['expected', 'correct', 'wrong']);
+  state.bar = activeBar(state.lines[state.line], bar);
+  updateBarNav();
+  paintStates();
 }
 
 function restart() {
@@ -365,18 +422,20 @@ function restart() {
   state.wrong = 0;
   const cur = state.follower ? state.follower.reset() : null;
   clearKeys(['expected', 'correct', 'wrong']);
-  showBar(cur ? cur.bar : bars[0], { keep: true });
+  const bar = cur ? cur.bar : bars[0];
+  showLine(Math.max(0, lineOf(bar)), { bar, keep: true });
 }
 
-els.prev.addEventListener('click', () => stepBar(-1));
-els.next.addEventListener('click', () => stepBar(1));
+els.prev.addEventListener('click', () => stepLine(-1));
+els.next.addEventListener('click', () => stepLine(1));
 els.restart.addEventListener('click', restart);
 document.addEventListener('keydown', e => {
   if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
   const t = e.target;
   if (t instanceof Element && t.closest('input, select, textarea, [contenteditable]')) return;
-  if (e.key === 'ArrowLeft') { stepBar(-1); e.preventDefault(); }
-  else if (e.key === 'ArrowRight') { stepBar(1); e.preventDefault(); }
+  const move = e.shiftKey ? stepBar : stepLine;
+  if (e.key === 'ArrowLeft') { move(-1); e.preventDefault(); }
+  else if (e.key === 'ArrowRight') { move(1); e.preventDefault(); }
   else if (e.key === 'r' || e.key === 'R') { restart(); e.preventDefault(); }
 });
 
@@ -403,6 +462,7 @@ function showHeader(name, norm) {
 
 function unload() {
   state.norm = null; state.bar = null; state.steps = []; state.follower = null; state.wrong = 0;
+  state.lines = []; state.lineWarnings = []; state.line = -1;
   updateBarNav(); staff.clear(); clearKeys(); updateStatus();
 }
 
@@ -423,12 +483,16 @@ async function load(name) {
     showHeader(name, norm);
     const bars = barNumbers();
     if (bars.length) {
+      const lr = lineRanges(norm);
+      state.lines = lr.ranges; state.lineWarnings = lr.warnings; state.line = -1;
+      for (const w of lr.warnings) console.warn(`[player] ${name}: ${w}`);
       mountKeyboard(norm);
       clearKeys();
       staff.clear();          // old hits must not attach to the new piece's steps
       rebuildFollower(null);
       const cur = state.follower.current();
-      showBar(cur ? cur.bar : bars[0], { keep: true });
+      const bar = cur ? cur.bar : bars[0];
+      showLine(Math.max(0, lineOf(bar)), { bar, keep: true });
     } else { unload(); banner('This piece has no bars.', true); }
     const url = new URL(window.location.href);
     url.searchParams.set('piece', name);
@@ -493,7 +557,7 @@ setupMidi();   // not awaited: the piece loads while the browser asks for MIDI a
 
 // Debug handle for the browser console (no behaviour depends on it).
 window.__player = {
-  state, load, pieces: () => state.pieces, staff, showBar, restart,
+  state, load, pieces: () => state.pieces, staff, showLine, stepLine, stepBar, restart,
   get keyboard() { return keyboard; }, get input() { return input; }, get follower() { return state.follower; }, get steps() { return state.steps; },
   noteOn: onMidiNoteOn, noteOff: onMidiNoteOff,
 };
