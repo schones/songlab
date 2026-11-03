@@ -82,9 +82,13 @@ RD-2000. Pieces come from `tools/pieces/midi_to_norm.py` (new, stdlib SMF
 reader) over a Logic recording; the first is Carol of the Bells (Winston,
 lines 1–2, 16 bars, G minor, 3/4), private and gitignored under
 `static/private/pieces/`. Routes `/player`, `/player/pieces`,
-`/player/data/<name>`; code in `static/player/`. Next: tempo + loop, a
-warm-up screen in the song's key, practice logging. Detail below under
-"What's Working".
+`/player/data/<name>`; code in `static/player/`. Since then (2026-11-02/03):
+4-bar line view with meter-aware beaming (`meter-rules.js`), and the loop
+chunk — 1a loops (Repeat bar / line, tap-to-select, move on after N clean
+passes), 1b trouble spots ("Loop these" from the second pass) with
+per-hand loop counts, 1c "No stress" mode (forgiving follower: wrong
+notes never block, aren't shown or counted). Next: Listen, then metronome.
+Detail below under "What's Working".
 
 ### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
 Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
@@ -128,10 +132,13 @@ torus math in two (audit §3).
 ### Roadmap (Nov 2026 – Jan 2027, short form)
 Full version: [Claude doc](https://claude.ai/artifact/DHHd1R3qux19CPWyX7fPaA) · [Google Doc](https://docs.google.com/document/d/1hSHjvxwwdnaob214H_i3YD881rywSCIJAUuO6V8uUo0/edit).
 - **Thread A — kids' practice track (active until 2026-12-14 freeze):**
-  player loop + listen + metronome → RD-2000 recording session (Carol
-  lines 3–4, Run Rudolph Run, Feel Good Inc., Linus and Lucy) → learner
-  picker → practice log (JSON on the mini, written by Flask) → warm-up
-  screen → Linus and Lucy rhythm drill → drill reward.
+  player loop (1a loops, 1b trouble spots + per-hand counts, 1c No
+  stress — all done 2026-11-03) → listen → metronome → RD-2000 recording
+  session (Carol lines 3–4, Run Rudolph Run, Feel Good Inc., Linus and
+  Lucy) → learner picker → practice log (JSON on the mini, written by
+  Flask; `practiceEvent` funnel + `state.practice.playedMs` already in
+  `player.js`) → warm-up screen → Linus and Lucy rhythm drill → drill
+  reward.
 - **Thread B — jazz harmony (from 2026-12-14):** `norm_to_voicing.py` →
   I Got Rhythm public piece → voicing rush (timed Cycle of Shells) →
   `extensions` + `/learn` in the nav → `omitting-tones` → concept-map
@@ -150,10 +157,13 @@ is the newest workstream. The first piece (Carol of the Bells, Winston,
 lines 1–2) was recorded in Logic from the RD-2000 and turned into norm
 by the new `tools/pieces/midi_to_norm.py`; `/player` plays it back in
 wait-for-me mode with the staff, keyboard and follower pieces under
-`static/player/`. Milestone 1 is done and checked with the RD-2000. Next,
-in order: tempo + loop; a warm-up screen in the song's key; practice
-logging (`createResultLog` with key `songlab_results_player`). Current
-state block below.
+`static/player/`. Milestone 1 is done and checked with the RD-2000. The
+loop chunk landed 2026-11-03 (1a loops, 1b trouble spots + per-hand loop
+counts, 1c "No stress" mode; 1b and 1c need an RD-2000 check and the
+trouble thresholds tuning from the `console.table` rows). Next, in order:
+Listen; metronome; then the RD-2000 recording session, warm-up screen and
+practice logging (`createResultLog` with key `songlab_results_player`,
+hanging off `practiceEvent` in `player.js`). Current state block below.
 
 **Voicing Explorer analysis arc (2026-10-14, branch `voicing-explorer`)**
 was the active workstream before that. Motivated by a voiced practice score of
@@ -866,31 +876,81 @@ headless Chrome; not yet merged to dev):**
   MIDI hot-plug, site-wide device default, sharp labels on held notes,
   ii_V_I walkthrough steps without concept_specifics.
 
-### Follow-along player — current state (updated 2026-10-30)
+### Follow-along player — current state (updated 2026-11-03)
 
 **Landed and verified on dev (Node self-tests; Milestone 1 checked in
-Chrome with the RD-2000):**
+Chrome with the RD-2000; the loop chunk 1a checked in Chrome, 1b / 1c
+from console snippets only):**
 - `/player` (`app.py` routes `/player`, `/player/pieces`,
   `/player/data/<name>`; `templates/player.html`): piece picker (private
   pieces from `static/private/pieces/*.norm.json`, public from
   `tests/fixtures/norm-*.json`), MIDI device select remembered under
   `songlab_player_midi_device`, LH / RH / Both, Prev / Next and ← / →
-  by bar, R to restart, status line "Bar N · step k / total · wrong: n",
-  Done + Restart at the end.
-- `static/player/player-staff-model.js` (34/34): norm → MEI with staff 1
+  by line, Shift+← / → by bar, R to restart, status line "Bar N · step k
+  / total · wrong: n", Done + Restart at the end.
+- Line view (2026-11-02, `b34d924`): 4-bar lines from `norm.lines`, only
+  the current bar coloured, slide transition between lines; meter-aware
+  beaming and beat-aware splitting in `static/player/meter-rules.js`
+  (125/125; shared cases in `tests/fixtures/meter-rules-cases.json`, to
+  be mirrored by a `tools/pieces/meter_rules.py` for the review page);
+  beats shown by default (`norm.syncopation` field), meter hidden after
+  line 1.
+- `static/player/player-staff-model.js` (77/77): norm → MEI with staff 1
   = RH, staff 2 = LH (hand-based, not pitch-split), a bar or a bar range,
   ties across bars, per-hand clef changes from the norm's `clefs`;
   `hits` map id → { midi, bar, hand, onset, at, tieStop }.
   `player-staff.js`: PlayerStaff on the shared Verovio toolkit
   (`voicing-staff.js` now exports `loadToolkit`), note states
   `pl-note--expected / --correct / --wrong`, `setDimmed` for the
-  unselected hand.
-- `static/player/player-follow.js` (39/39): `buildSteps` (one step per
+  unselected hand, bar marker and `setBarTint('loop' | 'pending' |
+  'trouble', bars)` (kept across renders, equal height from the line's
+  extent; a bar not on the drawn line is a no-op until its line shows),
+  `barAt(x, y)` + `onBarTap` for tap-to-select.
+- `static/player/player-follow.js` (89/89): `buildSteps` (one step per
   distinct attack onset across the selected hands; tie continuations
   and graces make no step), `attachIds` (cumulative per rendered bar),
-  `createFollower` (wait-for-me: a step completes when every expected
-  midi has been attacked since the step began, any order; wrong never
-  advances; re-strikes ignored; `jumpTo(bar)`, `reset`).
+  `createFollower(steps, { mode, lookahead })` — strict (wait-for-me: a
+  step completes when every expected midi has been attacked since the
+  step began, any order; wrong never advances; re-strikes ignored) and
+  forgiving (1c "No stress": wrong notes are `stray` and never block; a
+  note of one of the next `lookahead` steps after a partial chord, or of
+  the next step from nothing pressed, skips to it and the passed-over
+  notes are `skippedNotes`; a shared pitch goes to the current step
+  first); `setMode`, `jumpTo(bar)`, `reset`.
+- Loop for practice (1a, `7c96992`): follower `setLoop(from, to,
+  { exitAfter, resume })` / `loop()` — wrap at the last step in range,
+  `pass` + `cleanStreak`, `exitAfter` N clean passes clears the loop and
+  play continues (`loopExited`); forgiving mode never counts clean and
+  ignores `exitAfter`. Page: "Repeat bar" / "Repeat line" toggles, "Move
+  on after" select (`songlab_player_loop_exit`, default 3), tap a bar then
+  the last bar of the range on the staff (Esc cancels), amber loop tint,
+  navigation outside the range turns the loop off, R restarts at the loop
+  start. Per-hand pass counts (1b): `createLoopCounts` keeps { pass,
+  cleanStreak } for lh / rh / both across the follower rebuild a hands
+  change causes; a new range, clearing the loop or R reset all three.
+- Trouble spots (1b, `396ba72`; `static/player/player-trouble.js`,
+  30/30): one pass at a time is recorded (a full run or one loop pass;
+  any other jump cancels it), per step misses and time to complete (the
+  first step of a pass and the first after a line change are unmeasured;
+  a wrong note expected by the next step is an anticipation, not a
+  miss). A bar is flagged when problem steps (≥ 1 miss, or ≥ 3× the
+  pass's median step time and ≥ 1 s) are ≥ 34 % of its steps; neighbours
+  merge; top 3 ranges; suggestions only from the second pass of the same
+  piece / hands / range (history cleared on piece load, kept across R).
+  Page: "Trouble spots: bars 6–7 (4 misses) [Loop these]" row + coral
+  tint, cleared when a loop starts or the piece changes; "Clean pass!"
+  when nothing is flagged; every pass logs its rows with `console.table`
+  for threshold tuning. Thresholds are named constants
+  (`__player.thresholds`).
+- "No stress" mode (1c): checkbox in the controls row
+  (`songlab_player_no_stress`, off by default); forgiving follower, no
+  red keys / notes / count, Done = "Nice — you played it through!",
+  skipped notes stay plain, no trouble recording or row, "Move on after"
+  disabled with a hint. Toggling keeps the position. Practice-log hook:
+  `practiceEvent(type, detail)` funnel (`load`, `pass`, `mode`;
+  console.debug for now) and `state.practice.playedMs` from
+  `createPracticeClock` (gaps between notes up to `IDLE_GAP_MS` = 30 s
+  count; a longer gap adds nothing), the same in both modes.
 - `static/player/player.js`: page glue over `createShellInput` (its
   injectable storage mapped to the player's own key), `VoicingKeyboard`
   (range from the piece ± 3 keys, snapped to white keys; own state
@@ -898,7 +958,10 @@ Chrome with the RD-2000):**
   `vk-key--hit`'s white ring is invisible on white keys), `loadSampler`
   echo as in Cycle of Shells; on-screen clicks = attack + release and
   always sound; "Sound for MIDI notes" off by default (the RD-2000
-  sounds itself); Tone.start on the first click / key press.
+  sounds itself); Tone.start on the first click / key press. Fixed
+  2026-11-03: a module-level `history` shadowed `window.history`
+  (`load()` threw at `replaceState`); `PlayerStaff._measureBox` threw
+  NotFoundError restoring adjacent marker + tint rects.
 - `tools/pieces/midi_to_norm.py` (new, stdlib SMF reader, no mido in the
   pipeline): MIDI tracks RH / LH → norm. Flags `--key` (the file's key
   meta is ignored), `--grid`, `--min-rest` (gaps shorter than this
@@ -915,12 +978,22 @@ Chrome with the RD-2000):**
   from it.
 
 **In progress:**
-- Nothing mid-flight; Milestone 1 closed 2026-10-30.
+- Loop chunk 1b / 1c await an RD-2000 check (the `_measureBox` fix and
+  No stress have only been exercised from console snippets, see
+  SESSION_LOG 2026-11-03) and trouble-threshold tuning from real
+  `console.table` rows.
 
 **Open / deferred:**
-- Next, in order: tempo + loop; warm-up screen in the song's key;
-  practice logging (`createResultLog` with key `songlab_results_player`,
-  per the game-engine spec envelope).
+- Next, in order: Listen (step 2); metronome (step 3); then the RD-2000
+  recording session, warm-up screen in the song's key, practice logging
+  (`createResultLog` with key `songlab_results_player`, per the
+  game-engine spec envelope, off the `practiceEvent` funnel).
+- Trouble spots: no cap on a merged range's length yet (a whole-piece
+  first read could flag bars 1–16; add `MAX_RANGE_BARS` if it shows up);
+  anticipation only looks at the next step in score order, not the loop
+  start; a hands switch mid-pass forgives that pass's misses (`dirty` is
+  not carried).
+- Out of scope so far: MIDI control of loops, timed play-along scoring.
 - Multi-bar view: the model already takes a bar range; the page shows one
   bar.
 - Staff splitting is not beat-aware (fine for 3/4; revisit for 4/4
@@ -937,11 +1010,18 @@ Chrome with the RD-2000):**
 **Public surfaces (test harness / debugging):**
 - `window.__player` — `state`, `load(name)`, `showLine(index, {bar, keep})`,
   `stepLine(±1)`, `stepBar(±1)`, `restart()`, `setLoop(from, to, {exitAfter,
-  jump})`, `clearLoop()`, `state.loop`, `staff`, `keyboard`, `input`,
+  jump})`, `clearLoop()`, `setNoStress(bool)`, `state.loop`, `trouble`
+  (last scored pass), `practice` (`playedMs`), `loopCounts`,
+  `passHistory`, `recorder`, `thresholds`, `staff`, `keyboard`, `input`,
   `follower`, `steps`, `noteOn(midi)` / `noteOff(midi)` (drive the
-  follower from the console without a piano).
+  follower from the console without a piano). The console logs
+  `[player] pass recording …` / `… cancelled …` and one
+  `[player] pass N of bars …` + `console.table` per pass.
 - Self-tests: `node --input-type=module -e "import('./static/player/player-staff-model.js').then(m => m.selfTest())"`
-  and the same for `player-follow.js`.
+  and the same for `player-follow.js`, `player-trouble.js`, `meter-rules.js`.
+- Console snippets for a strict pass with misses in bars 6–7 and a No
+  stress pass with a dropped note + a stray key per bar are in
+  SESSION_LOG 2026-11-03.
 
 **Standing rules:**
 - Private pieces stay under `static/private/pieces/` (gitignored); move
@@ -951,7 +1031,7 @@ Chrome with the RD-2000):**
 
 ### Games & Tools
 - Harmony Trainer, Chord Walks (4 tiers), Rhythm Lab, Strum Patterns, Chord Spotter, Scale Builder, Melody Match
-- **Follow-along player** `/player` (2026-10-30): wait-for-me practice of a recorded piece from MIDI; see the current-state block above
+- **Follow-along player** `/player` (2026-10-30, loops + trouble spots + No stress 2026-11-03): wait-for-me practice of a recorded piece from MIDI; see the current-state block above
 - **Cycle of Shells** (2026-10-22, branch `cycle-of-shells`): ii–V–I shell voicings round the cycle from MIDI; see the current-state block above
 - **Swing Trainer**: ear-training for jazz swing feel (rotary knob, waveform viz, Practice/Test)
 - **Polyrhythm Trainer** (new): Guitar Hero-style falling-note game. Practice Mode (phase-based BPM ramp: Listen → Layer A → Layer B → Both → Victory) and Challenge Mode (arcade adaptive with leaderboard). Dark DAW theme, drum pads, lane breathing waves. First game on `input-provider.js` + `onset-detection.js`. Spec: `docs/polyrhythm-trainer-spec.md`

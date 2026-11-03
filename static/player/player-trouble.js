@@ -37,6 +37,12 @@
  *                                          piece, hands and range (a hand's first read is also a first read)
  *   createPassHistory()                  → { record(key) → pass number, count(key), reset() }
  *   passRows(pass, score)                → rows for console.table (one per completed step)
+ *   createPracticeClock({ idleGapMs = IDLE_GAP_MS, now })  → clock   (the future practice log's "time spent")
+ *       note(t?)        a note was played: the gap since the previous note is added to playedMs
+ *                       when it is at most idleGapMs; a longer gap adds NOTHING (not the cap:
+ *                       a 30 s pause is a break, not 30 s of practice). The first note adds 0.
+ *       playedMs()      active time so far; reset() starts over; lastNoteAt() → t or null
+ *       Counts the same in strict and forgiving mode: it only sees note attacks.
  *   selfTest()                           → console report, { passed, total }
  *
  * Self-test:
@@ -50,7 +56,9 @@ const BAR_THRESHOLD = 0.34;       // problems / steps at which a bar is flagged 
 const TOP_N = 3;                  // ranges shown at most
 const MIN_PASS_TO_SUGGEST = 2;    // suggestions from this pass of the same piece / hands / range on
 
-const THRESHOLDS = Object.freeze({ HESITATION_FACTOR, HESITATION_MIN_MS, BAR_THRESHOLD, TOP_N, MIN_PASS_TO_SUGGEST });
+const IDLE_GAP_MS = 30000;        // a gap between notes longer than this is a break: it adds nothing to played time
+
+const THRESHOLDS = Object.freeze({ HESITATION_FACTOR, HESITATION_MIN_MS, BAR_THRESHOLD, TOP_N, MIN_PASS_TO_SUGGEST, IDLE_GAP_MS });
 
 // ════════════════════════════════════════════════════════════════════
 // RECORDER
@@ -179,7 +187,28 @@ function passRows(pass, score) {
   }));
 }
 
-export { createPassRecorder, scorePass, troubleLabel, shouldSuggest, passKey, createPassHistory, passRows, THRESHOLDS, selfTest };
+// ════════════════════════════════════════════════════════════════════
+// PRACTICE CLOCK
+// ════════════════════════════════════════════════════════════════════
+
+function createPracticeClock({ idleGapMs = IDLE_GAP_MS, now = () => Date.now() } = {}) {
+  const cap = Math.max(0, Number(idleGapMs) || 0);
+  let played = 0;
+  let last = null;
+  return {
+    note(t) {
+      const tt = typeof t === 'number' ? t : now();
+      if (last != null) { const gap = tt - last; if (gap >= 0 && gap <= cap) played += gap; }
+      last = tt;
+      return played;
+    },
+    playedMs: () => played,
+    lastNoteAt: () => last,
+    reset() { played = 0; last = null; },
+  };
+}
+
+export { createPassRecorder, scorePass, troubleLabel, shouldSuggest, passKey, createPassHistory, passRows, createPracticeClock, THRESHOLDS, selfTest };
 
 // ════════════════════════════════════════════════════════════════════
 // SELF-TEST
@@ -316,6 +345,13 @@ async function selfTest() {
   // ── console rows ──────────────────────────────────────────────────
   const rows = passRows(fumbled, scorePass(fumbled));
   assert('passRows: one row per step with stumble / slow marks', [rows.length, rows[4], rows[0].ms], [12, { step: 4, bar: 2, ms: 2500, misses: 3, anticip: 0, stumble: '●', slow: '●' }, 500]);
+
+  // ── practice clock ────────────────────────────────────────────────
+  const pc = createPracticeClock({ idleGapMs: 30000 });
+  assert('practice clock: the first note adds nothing; gaps within the cap add up', [pc.note(1000), pc.note(2000), pc.note(2500)], [0, 1000, 1500]);
+  assert('practice clock: a gap over IDLE_GAP_MS adds nothing (not the cap); the next gap counts again', [pc.note(2500 + 31000), pc.note(2500 + 31000 + 400)], [1500, 1900]);
+  assert('practice clock: a gap of exactly the cap counts; reset starts over', [pc.note(2500 + 31000 + 400 + 30000), (pc.reset(), [pc.playedMs(), pc.lastNoteAt()])], [31900, [0, null]]);
+  assert('practice clock: THRESHOLDS carries IDLE_GAP_MS', THRESHOLDS.IDLE_GAP_MS, 30000);
 
   const passed = results.filter(Boolean).length;
   console.log(`\n─── ${passed}/${results.length} passed ───\n`);

@@ -49,12 +49,26 @@
  * button (the 1a setLoop) and tinted 'trouble' on the staff; a new loop or
  * piece clears them. Nothing flagged → "Clean pass!".
  *
- * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, trouble, staff, keyboard, …).
+ * No stress (state.noStress, NO_STRESS_KEY): the follower runs in its
+ * 'forgiving' mode (player-follow.js): wrong notes are 'stray' and do
+ * nothing here (no red, no count), catch-up jumps report `skipped` steps
+ * whose unplayed notes stay plain (follower.skippedNotes in paintStates),
+ * Done is a cheer, no trouble pass is recorded (syncPass cancels) and
+ * "Move on after" is disabled (forgiving loops run until turned off).
+ * Toggling keeps the position (setMode on the live follower).
+ *
+ * Practice-log hook: practiceEvent(type, detail) is the one funnel the
+ * future log (createResultLog, key songlab_results_player) will hang off;
+ * today it console.debugs. state.practice.playedMs is active time from
+ * note attacks in either mode (player-trouble createPracticeClock: a gap
+ * over IDLE_GAP_MS adds nothing).
+ *
+ * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, setNoStress, trouble, practice, staff, keyboard, …).
  */
 
 import { PlayerStaff } from './player-staff.js';
 import { buildSteps, attachIds, createFollower, createLoopCounts } from './player-follow.js';
-import { createPassRecorder, createPassHistory, scorePass, troubleLabel, shouldSuggest, passKey, passRows, THRESHOLDS } from './player-trouble.js';
+import { createPassRecorder, createPassHistory, createPracticeClock, scorePass, troubleLabel, shouldSuggest, passKey, passRows, THRESHOLDS } from './player-trouble.js';
 import { lineRanges, lineIndexFor } from './player-staff-model.js';
 import { createShellInput } from '../games/cycle-of-shells-input.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
@@ -64,6 +78,7 @@ const DEVICE_KEY = 'songlab_player_midi_device';   // createShellInput has a fix
 const SOUND_KEY = 'songlab_player_midi_sound';     // "Sound for MIDI notes" checkbox; off by default
 const LOOP_EXIT_KEY = 'songlab_player_loop_exit';  // "Move on after N clean passes" select (0 = off); default 3
 const LOOP_EXIT_DEFAULT = 3;
+const NO_STRESS_KEY = 'songlab_player_no_stress';  // "No stress" checkbox (forgiving follower); off by default
 const ECHO_VELOCITY = 0.7;                           // as cycle-of-shells.js
 const CLICK_SECONDS = 0.6;                           // on-screen key: attack + release
 const WRONG_FLASH_MS = 500;
@@ -81,10 +96,11 @@ const els = {
   select: $('pl-piece-select'),
   device: $('pl-device-select'), deviceStatus: $('pl-device-status'),
   hands: $('pl-hands'),
+  noStress: $('pl-no-stress'),
   sound: $('pl-sound'),
   prev: $('pl-prev'), next: $('pl-next'), barLabel: $('pl-bar-label'),
   status: $('pl-status'), restart: $('pl-restart'),
-  loopBar: $('pl-loop-bar'), loopLine: $('pl-loop-line'), loopExit: $('pl-loop-exit'),
+  loopBar: $('pl-loop-bar'), loopLine: $('pl-loop-line'), loopExit: $('pl-loop-exit'), noStressHint: $('pl-no-stress-hint'),
   trouble: $('pl-trouble'),
   staffHost: $('pl-staff'),
   keyboardHost: $('pl-keyboard'),
@@ -96,11 +112,13 @@ const state = {
   line: -1,                      // index into lines of the drawn line
   bar: null,                     // the active bar within the drawn line
   hands: 'both',
+  noStress: false,        // forgiving follower; see the header
   steps: [], follower: null,
   wrong: 0,
   loop: null,             // follower.loop(): { from, to, exitAfter, pass, cleanStreak } or null
   pendingBar: null,       // tap-to-select: the first tapped bar, waiting for the second
   trouble: null,          // the last scored pass: { pass, score, number, suggested } (console / debug)
+  practice: null,         // { playedMs } active time in either mode (set below; practice-log hook)
   held: new Set(),        // midis down on the MIDI device (de-duplicated by the input)
   echoing: new Set(),     // midis sounding on the sampler for MIDI echo
   audioStarted: false,
@@ -109,6 +127,17 @@ const staff = new PlayerStaff('pl-staff');
 const loopCounts = createLoopCounts();     // per-hand { pass, cleanStreak } for the active loop range
 const passHistory = createPassHistory();   // passes per piece / hands / range (suggestions from the second); cleared on piece load. Not `history`: that is window.history
 let recorder = createPassRecorder([]);     // the pass under way, rebuilt with the follower
+const practiceClock = createPracticeClock();   // active time: gaps between notes up to IDLE_GAP_MS
+state.practice = { get playedMs() { return practiceClock.playedMs(); }, get lastNoteAt() { return practiceClock.lastNoteAt(); } };
+
+/**
+ * Practice-log hook: everything the future log will record passes through
+ * here. Types so far: 'load' { piece }, 'pass' { number, from, to, hands,
+ * noStress, ranges }, 'mode' { noStress }. Time spent is state.practice.playedMs.
+ */
+function practiceEvent(type, detail = {}) {
+  console.debug(`[player] practice ${type}`, { ...detail, playedMs: practiceClock.playedMs() });
+}
 let keyboard = null;
 let input = null;
 let sampler = null;
@@ -210,12 +239,13 @@ function mountKeyboard(norm) {
 // ════════════════════════════════════════════════════════════════════
 
 const barNumbers = () => (state.norm && Array.isArray(state.norm.bars) ? state.norm.bars.map(b => b.bar) : []);
+const followMode = () => (state.noStress ? 'forgiving' : 'strict');
 const otherHand = () => (state.hands === 'rh' ? 'lh' : state.hands === 'lh' ? 'rh' : null);
 
 /** Rebuild the step list and follower for the current hands; the follower starts at `bar` (or the first bar). */
 function rebuildFollower(bar) {
   state.steps = state.norm ? buildSteps(state.norm, { hands: state.hands }, staff.hits) : [];
-  state.follower = createFollower(state.steps);
+  state.follower = createFollower(state.steps, { mode: followMode() });
   recorder = createPassRecorder(state.steps);
   if (bar != null) state.follower.jumpTo(bar);
 }
@@ -248,7 +278,8 @@ function paintStates() {
   const cur = f.current();
   for (const s of state.steps) {
     if (cur && s.index >= cur.index) break;
-    for (const n of s.notes) for (const id of n.ids) if (paintable(id, s)) staff.setNoteState(id, 'correct');
+    const skipped = f.skippedNotes(s);   // passed over by a No-stress catch-up: plain, not green
+    for (const n of s.notes) if (!skipped.has(n.midi)) for (const id of n.ids) if (paintable(id, s)) staff.setNoteState(id, 'correct');
   }
   if (cur) {
     const pressed = f.pressed();
@@ -273,19 +304,19 @@ function updateStatus() {
     return;
   }
   if (f.done()) {
-    els.status.textContent = `Done! ${state.wrong} wrong note${state.wrong === 1 ? '' : 's'}`;
+    els.status.textContent = state.noStress ? 'Nice — you played it through!' : `Done! ${state.wrong} wrong note${state.wrong === 1 ? '' : 's'}`;
     els.restart.hidden = false;
     return;
   }
   const cur = f.current();
   const L = state.loop;
   let where;
-  if (L) where = `Looping ${barsText(L.from, L.to)} · ${state.hands === 'both' ? '' : `${state.hands.toUpperCase()} `}pass ${L.pass} · clean ${L.cleanStreak}${L.exitAfter > 0 ? ` / ${L.exitAfter}` : ''}`;
+  if (L) where = `Looping ${barsText(L.from, L.to)} · ${state.hands === 'both' ? '' : `${state.hands.toUpperCase()} `}pass ${L.pass}${state.noStress ? '' : ` · clean ${L.cleanStreak}${L.exitAfter > 0 ? ` / ${L.exitAfter}` : ''}`}`;
   else {
     where = cur.bar === state.bar ? `Bar ${cur.bar}` : `Bar ${cur.bar} (showing line ${state.line + 1}, bar ${state.bar})`;   // a paged-to line with no steps for this hand at its first bar
     where += ` · step ${cur.index + 1} / ${state.steps.length}`;
   }
-  els.status.textContent = `${where} · wrong: ${state.wrong}`;
+  els.status.textContent = state.noStress ? where : `${where} · wrong: ${state.wrong}`;
   els.restart.hidden = true;
 }
 
@@ -293,6 +324,7 @@ function updateStatus() {
 function judge(midi) {
   const f = state.follower;
   if (!f) return;
+  practiceClock.note();   // time spent counts the same in both modes
   const r = f.noteOn(midi);
   if (r.result === 'wrong') {
     state.wrong += 1;
@@ -301,12 +333,12 @@ function judge(midi) {
     updateStatus();
     return;
   }
-  if (r.result !== 'correct') return;
+  if (r.result !== 'correct') return;   // 'ignored', or a No-stress 'stray': nothing shown, nothing counted
   for (const n of r.step.notes) if (n.midi === midi) for (const id of n.ids) if (paintable(id, r.step)) staff.setNoteState(id, 'correct');   // both hands when the pitch is doubled
   setKey(midi, 'expected', false);
   flashKey(midi, 'correct', CORRECT_FLASH_MS);
-  if (!r.completed) { updateStatus(); return; }
-  recorder.complete(r.step);
+  if (!r.completed && !r.skipped) { updateStatus(); return; }
+  if (r.completed) recorder.complete(r.step);
   if (r.done || r.looped || r.loopExited) endPass();   // a full run or a loop pass is over: score it
   if (r.looped || r.loopExited) {
     const L = state.loop;
@@ -412,6 +444,26 @@ els.hands.addEventListener('change', e => {
     paintStates();
   }
 });
+
+// ── No stress ────────────────────────────────────────────────────
+/** Forgiving follower on / off; keeps the position. Cancels the trouble pass under way when turned on; re-syncs it when turned off. */
+function setNoStress(on) {
+  const want = !!on;
+  if (want === state.noStress) { els.noStress.checked = want; return state.noStress; }
+  state.noStress = want;
+  els.noStress.checked = want;
+  try { localStorage.setItem(NO_STRESS_KEY, want ? '1' : '0'); } catch (_) { /* storage unavailable */ }
+  if (state.follower) state.follower.setMode(followMode());
+  if (want) { if (recorder.active()) console.log('[player] pass recording cancelled: No stress on'); recorder.cancel(); clearTrouble(); state.trouble = null; clearKeys(['wrong']); }
+  else syncPass();
+  syncLoop();      // "Move on after" + hint + status
+  paintStates();
+  practiceEvent('mode', { noStress: want });
+  return state.noStress;
+}
+els.noStress.addEventListener('change', () => { setNoStress(els.noStress.checked); els.noStress.blur(); });
+try { state.noStress = localStorage.getItem(NO_STRESS_KEY) === '1'; } catch (_) { state.noStress = false; }
+els.noStress.checked = state.noStress;
 
 // ════════════════════════════════════════════════════════════════════
 // LINE / BAR NAVIGATION
@@ -543,6 +595,8 @@ function syncLoop() {
   const line = state.lines[state.line];
   const on = !!state.norm;
   els.loopBar.disabled = !on; els.loopLine.disabled = !on;
+  els.loopExit.disabled = state.noStress;
+  els.noStressHint.hidden = !state.noStress;
   els.loopBar.setAttribute('aria-pressed', String(!!(L && state.bar != null && L.from === state.bar && L.to === state.bar)));
   els.loopLine.setAttribute('aria-pressed', String(!!(L && line && L.from === line.from && L.to === line.to)));
   staff.setBarTint('loop', L ? barNumbers().filter(b => b >= L.from && b <= L.to) : []);
@@ -655,7 +709,7 @@ function syncPass() {
   const f = state.follower;
   const range = f ? passRange() : null;
   const cur = f ? f.current() : null;
-  if (!range || !cur) { recorder.cancel(); return; }
+  if (!range || !cur || state.noStress) { recorder.cancel(); return; }   // No stress: nothing is recorded
   const first = state.steps.find(s => s.bar >= range.from && s.bar <= range.to);
   if (first && first.index === cur.index) { recorder.start(range, cur.index); console.log(`[player] pass recording: ${barsText(range.from, range.to)} (${state.hands}) from step ${cur.index}`); }
   else { if (recorder.active()) console.log(`[player] pass recording cancelled at step ${cur.index} (bar ${cur.bar})`); recorder.cancel(); }
@@ -664,11 +718,12 @@ function syncPass() {
 /** The pass under way is over: score it, log the raw rows, show the suggestion (from the second pass of this piece / hands / range). */
 function endPass() {
   const pass = recorder.end();
-  if (!pass || !state.piece) return;
+  if (!pass || !state.piece) { if (state.noStress) state.trouble = null; return; }   // an unrecorded No-stress pass leaves no stale strict-mode suggestion behind
   const number = passHistory.record(passKey(state.piece, state.hands, pass.from, pass.to));
   const score = scorePass(pass);
   const suggested = shouldSuggest(number);
   state.trouble = { pass, score, number, suggested };
+  practiceEvent('pass', { number, from: pass.from, to: pass.to, hands: state.hands, noStress: state.noStress, ranges: score.ranges.map(r => [r.from, r.to]) });
   const med = score.medianMs == null ? '–' : `${Math.round(score.medianMs)} ms`;
   console.log(`[player] pass ${number} of ${barsText(pass.from, pass.to)} (${state.hands}) · ${pass.steps.length} steps · median step ${med}, slow ≥ ${score.slowMs == null ? '–' : `${Math.round(score.slowMs)} ms`} · ${score.ranges.length ? `trouble: ${score.ranges.map(troubleLabel).join(', ')}` : 'clean'}${suggested ? '' : ` · first pass: suggestions from pass ${THRESHOLDS.MIN_PASS_TO_SUGGEST}`}`);
   console.table(passRows(pass, score));
@@ -765,6 +820,7 @@ async function load(name) {
       rebuildFollower(null);  // a new follower: no loop
       syncLoop();
       syncPass();             // the first pass of the piece begins at step 0
+      practiceEvent('load', { piece: name });
       const cur = state.follower.current();
       const bar = cur ? cur.bar : bars[0];
       showLine(Math.max(0, lineOf(bar)), { bar, keep: true });
@@ -833,8 +889,8 @@ setupMidi();   // not awaited: the piece loads while the browser asks for MIDI a
 // Debug handle for the browser console (no behaviour depends on it).
 window.__player = {
   state, load, pieces: () => state.pieces, staff, showLine, stepLine, stepBar, restart,
-  setLoop, clearLoop,
-  get trouble() { return state.trouble; }, loopCounts, passHistory, get recorder() { return recorder; }, thresholds: THRESHOLDS,
+  setLoop, clearLoop, setNoStress,
+  get trouble() { return state.trouble; }, get practice() { return state.practice; }, loopCounts, passHistory, get recorder() { return recorder; }, thresholds: THRESHOLDS,
   get keyboard() { return keyboard; }, get input() { return input; }, get follower() { return state.follower; }, get steps() { return state.steps; },
   noteOn: onMidiNoteOn, noteOff: onMidiNoteOff,
 };

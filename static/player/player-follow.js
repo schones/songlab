@@ -19,13 +19,15 @@
  *       of a split duration match because toMEI gives every piece the attack
  *       onset. Idempotent and cumulative, so the page can call it once per
  *       rendered bar range. buildSteps calls it when `hits` is given.
- *   createFollower(steps)              → follower
- *       noteOn(midi)  → { result: 'correct' | 'wrong' | 'ignored', step, done, completed }
+ *   createFollower(steps, { mode = 'strict', lookahead = 3 })  → follower
+ *       noteOn(midi)  → { result: 'correct' | 'wrong' | 'stray' | 'ignored', step, done, completed, skipped? }
  *           correct:  midi is expected in the current step and not yet pressed in it
  *           ignored:  midi already pressed in this step (a re-strike), or no steps left
- *           wrong:    anything else; never advances
+ *           wrong:    (strict) anything else; never advances
+ *           stray:    (forgiving) anything else; never advances, never reported as wrong
  *           completed: this note finished the step (the follower has advanced)
- *           step:     the step the note was judged against (null when none left)
+ *           step:     the step the note counted toward (null when none left)
+ *           skipped:  (forgiving) the steps passed over by a catch-up jump, see below
  *           done:     no steps remain after this call
  *       A step completes when every expected midi has been pressed since the
  *       step began, in any order; the notes need not be held together
@@ -35,6 +37,27 @@
  *       pressed()      Set of correct midis pressed so far in the current step
  *       reset()        back to the first step
  *       jumpTo(bar)    first step at or after that bar (past the end → done); returns current()
+ *       setMode(mode)  'strict' | 'forgiving'; keeps the position and the loop. mode() reads it.
+ *       skippedNotes(step) → Set<midi>: the notes of `step` a forgiving jump passed over
+ *                      (plain on the page, not green); cleared by reset, jumpTo and a loop wrap
+ *
+ *       Forgiving mode ("No stress" on the page): wrong notes never block and
+ *       the follower keeps track of where the player is.
+ *         1. A note of the current step counts toward it, as strict (so a pitch
+ *            in both the current step and a later one goes to the current step
+ *            first: Carol's repeated D6s).
+ *         2. Otherwise the next steps are searched for the note: up to `lookahead`
+ *            steps ahead when at least one note of the current step is pressed
+ *            (a partial chord), only the next step when none is (so mashing keys
+ *            cannot run through the piece: each catch-up needs the next step's
+ *            own note, which by rule 1 is not a current-step note). The window
+ *            never crosses the end of a loop range.
+ *         3. Found: the steps passed over are skipped — their unpressed notes are
+ *            remembered for skippedNotes — the follower moves to that step and the
+ *            note counts there (result 'correct', skipped: [steps]; a one-note
+ *            step completes at once). Not found: 'stray'.
+ *         Loops wrap the same way, but a forgiving pass is never counted clean and
+ *         exitAfter is ignored: the loop runs until turned off.
  *
  *       Loop for practice (a detour: the walk-through pauses inside a bar
  *       range, it does not stop):
@@ -159,25 +182,57 @@ function attachIds(steps, hits) {
 // FOLLOWER
 // ════════════════════════════════════════════════════════════════════
 
-function createFollower(steps) {
+const MODES = ['strict', 'forgiving'];
+
+function createFollower(steps, { mode = 'strict', lookahead = 3 } = {}) {
   const list = Array.isArray(steps) ? steps : [];
   let idx = 0;
   let pressedSet = new Set();
   let loopState = null;   // { from, to, exitAfter, pass, cleanStreak, dirty, start } — start: index of the first step at/after from
+  let modeState = MODES.includes(mode) ? mode : 'strict';
+  const ahead = Math.max(1, Math.floor(Number(lookahead)) || 1);
+  let skippedMap = new Map();   // step index → Set<midi> passed over by a forgiving jump
 
   const current = () => (idx < list.length ? list[idx] : null);
   const done = () => idx >= list.length;
   const inLoop = step => !!(loopState && step && step.bar >= loopState.from && step.bar <= loopState.to);
+  const forgiving = () => modeState === 'forgiving';
 
   function noteOn(midi) {
     const step = current();
     if (!step) return { result: 'ignored', step: null, done: true, completed: false };
-    if (!step.expected.has(midi)) {
+    if (step.expected.has(midi)) {   // rule 1: the current step first
+      if (pressedSet.has(midi)) return { result: 'ignored', step, done: false, completed: false };
+      pressedSet.add(midi);
+      return finish(step, []);
+    }
+    if (!forgiving()) {
       if (inLoop(step)) loopState.dirty = true;
       return { result: 'wrong', step, done: false, completed: false };
     }
-    if (pressedSet.has(midi)) return { result: 'ignored', step, done: false, completed: false };
-    pressedSet.add(midi);
+    // rule 2: look ahead — the whole window after a partial chord, only the next step from nothing
+    const k = pressedSet.size > 0 ? ahead : 1;
+    const limitBar = inLoop(step) ? loopState.to : Infinity;
+    for (let j = 1; j <= k; j++) {
+      const cand = list[idx + j];
+      if (!cand || cand.bar > limitBar) break;
+      if (!cand.expected.has(midi)) continue;
+      // rule 3: skip to it
+      const skipped = [];
+      for (let i = idx; i < idx + j; i++) {
+        const s = list[i];
+        skippedMap.set(i, new Set([...s.expected].filter(m => !(i === idx && pressedSet.has(m)))));
+        skipped.push(s);
+      }
+      idx += j;
+      pressedSet = new Set([midi]);
+      return finish(cand, skipped);
+    }
+    return { result: 'stray', step, done: false, completed: false };
+  }
+
+  /** `step` has just taken a note: complete it when full, wrap a loop pass when it was the last step in range. */
+  function finish(step, skipped) {
     let completed = false, looped = false, loopExited = false;
     if (pressedSet.size >= step.expected.size) {
       idx += 1;
@@ -186,17 +241,26 @@ function createFollower(steps) {
       const next = current();
       if (inLoop(step) && (!next || next.bar > loopState.to)) {   // the pass ends here
         const L = loopState;
-        L.cleanStreak = L.dirty ? 0 : L.cleanStreak + 1;
-        L.dirty = false;
-        if (L.exitAfter > 0 && L.cleanStreak >= L.exitAfter) { loopState = null; loopExited = true; }
-        else { idx = L.start; L.pass += 1; looped = true; }
+        if (!forgiving()) {   // clean-pass counting and exitAfter are strict-only
+          L.cleanStreak = L.dirty ? 0 : L.cleanStreak + 1;
+          L.dirty = false;
+          if (L.exitAfter > 0 && L.cleanStreak >= L.exitAfter) { loopState = null; loopExited = true; }
+        }
+        if (loopState) {
+          idx = L.start; L.pass += 1; looped = true;
+          for (const i of [...skippedMap.keys()]) if (i >= L.start) skippedMap.delete(i);
+        }
       }
     }
     const out = { result: 'correct', step, done: done(), completed };
+    if (skipped.length) out.skipped = skipped;
     if (looped) out.looped = true;
     if (loopExited) out.loopExited = true;
     return out;
   }
+
+  function setMode(m) { if (MODES.includes(m)) modeState = m; return modeState; }
+  const skippedNotes = step => new Set(step && skippedMap.has(step.index) ? skippedMap.get(step.index) : []);
 
   function setLoop(from, to = from, { exitAfter = 0, resume = null } = {}) {
     if (from == null) { loopState = null; return null; }
@@ -223,16 +287,17 @@ function createFollower(steps) {
 
   function noteOff() { /* wait mode: release timing is not part of matching */ }
 
-  function reset() { idx = 0; pressedSet = new Set(); return current(); }
+  function reset() { idx = 0; pressedSet = new Set(); skippedMap = new Map(); return current(); }
 
   function jumpTo(bar) {
     const i = list.findIndex(s => s.bar >= bar);
     idx = i < 0 ? list.length : i;
     pressedSet = new Set();
+    skippedMap = new Map();
     return current();
   }
 
-  return { noteOn, noteOff, current, pressed: () => new Set(pressedSet), reset, jumpTo, done, setLoop, loop, steps: list };
+  return { noteOn, noteOff, current, pressed: () => new Set(pressedSet), reset, jumpTo, done, setLoop, loop, setMode, mode: () => modeState, skippedNotes, steps: list };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -481,6 +546,47 @@ async function selfTest() {
   counts.save('both', { from: 2, to: 1, pass: 2, cleanStreak: 0 });
   assert('save normalises a reversed range; get with the reversed range finds it; reset forgets', [counts.range(), counts.get('both', 2, 1), (counts.reset(), counts.get('both', 1, 2))], [{ from: 1, to: 2 }, { pass: 2, cleanStreak: 0 }, null]);
 
+  // ── forgiving mode ("No stress") ──────────────────────────────────
+  // FIX both: 0 D6+G4 | 1 B♭4 | 2 D5 | 3 D6 | 4 D6+F4 | 5 B♭4 | 6 D5 | 7 C6 | 8 E♭5+A2 | 9 G3 | 10 C5 | 11 D5 | 12 C5+D5 | 13 A2 | 14 F♯3
+  const rf = x => [x.result, x.step ? x.step.index : null, x.completed, x.skipped ? x.skipped.map(s => s.index) : null];
+  const F4 = 65, G3 = 55;
+  let g = createFollower(both, { mode: 'forgiving' });
+  assert('forgiving: mode() reads it; setMode validates and keeps the position', [g.mode(), g.setMode('bogus'), createFollower(both).mode(), (g.setMode('strict'), g.setMode('forgiving'))], ['forgiving', 'forgiving', 'strict', 'forgiving']);
+  assert('forgiving: a wrong note (C5 at step 0) is stray, never advances, nothing pressed', [rf(g.noteOn(C5)), g.current().index, [...g.pressed()]], [['stray', 0, false, null], 0, []]);
+  assert('forgiving: random keys with nothing pressed never advance (only the next step can catch up, and only with its own note)', (() => { const h = createFollower(both, { mode: 'forgiving' }); const res = [40, 41, 42, 50, 61, 62, 63, 90, 91].map(m => h.noteOn(m).result); return [new Set(res).size === 1 && res[0] === 'stray', h.current().index]; })(), [true, 0]);
+  assert('forgiving: a current-step note counts as in strict (G4 → step 0 incomplete)', [rf(g.noteOn(G4)), [...g.pressed()]], [['correct', 0, false, null], [G4]]);
+  assert('forgiving: partial chord + the next step\'s note (B♭4): skip to step 1, D6 of step 0 skipped, step 1 complete', [rf(g.noteOn(Bb4)), g.current().index, [...g.skippedNotes(both[0])]], [['correct', 1, true, [0]], 2, [D6]]);
+  assert('forgiving: catch-up from nothing pressed: D6 is in step 3 (next), not step 2 → skip step 2 (D5 skipped), step 3 complete', [rf(g.noteOn(D6)), g.current().index, [...g.skippedNotes(both[2])]], [['correct', 3, true, [2]], 4, [D5]]);
+  assert('forgiving: from nothing pressed, a note two steps ahead (D5 of step 6 while step 4 D6+F4 is current) is stray', [rf(g.noteOn(D5)), g.current().index], [['stray', 4, false, null], 4]);
+  g.noteOn(F4);
+  assert('forgiving: with F4 pressed (partial), D5 of step 6 skips two steps (4 and 5); step 4 keeps F4, loses D6', [rf(g.noteOn(D5)), g.current().index, [...g.skippedNotes(both[4])], [...g.skippedNotes(both[5])]], [['correct', 6, true, [4, 5]], 7, [D6], [Bb4]]);
+  assert('forgiving: a jump past the lookahead (3) does nothing: A2 of step 8 … no, G3 of step 9 (three ahead of 7, partial needed) is stray from nothing pressed', rf(g.noteOn(G3)), ['stray', 7, false, null]);
+  g.noteOn(C6);   // step 7 complete → 8
+  g.noteOn(Eb5);  // partial at 8
+  assert('forgiving: partial at step 8, D5 of step 11 is exactly 3 ahead → skipped 8, 9, 10', [rf(g.noteOn(D5)), g.current().index], [['correct', 11, true, [8, 9, 10]], 12]);
+  g = createFollower(both, { mode: 'forgiving' });
+  g.noteOn(D6); g.noteOn(G4); g.noteOn(Bb4); g.noteOn(D5);   // steps 0–2 done, step 3 (D6) current
+  assert('forgiving: repeated pitch resolves to the current step: D6 at step 3 counts there, not at step 4', [rf(g.noteOn(D6)), g.current().index], [['correct', 3, true, null], 4]);
+  g.noteOn(D6);   // step 4 partial
+  assert('forgiving: a jump beyond lookahead from a partial (C5 of step 10, six ahead) is stray', rf(g.noteOn(C5)), ['stray', 4, false, null]);
+  assert('forgiving: a re-strike of a pressed note is still ignored', rf(g.noteOn(D6)), ['ignored', 4, false, null]);
+  g = createFollower(both, { mode: 'forgiving' });
+  g.noteOn(D6); g.noteOn(G4); g.noteOn(Bb4);
+  assert('forgiving: skippedNotes is empty for steps that were played; reset clears skips', (() => { g.noteOn(D6); /* skip step 2 */ const before = [...g.skippedNotes(both[2])]; g.reset(); return [[...g.skippedNotes(both[0])], before, [...g.skippedNotes(both[2])]]; })(), [[], [D5], []]);
+  // Loop in forgiving mode: wraps, pass counts up, never exits, never counts clean.
+  g = createFollower(both, { mode: 'forgiving' });
+  g.setLoop(1, 2, { exitAfter: 1 });
+  for (const st of both.slice(0, 8)) play(g, st);
+  assert('forgiving loop 1–2 with exitAfter 1: a clean pass wraps instead of exiting; pass 2, clean streak stays 0', [g.loop(), g.current().index], [{ from: 1, to: 2, exitAfter: 1, pass: 2, cleanStreak: 0 }, 0]);
+  g.noteOn(G4); g.noteOn(Bb4);   // partial + next: skip D6 of step 0
+  for (const st of both.slice(2, 8)) play(g, st);
+  assert('forgiving loop: a pass with a skip wraps too; the wrap clears the range\'s skipped notes', [g.loop().pass, g.current().index, [...g.skippedNotes(both[0])]], [3, 0, []]);
+  g.noteOn(D6); g.noteOn(G4); g.noteOn(Bb4); g.noteOn(D5); g.noteOn(D6); g.noteOn(D6); g.noteOn(F4); g.noteOn(Bb4);   // step 6 (D5) current, last two steps of bar 2 are 6, 7
+  assert('forgiving loop: the lookahead window stops at the loop end (E♭5 of bar 15 is stray from a partial inside the range)', (g.noteOn(D5), g.noteOn(C6), rf(g.noteOn(Eb5))), ['stray', 0, false, null]);
+  g.setMode('strict');
+  for (const st of both.slice(0, 8)) play(g, st);
+  assert('back to strict mid-loop: the pass number continues (5) and clean passes count again (1); exitAfter 1 exits', [g.loop(), g.current() && g.current().bar], [null, 15]);
+
   // ── the real prelude when present ────────────────────────────────
   try {
     const fs = await import('node:fs');
@@ -516,6 +622,18 @@ async function selfTest() {
         let exited = null;
         for (let pass = 0; pass < 2; pass++) for (const s of inRange) for (const m of s.expected) { const x = f4.noteOn(m); if (x.loopExited) exited = x; }
         assert('prelude: with exitAfter 2 the second clean pass exits and play continues into bar 5', [!!exited, f4.loop(), f4.current() && f4.current().bar], [true, null, 5]);
+        // Forgiving: drop the first note of the first step of every bar, play the rest in order; the piece must finish with no stray or wrong results.
+        const f5 = createFollower(steps, { mode: 'forgiving' });
+        const dropped = new Set(norm.bars.map(b => steps.find(s => s.bar === b.bar)).filter(Boolean).map(s => `${s.index}:${[...s.expected][0]}`));
+        let strays = 0, jumps = 0, lastDone = false;
+        for (const s of steps) for (const m of s.expected) {
+          if (dropped.has(`${s.index}:${m}`)) continue;
+          const x = f5.noteOn(m);
+          if (x.result === 'stray' || x.result === 'wrong') strays++;
+          if (x.skipped) jumps++;
+          lastDone = x.done;
+        }
+        assert(`prelude forgiving: one dropped note per bar (${dropped.size} drops) still finishes the piece, with catch-up jumps and no strays`, [lastDone, f5.done(), strays, jumps > 0], [true, true, 0, true]);
       }
       console.log(`  · prelude step counts: rh ${P.rh.length}, lh ${P.lh.length}, both ${P.both.length}`);
       console.log('  · prelude first 6 steps (both):');

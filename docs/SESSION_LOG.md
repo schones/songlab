@@ -3,6 +3,179 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-11-03 — follow-along player loop chunk 1b + 1c: trouble spots, per-hand loop counts, "No stress" mode
+
+Guided-practice track, on `dev` after 1a (`7c96992`, loops) earlier the
+same day. 1b landed as `396ba72`; 1c is in the working tree for Dustin
+to commit (five files, below). Built in the read → plan → build → docs
+shape, each step with Node self-tests; the page was driven from console
+snippets, not the RD-2000.
+
+### Landed
+- **1b — per-hand loop counts** (`player-follow.js`): `setLoop(from, to,
+  { exitAfter, resume })` takes a `resume: { pass, cleanStreak }` seed
+  for a new loop on a fresh follower; `createLoopCounts()` keeps
+  { pass, cleanStreak } for lh / rh / both for one range. `player.js`
+  saves the active hand's counts in `syncLoop` and passes the incoming
+  hand's back on a hands change, so LH → RH → LH resumes LH's count. A
+  new range, clearing the loop and R reset all three. Status shows the
+  hand while looping LH / RH.
+- **1b — trouble spots** (`static/player/player-trouble.js`, new, pure;
+  30/30): `createPassRecorder` (per step misses, anticipations, ms from
+  becoming current to completion; first step of a pass and first step
+  after a line change unmeasured), `scorePass` (median step time;
+  stumble = ≥ 1 miss, slow = ≥ `HESITATION_FACTOR` 3 × median and ≥
+  `HESITATION_MIN_MS` 1000; problems / steps ≥ `BAR_THRESHOLD` 0.34
+  flags a bar; neighbours merge; `TOP_N` 3 by misses + slow steps),
+  `troubleLabel`, `createPassHistory` + `passKey(piece, hands, from,
+  to)`, `shouldSuggest` (from pass `MIN_PASS_TO_SUGGEST` 2), `passRows`
+  for `console.table`. `player.js`: a pass is recorded from the moment
+  the follower sits at the first step of its range (`syncPass`: load,
+  restart, loop set / wrap, navigation to the start) and ends on done /
+  wrap / exit (`endPass`); any other jump cancels it. Trouble row under
+  the loop controls with one "Loop these" per range (calls the 1a
+  `setLoop`), third staff tint `trouble` (coral), cleared when a loop
+  starts or the piece changes; "Clean pass!" when nothing is flagged.
+- **1b fixes:** the module-level `history` constant shadowed
+  `window.history`, so `load()` threw at `replaceState` into its catch
+  ("Could not load …" banner on every load) — renamed `passHistory`,
+  cleared on piece load, kept across R. `syncPass` logs recording
+  starts and cancels so a lost pass is visible in the console.
+- **1c — forgiving follower** (`player-follow.js`, 89/89):
+  `createFollower(steps, { mode: 'strict' | 'forgiving', lookahead = 3
+  })`, `setMode`, `mode`, `skippedNotes(step)`. Strict is the old code
+  path moved into a shared `finish` helper (all earlier tests
+  unchanged). Forgiving: (1) a current-step note counts there first;
+  (2) otherwise the next steps are searched — the whole window after a
+  partial chord, only the next step from nothing pressed, never past a
+  loop's last bar; (3) found → the passed-over steps are skipped (their
+  unpressed notes remembered, plain on the page) and the note counts at
+  the new step; not found → `stray`, never advances, never dirties a
+  loop. Forgiving loops wrap but never count clean and ignore
+  `exitAfter`.
+- **1c — page:** "Mode · No stress" checkbox between Hands and Sound
+  (`songlab_player_no_stress`, off by default); `stray` does nothing (no
+  red, no count); skipped notes stay plain; status without the wrong
+  count; Done = "Nice — you played it through!"; no trouble recording,
+  row or tint (and `__player.trouble` cleared so no stale strict
+  suggestion is readable); "Move on after" disabled with the hint "No
+  stress: loops run until turned off". Toggling keeps the position
+  (`setMode` on the live follower) and cancels / re-syncs the trouble
+  recording. `__player.setNoStress(bool)`.
+- **Practice-log hook:** `practiceEvent(type, detail)` in `player.js`
+  is the one funnel (`load`, `pass`, `mode`; console.debug for now) the
+  future `createResultLog` will hang off. `state.practice.playedMs` from
+  `createPracticeClock` in `player-trouble.js`: gaps between note
+  attacks up to `IDLE_GAP_MS` (30 s) count; a longer gap adds nothing
+  (not the cap). Same in both modes.
+- **Staff fix** (`player-staff.js`): `_measureBox` lifted the measure's
+  `pl-bar-*` rects to measure the bare bbox and restored each before its
+  saved `nextSibling`; when the marker and a tint sat side by side as
+  first children the anchor was itself lifted → NotFoundError in
+  `insertBefore` at the end of a looped pass (the trouble tint was the
+  first caller to measure such a bar). The anchor is now the first
+  following sibling that is not lifted; measures outside the drawn SVG
+  are null; `_drawTint` skips them.
+
+### Diagnosed / decided
+- Trouble spots are suggestions, not grades: one bar score is problem
+  steps / steps, so hunting around on one step is one problem. One
+  stumble in a three-step bar (0.33) stays under the 0.34 threshold on
+  purpose; two problem steps, or one in a two-step bar, flag it. The
+  hesitation floor (1 s) keeps a synchronous console run from flagging
+  everything.
+- Pass history is keyed by piece, hands and range: a hand's first read
+  is also a first read. "Clean pass!" shows on any pass, suggestions
+  only from the second.
+- The catch-up clause "the next step's pitch set doesn't also match the
+  current step" is satisfied by construction: a note is only looked up
+  ahead after the current step has declined it (Carol's repeated D6s go
+  to the current step). Recorded in the follower header.
+- A hands switch mid-pass forgives that pass's misses so far (`dirty`
+  not carried); switching back to strict mid-loop continues the same
+  pass number.
+- The "history resets on restart" report could not be confirmed from
+  the code or a Node replay of the snippet (pass 2 → 2); the shadowing
+  bug and the recording logs went in instead. If it recurs, the
+  `[player] pass recording cancelled at step …` line names the cause.
+
+### Setup for next session
+- `dev`: 1b committed (`396ba72`); 1c + the `_measureBox` fix in the
+  working tree — `static/player/player-follow.js`, `player-trouble.js`,
+  `player-staff.js`, `player.js`, `templates/player.html` — plus this
+  log and `docs/STATUS.md`.
+- Self-tests: `player-follow.js` 89/89, `player-trouble.js` 30/30,
+  `player-staff-model.js` 77/77, `meter-rules.js` 125/125.
+- RD-2000 check still owed for 1b and 1c, and the trouble thresholds
+  want tuning from real `console.table` rows (every pass logs them).
+- Strict snippet (Carol loaded, hands Both; two passes with a miss per
+  step in bars 6–7, then "Loop these"):
+  ```js
+  await (async () => {
+    const P = window.__player, sleep = ms => new Promise(r => setTimeout(r, ms));
+    const BAD = new Set([6, 7]);
+    const run = async label => {
+      P.restart(); await sleep(400);
+      while (P.follower && !P.follower.done()) {
+        const s = P.follower.current();
+        if (BAD.has(s.bar)) { const nx = P.steps[s.index + 1]; let w = [...s.expected][0] + 1; while (s.expected.has(w) || (nx && nx.expected.has(w))) w++; P.noteOn(w); P.noteOff(w); await sleep(300); }
+        for (const m of s.expected) { P.noteOn(m); await sleep(50); P.noteOff(m); }
+        await sleep(120);
+      }
+      const t = P.trouble;
+      console.log(`${label}: wrong ${P.state.wrong} · ${t && t.suggested ? 'suggested: ' + t.score.ranges.map(r => `bars ${r.from}–${r.to}`).join(', ') : 'no suggestion yet (pass ' + (t ? t.number : '?') + ')'}`);
+    };
+    await run('pass 1'); await run('pass 2');
+    document.querySelector('#pl-trouble button').click(); console.log('loop:', P.state.loop);
+  })();
+  ```
+- No-stress snippet (one dropped note and one stray key per bar; expect
+  done true, wrong 0, the cheer in the status line):
+  ```js
+  await (async () => {
+    const P = window.__player, sleep = ms => new Promise(r => setTimeout(r, ms));
+    P.setNoStress(true); P.restart(); await sleep(400);
+    const steps = P.steps, seen = new Set(); let drops = 0, strays = 0, rescues = 0;
+    const nearby = (i, k) => steps.slice(i, i + 4).some(s => s.expected.has(k));
+    while (P.follower && !P.follower.done()) {
+      const s = P.follower.current(), first = !seen.has(s.bar); seen.add(s.bar);
+      if (first) { let k; do k = 36 + Math.floor(Math.random() * 48); while (nearby(s.index, k)); P.noteOn(k); P.noteOff(k); strays++; await sleep(80); }
+      const notes = [...s.expected];
+      for (let i = 0; i < notes.length; i++) { if (first && i === 0) { drops++; continue; } P.noteOn(notes[i]); await sleep(50); P.noteOff(notes[i]); }
+      await sleep(100);
+      if (P.follower.current() === s) { const nx = steps[s.index + 1]; if (!nx) { P.noteOn(notes[0]); P.noteOff(notes[0]); rescues++; } else for (const m of nx.expected) { P.noteOn(m); await sleep(50); P.noteOff(m); } }
+    }
+    console.log(`done ${P.follower.done()} · drops ${drops} · strays ${strays} · rescues ${rescues} · wrong counted ${P.state.wrong} · status "${document.getElementById('pl-status').textContent}" · playedMs ${P.practice.playedMs}`);
+  })();
+  ```
+- Practice-clock check: note `__player.practice.playedMs`, wait 31 s,
+  play one note — it must not grow.
+
+### Calibration notes
+- Two scoring fixtures were wrong before the code was: a one-stumble
+  bar scored 0.33 against a 0.34 threshold. Checking the arithmetic of
+  a synthetic fixture before writing the assert would have saved a run.
+- A browser error report with a plausible theory ("history resets on
+  restart") deserved the Node replay before any fix; the replay said
+  no, and the real defect nearby (the `history` shadow) was found by
+  grepping the name, not by following the theory.
+- The `_measureBox` crash only reproduced with a fake-DOM simulation of
+  the lift / restore; worth keeping that pattern for DOM-order bugs the
+  self-tests cannot reach.
+
+### Flagged for later
+- `MAX_RANGE_BARS` for trouble ranges if a whole-piece first read flags
+  bars 1–16 on the RD-2000.
+- Anticipation looks only at the next step in score order, not at the
+  loop start after a wrap.
+- `meter-rules.js` still wants its Python mirror
+  (`tools/pieces/meter_rules.py`) over the shared case file.
+
+### Out of scope / deferred
+- MIDI control of loops, Listen and metronome (steps 2–3), timed
+  play-along scoring — per the 1b / 1c briefs.
+
+
 ## 2026-10-30 — follow-along MIDI player: first piece recorded, midi_to_norm, /player Milestone 1
 
 Guided-practice track. The first piece was recorded in Logic from the

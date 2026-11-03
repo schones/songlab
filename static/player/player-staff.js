@@ -242,8 +242,8 @@ class PlayerStaff {
     for (const r of this._svg.querySelectorAll(`rect.${cls}`)) r.remove();
     const drawn = [];
     for (const bar of this._tints[tint]) {
-      const measure = this._measureOf(bar);
-      const rect = measure && this._measureRect(measure, cls);
+      const measure = this._measureOf(bar);   // null when the bar is not on the drawn line: no-op now, drawn when its line is rendered (render re-applies every tint)
+      const rect = measure && this._svg.contains(measure) ? this._measureRect(measure, cls) : null;
       if (!rect) continue;
       measure.insertBefore(rect, measure.firstChild);   // first child paints at the bottom: the current-bar marker (if any) stays in front
       drawn.push(bar);
@@ -277,13 +277,24 @@ class PlayerStaff {
     return null;
   }
 
-  /** The measure's own bbox without our pl-bar-* rects (they are already padded, so layered tints would grow); null when not rendered. */
+  /**
+   * The measure's own bbox without our pl-bar-* rects (they are already
+   * padded, so layered tints would grow); null when not rendered or not in
+   * the drawn SVG. The rects are lifted out and put back in place: each one's
+   * anchor is its first following sibling that is NOT one of the lifted
+   * rects (the marker and a tint sit side by side as first children, so a
+   * lifted rect's direct nextSibling may itself be gone — the 1b
+   * NotFoundError in insertBefore).
+   */
   _measureBox(measure) {
-    const own = [...measure.querySelectorAll(':scope > rect[class^="pl-bar-"]')].map(r => ({ r, next: r.nextSibling }));
+    if (!measure || !this._svg || !this._svg.contains(measure)) return null;
+    const rects = [...measure.querySelectorAll(':scope > rect[class^="pl-bar-"]')];
+    const lifted = new Set(rects);
+    const own = rects.map(r => { let next = r.nextSibling; while (next && lifted.has(next)) next = next.nextSibling; return { r, next }; });
     for (const { r } of own) r.remove();
     let box = null;
     try { box = measure.getBBox(); } catch (_) { box = null; }   // not rendered (display: none)
-    for (const { r, next } of own) measure.insertBefore(r, next);
+    for (const { r, next } of own) measure.insertBefore(r, next && next.parentNode === measure ? next : null);   // in original order, before the same surviving anchor
     return box && box.width > 0 && box.height > 0 ? box : null;
   }
 

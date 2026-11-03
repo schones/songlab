@@ -146,7 +146,7 @@
 
     <div class="pl-banner" id="pl-banner" hidden role="status"></div>
 
-    <!-- Controls: piece picker (from /player/pieces), MIDI device, hands, sound -->
+    <!-- Controls: piece picker (from /player/pieces), MIDI device, hands, mode (No stress), sound -->
     <div class="pl-controls">
       <div class="pl-control">
         <label for="pl-piece-select">Piece</label>
@@ -166,6 +166,11 @@
           <label><input type="radio" name="pl-hands" value="rh"><span>RH</span></label>
           <label><input type="radio" name="pl-hands" value="both" checked><span>Both</span></label>
         </div>
+      </div>
+
+      <div class="pl-control">
+        <span class="pl-control__label">Mode</span>
+        <label class="pl-check" title="Wrong notes don't block, aren't shown and aren't counted; the player just follows along"><input type="checkbox" id="pl-no-stress"> No stress</label>
       </div>
 
       <div class="pl-control">
@@ -200,6 +205,7 @@
           <option value="3" selected>3 clean passes</option>
           <option value="5">5 clean passes</option>
         </select>
+        <span class="pl-loopnav__hint" id="pl-no-stress-hint" hidden>No stress: loops run until turned off</span>
         <span class="pl-loopnav__hint" id="pl-loop-hint">Or tap a bar on the staff, then the last bar of the range (Esc cancels)</span>
       </div>
       <!-- Trouble spots (player-trouble.js): filled by player.js at the end of a pass; "Loop these" starts a loop on that range -->
