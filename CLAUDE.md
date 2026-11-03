@@ -1,5 +1,9 @@
 # SongLab — Claude Code Context
 
+**If you are Claude in a claude.ai chat (not Claude Code):** read
+`docs/WORKING_STYLE.md` first. Chat plans and writes Claude Code prompts; it
+doesn't edit the repo.
+
 ## Working style
 For Claude.ai planning/chat sessions: see `docs/WORKING_STYLE.md`
 for collaboration conventions, end-of-session protocol, and

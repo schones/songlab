@@ -60,6 +60,11 @@ Plan and architect with Claude.ai (Opus for big-picture, Sonnet for
 targeted). Build with Claude Code. Adversarial review with Gemini.
 I manage all git.
 
+Chat sessions (claude.ai) may have access to the repo through the desktop
+app. They still don't edit it: they read freely to ground planning (files,
+self-tests, git log), and their deliverables are Claude Code prompts.
+Implementation happens in Claude Code.
+
 ### Read-and-report before non-trivial Claude Code builds
 For Claude Code prompts that touch existing code, the default shape
 is: prompt asks Claude Code to read the relevant files, report
