@@ -1,16 +1,15 @@
 # SongLab Project Status
 
-**Last updated:** 2026-10-30
+**Last updated:** 2026-11-03
 **Branch:** `dev` — all active work. Cycle of Shells merged 2026-10-27;
 Voicing Explorer Sessions 1–6.5 merged `df0e2fc`; Learn Phase 0 + Phase 1
 topics merged via `learn-topics`; Cantor v1; MIDI multi-port fix `57afaa9`.
-Other branches: `cantor` (presentational arc; Session 2 unfinished since
-2026-05-19; 6 ahead / 55 behind dev — merge-or-archive decision pending) ·
-`chord-melody-research` (origin only; classifier arc paused 2026-05-13;
-rename to `archive/` and cherry-pick the docs RADAR points to) ·
+Other branches: `archive/cantor` (presentational arc, archived
+2026-11-03; Session 2 unfinished since 2026-05-19) ·
+`archive/chord-melody-research` (origin only; classifier arc paused
+2026-05-13, archived 2026-11-03; RADAR's docs live there) ·
 `archive/cantor-presentational-spike` (origin only; validated spike,
-known-good reference) · `archive/skratch-integration` (origin only; 173
-behind; safe to delete) · `main` (stale — last commit `0d9efe4`
+known-good reference) · `main` (stale — last commit `0d9efe4`
 2026-04-12, ~138 behind dev; fast-forward or retire before any deploy) ·
 `cycle-of-shells` (merged; delete).
 **Deploy:** none. The Railway project was deleted in Oct 2026. Development
@@ -19,7 +18,9 @@ list: `docs/AUDIT-2026-10-27.md` §3 "Before any public deploy").
 **Local run:** `python3 app.py` with the venv active, port from `.env`
 (`PORT=5001` on the Mac mini — AirPlay Receiver holds 5000). Machine setup:
 `docs/DEV_SETUP.md` (local-only, not committed).
-**Active roadmap:** `docs/AUDIT-2026-10-27.md` §4 (this week + next) ·
+**Active roadmap:** SongLab Roadmap, Nov 2026–Jan 2027 ([Claude doc](https://claude.ai/artifact/DHHd1R3qux19CPWyX7fPaA),
+working copy · [Google Doc](https://docs.google.com/document/d/1hSHjvxwwdnaob214H_i3YD881rywSCIJAUuO6V8uUo0/edit), snapshot) — one active thread at a
+time, chunks of 2–3 hours; see "Roadmap" below for the short form ·
 `docs/active-plans/voicing-explorer-build-plan.md` ·
 `docs/active-plans/instructional-content.md` ·
 `docs/active-plans/explainer-content.md` · `sources/SOURCES.md` (pieces).
@@ -42,12 +43,10 @@ panel that ranks candidate voicings and keeps/reverts them over a
 non-destructive override layer; a piece picker (`/voicings/pieces`
 auto-discovers `tests/fixtures/voicing-*.json`; Maple Leaf Rag A strain is
 the public fixture, Don't Be Sad is private and gitignored). Well tested
-(engine self-tests, headless Chrome). Known defects: the audit's six
-definite labelling/text bugs (degrees named by written letter not chord
-type; ♯9 guide tones; shape catalogue ignoring chord quality; "root left
-to the bass" on slash chords; `-` parsed as flat; tritone topic wording)
-plus parser gaps (13, 7alt, 9sus4, m11, 6/9 …). Those are item 3 of this
-week's list. Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
+(engine self-tests, headless Chrome). The audit's six labelling/text
+bugs and the `-`/`+` parsing and missing chord types were fixed
+2026-10-28 (`5cb0e03`, `5b030dd`, `8321743`, `94a6bc8`; Levine T1–T6).
+Plan: `docs/active-plans/voicing-explorer-build-plan.md`.
 Schema: `tools/voicings/schema.md`. Detail below under "What's Working".
 
 ### Learn — `/learn` (active, Phase 0–1)
@@ -112,9 +111,9 @@ to four pill/tooltip systems, chord-type registries in three places,
 torus math in two (audit §3).
 
 ### Parked
-- **Cantor** — v1 is on dev at `/cantor`; the presentational rewrite is on
-  the `cantor` branch with Session 2 unfinished since 2026-05-19. Decision
-  needed: rebase and merge, or rename to `archive/`. Specs:
+- **Cantor** — v1 is on dev at `/cantor`; the presentational rewrite was
+  archived 2026-11-03 as `archive/cantor` (Session 2 unfinished since
+  2026-05-19). Optional holiday play with Christmas songs. Specs:
   `docs/cantor-design.md`, `docs/cantor-presentational-design.md`,
   `docs/active-plans/cantor-presentational-build-plan.md`. May 2026 state
   preserved verbatim under "History" at the end of this file.
@@ -122,22 +121,25 @@ torus math in two (audit §3).
   canvas (open).
 - **Harmonograph** — `/harmonograph` sandbox at Stage 2, frozen since
   April, unlinked from the nav by design.
-- **Chord-melody classifier** — `chord-melody-research` branch, paused
+- **Chord-melody classifier** — `archive/chord-melody-research` branch, paused
   2026-05-13 in favour of the presentational Cantor. RADAR items point to
   docs that exist only on that branch.
 
-### This week (audit §4)
-1. ~~Merge Cycle of Shells~~ done 2026-10-27; prune merged branches.
-2. Rewrite the top of STATUS.md and fix CLAUDE.md / README (this pass);
-   commit the audit.
-3. Fix the six definite labelling/text bugs and `-` parsing + common
-   suffixes.
-4. Timeboxed pieces pipeline: generalize the review page,
-   `norm_to_voicing.py`, finish I Got Rhythm.
-5. Write `extensions`, then `omitting-tones`.
-6. (added 2026-10-30) Guided-practice track: follow-along player.
-   Milestone 1 done; next tempo + loop, then the warm-up screen, then
-   practice logging.
+### Roadmap (Nov 2026 – Jan 2027, short form)
+Full version: [Claude doc](https://claude.ai/artifact/DHHd1R3qux19CPWyX7fPaA) · [Google Doc](https://docs.google.com/document/d/1hSHjvxwwdnaob214H_i3YD881rywSCIJAUuO6V8uUo0/edit).
+- **Thread A — kids' practice track (active until 2026-12-14 freeze):**
+  player loop + listen + metronome → RD-2000 recording session (Carol
+  lines 3–4, Run Rudolph Run, Feel Good Inc., Linus and Lucy) → learner
+  picker → practice log (JSON on the mini, written by Flask) → warm-up
+  screen → Linus and Lucy rhythm drill → drill reward.
+- **Thread B — jazz harmony (from 2026-12-14):** `norm_to_voicing.py` →
+  I Got Rhythm public piece → voicing rush (timed Cycle of Shells) →
+  `extensions` + `/learn` in the nav → `omitting-tones` → concept-map
+  design note.
+- **Thread C — ML (Wednesdays):** `ml/` + `ml/LEARNING_LOG.md`, following
+  the SongLab ML Syllabus (Karpathy's Zero to Hero + a music exercise).
+- Housekeeping done 2026-11-03: stale defects removed, Cantor and
+  chord-melody-research archived, `archive/skratch-integration` deleted.
 
 ---
 
@@ -236,8 +238,7 @@ Harmonograph (`/harmonograph`, formerly `/art`) is parked on dev at Stage 2: aud
 Approaching Cantor v1 user-testing readiness once the presentational arc lands on dev.
 
 
-**Next priorities:** see "This week" under Current state above and
-`docs/AUDIT-2026-10-27.md` §4.
+**Next priorities:** see "Roadmap" under Current state above.
 
 - SkratchLab "Clear All" (~lines 117, 316): **still open** —
   `loopPedal.clearAll()` wired at `studio.js:988` clears
@@ -1054,9 +1055,9 @@ itemised in `docs/AUDIT-2026-10-27.md` §1 and summarised here.
 
 | Doc | Purpose |
 |---|---|
-| `docs/AUDIT-2026-10-27.md` | **Audit + roadmap** — content bugs, pieces pipeline, platform state, this-week / next lists |
+| `docs/AUDIT-2026-10-27.md` | **Audit** — content bugs, pieces pipeline, platform state; §4 superseded by the Nov 2026 roadmap |
 | `docs/RADAR.md` | Cross-cutting threads (not bugs), scanned at session start |
-| `docs/songlab-build-plan.md` | Historical phase plan (v4, April 2026). Roadmap is now the audit §4 |
+| `docs/songlab-build-plan.md` | Historical phase plan (v4, April 2026). Roadmap is now the Nov 2026 roadmap (see top) |
 | `docs/audio-architecture.md` | **Audio & Input spec** — detection modalities, client-side DSP, device selection, input provider, CREPE upgrade path |
 | `docs/polyrhythm-trainer-spec.md` | **Polyrhythm Trainer spec** (v2) — Practice/Challenge modes, drum pads, phase-based ramp |
 | `docs/code-review-opus47.md` | Code review (April 2026; blockers resolved; follow-ups carried into Known Issues) |

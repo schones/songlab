@@ -13,7 +13,9 @@ session log / status update templates in `docs/templates/`.
 ## Reference docs
 
 **Current (read first for active work)**
-- `docs/AUDIT-2026-10-27.md` — platform audit and roadmap (§4 = this week / next)
+- Roadmap (Nov 2026–Jan 2027): short form under "Roadmap" in `docs/STATUS.md`;
+  full version is a Claude doc (https://claude.ai/artifact/DHHd1R3qux19CPWyX7fPaA) Dustin keeps
+- `docs/AUDIT-2026-10-27.md` — platform audit (§1–3 still useful; §4 superseded)
 - `docs/RADAR.md` — cross-cutting threads, scanned at session start
 - `docs/active-plans/voicing-explorer-build-plan.md` — Voicing Explorer arc plan + Decisions
 - `docs/active-plans/instructional-content.md` — Learn plan: topic order, verification status

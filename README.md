@@ -89,8 +89,8 @@ docs/                # STATUS, audit, RADAR, specs, session log
 
 ## Docs
 
-Start with `docs/STATUS.md` (current state) and `docs/AUDIT-2026-10-27.md`
-(audit + roadmap). `CLAUDE.md` lists the reference docs.
+Start with `docs/STATUS.md` (current state and roadmap) and
+`docs/AUDIT-2026-10-27.md` (platform audit). `CLAUDE.md` lists the reference docs.
 
 ## License
 

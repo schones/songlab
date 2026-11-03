@@ -1,0 +1,6 @@
+torch
+torchaudio
+numpy
+matplotlib
+jupyterlab
+graphviz   # micrograd's draw_dot (also needs `brew install graphviz`)

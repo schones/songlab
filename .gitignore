@@ -11,3 +11,10 @@ static/private/
 sources/*.pdf
 !sources/SOURCES.md
 sources/work/
+
+# ML (see ml/README.md)
+ml/data/*
+ml/checkpoints/*
+!ml/data/.gitkeep
+!ml/checkpoints/.gitkeep
+.ipynb_checkpoints/
