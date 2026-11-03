@@ -35,6 +35,26 @@
  *       pressed()      Set of correct midis pressed so far in the current step
  *       reset()        back to the first step
  *       jumpTo(bar)    first step at or after that bar (past the end → done); returns current()
+ *
+ *       Loop for practice (a detour: the walk-through pauses inside a bar
+ *       range, it does not stop):
+ *       setLoop(from, to = from, { exitAfter = 0 })  → loop() or null
+ *           Loop bars from..to (a reversed range is swapped). Returns null and
+ *           clears the loop when the range has no steps for these hands. Does
+ *           not move the follower: steps before the range play into it. Setting
+ *           the same range again only updates exitAfter (passes are kept); a
+ *           different range starts at pass 1.
+ *       setLoop(null)  clears the loop
+ *       loop()         { from, to, exitAfter, pass, cleanStreak } or null
+ *           pass:        the pass under way, from 1
+ *           cleanStreak: clean passes in a row so far (a pass is clean when no
+ *                        wrong note was played on a step inside the range)
+ *       Wrap rule: when a step inside the range completes and the next step is
+ *       past `to` (or the piece ends), the follower goes back to the first step
+ *       at or after `from`; noteOn reports looped: true and done stays false.
+ *       With exitAfter N > 0, the N-th clean pass in a row clears the loop at
+ *       the wrap point instead and play continues past `to` (loopExited: true).
+ *       jumpTo and reset keep the loop.
  *   selfTest()                         → console report, { passed, total }
  *
  * Self-test:
@@ -132,23 +152,58 @@ function createFollower(steps) {
   const list = Array.isArray(steps) ? steps : [];
   let idx = 0;
   let pressedSet = new Set();
+  let loopState = null;   // { from, to, exitAfter, pass, cleanStreak, dirty, start } — start: index of the first step at/after from
 
   const current = () => (idx < list.length ? list[idx] : null);
   const done = () => idx >= list.length;
+  const inLoop = step => !!(loopState && step && step.bar >= loopState.from && step.bar <= loopState.to);
 
   function noteOn(midi) {
     const step = current();
     if (!step) return { result: 'ignored', step: null, done: true, completed: false };
-    if (!step.expected.has(midi)) return { result: 'wrong', step, done: false, completed: false };
+    if (!step.expected.has(midi)) {
+      if (inLoop(step)) loopState.dirty = true;
+      return { result: 'wrong', step, done: false, completed: false };
+    }
     if (pressedSet.has(midi)) return { result: 'ignored', step, done: false, completed: false };
     pressedSet.add(midi);
-    let completed = false;
+    let completed = false, looped = false, loopExited = false;
     if (pressedSet.size >= step.expected.size) {
       idx += 1;
       pressedSet = new Set();
       completed = true;
+      const next = current();
+      if (inLoop(step) && (!next || next.bar > loopState.to)) {   // the pass ends here
+        const L = loopState;
+        L.cleanStreak = L.dirty ? 0 : L.cleanStreak + 1;
+        L.dirty = false;
+        if (L.exitAfter > 0 && L.cleanStreak >= L.exitAfter) { loopState = null; loopExited = true; }
+        else { idx = L.start; L.pass += 1; looped = true; }
+      }
     }
-    return { result: 'correct', step, done: done(), completed };
+    const out = { result: 'correct', step, done: done(), completed };
+    if (looped) out.looped = true;
+    if (loopExited) out.loopExited = true;
+    return out;
+  }
+
+  function setLoop(from, to = from, { exitAfter = 0 } = {}) {
+    if (from == null) { loopState = null; return null; }
+    let a = Number(from), b = Number(to);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) { loopState = null; return null; }
+    if (b < a) [a, b] = [b, a];
+    const start = list.findIndex(s => s.bar >= a && s.bar <= b);
+    if (start < 0) { loopState = null; return null; }
+    const n = Math.max(0, Number(exitAfter) || 0);
+    if (loopState && loopState.from === a && loopState.to === b) loopState.exitAfter = n;   // same range: keep the pass count
+    else loopState = { from: a, to: b, exitAfter: n, pass: 1, cleanStreak: 0, dirty: false, start };
+    return loop();
+  }
+
+  function loop() {
+    if (!loopState) return null;
+    const { from, to, exitAfter, pass, cleanStreak } = loopState;
+    return { from, to, exitAfter, pass, cleanStreak };
   }
 
   function noteOff() { /* wait mode: release timing is not part of matching */ }
@@ -162,7 +217,7 @@ function createFollower(steps) {
     return current();
   }
 
-  return { noteOn, noteOff, current, pressed: () => new Set(pressedSet), reset, jumpTo, done, steps: list };
+  return { noteOn, noteOff, current, pressed: () => new Set(pressedSet), reset, jumpTo, done, setLoop, loop, steps: list };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -298,6 +353,65 @@ async function selfTest() {
   assert('last steps: A2 then F♯3 finish the piece; done on the final correct note', [r(f.noteOn(A2)), r(f.noteOn(Fs3)), f.current()], [['correct', 13, false, true], ['correct', 14, true, true], null]);
   assert('empty step list: done at once', [createFollower([]).current(), createFollower([]).done(), r(createFollower([]).noteOn(60))], [null, true, ['ignored', null, true, false]]);
 
+  // ── loop: set / clear, wrap, passes ───────────────────────────────
+  // FIX bars: 1 (4 steps), 2 (4 steps), 15 (5 steps), 16 (2 steps, lh only)
+  const rl = x => [x.result, x.step ? x.step.index : null, x.done, x.completed, !!x.looped, !!x.loopExited];
+  const play = (fw, step) => { let last = null; for (const m of step.expected) last = fw.noteOn(m); return last; };   // every expected note, in order
+  f = createFollower(both);
+  assert('setLoop(1, 2): loop reported, pass 1, clean 0; the follower has not moved', [f.setLoop(1, 2), f.current().index], [{ from: 1, to: 2, exitAfter: 0, pass: 1, cleanStreak: 0 }, 0]);
+  assert('setLoop(2, 1) swaps a reversed range; setLoop(15) alone loops one bar', [f.setLoop(2, 1).to, f.setLoop(15)], [2, { from: 15, to: 15, exitAfter: 0, pass: 1, cleanStreak: 0 }]);
+  assert('setLoop(null) clears; loop() is null', [f.setLoop(null), f.loop()], [null, null]);
+  assert('setLoop on a range with no steps for the hand clears and returns null (rh-only bar 16 is tied in)', (() => { const g = createFollower(rh); g.setLoop(1, 2); return [g.setLoop(16), g.loop()]; })(), [null, null]);
+  assert('setLoop with the same range again keeps the pass count, updates exitAfter', (() => { const g = createFollower(both); g.setLoop(1, 2); play(g, both[0]); for (const st of both.slice(1, 8)) play(g, st); return [g.loop().pass, g.setLoop(1, 2, { exitAfter: 2 })]; })(), [2, { from: 1, to: 2, exitAfter: 2, pass: 2, cleanStreak: 1 }]);
+
+  // Wrap at the end bar: bar 2's last step (index 7) completes → back to step 0, pressed cleared.
+  f = createFollower(both);
+  f.setLoop(1, 2);
+  for (const st of both.slice(0, 7)) play(f, st);
+  assert('loop 1–2: before the last step of bar 2, no wrap yet', [f.current().index, f.loop().pass], [7, 1]);
+  f.noteOn(D5);   // wrong on the last step (C6 alone), in range
+  assert('completing the last step in the range wraps to step 0 (looped, done false, pressed cleared); the wrong note made the pass dirty', [rl(f.noteOn(C6)), f.current().index, [...f.pressed()], f.loop()], [['correct', 7, false, true, true, false], 0, [], { from: 1, to: 2, exitAfter: 0, pass: 2, cleanStreak: 0 }]);
+  for (const st of both.slice(0, 8)) play(f, st);
+  assert('a clean second pass: pass 3, clean streak 1', [f.current().index, f.loop()], [0, { from: 1, to: 2, exitAfter: 0, pass: 3, cleanStreak: 1 }]);
+
+  // Loop on the last bar: the piece would end, so it wraps instead of finishing.
+  f = createFollower(both);
+  f.setLoop(16);
+  f.jumpTo(16);
+  f.noteOn(A2);
+  assert('loop on the last bar: the final step wraps to the first step of bar 16, done stays false', [rl(f.noteOn(Fs3)), brief(f.current()), f.done()], [['correct', 14, false, true, true, false], '16:0 lh45', false]);
+
+  // Start before the range: steps before it play normally and into it; misses there do not spoil the pass.
+  f = createFollower(both);
+  f.setLoop(2);
+  f.noteOn(C5);   // wrong in bar 1 (outside the range)
+  for (const st of both.slice(0, 4)) assert.call(null, `bar 1 step ${st.index} plays into the loop (no wrap)`, rl(play(f, st)), ['correct', st.index, false, true, false, false]);
+  assert('entering the range from before it: step 4, pass 1, not dirty', [f.current().index, f.loop().pass], [4, 1]);
+  for (const st of both.slice(4, 8)) play(f, st);
+  assert('the pass through bar 2 was clean despite the miss in bar 1; wrapped to step 4, not step 0', [f.loop(), f.current().index], [{ from: 2, to: 2, exitAfter: 0, pass: 2, cleanStreak: 1 }, 4]);
+
+  // exitAfter: clean passes in a row clear the loop at the wrap point and play goes on.
+  f = createFollower(both);
+  f.setLoop(1, 2, { exitAfter: 2 });
+  for (const st of both.slice(0, 8)) play(f, st);            // pass 1 clean
+  assert('exitAfter 2: after one clean pass, still looping (clean 1)', [f.loop().cleanStreak, f.loop().pass, f.current().index], [1, 2, 0]);
+  f.noteOn(C5);                                              // dirty pass 2
+  for (const st of both.slice(0, 8)) play(f, st);
+  assert('a dirty pass resets the streak to 0 and loops again', [f.loop().cleanStreak, f.loop().pass], [0, 3]);
+  for (const st of both.slice(0, 8)) play(f, st);            // pass 3 clean → streak 1
+  for (const st of both.slice(0, 7)) play(f, st);            // pass 4 up to the last step
+  const exitResult = play(f, both[7]);
+  assert('the second clean pass in a row exits: loopExited, loop cleared, play continues into bar 15', [rl(exitResult), f.loop(), brief(f.current())], [['correct', 7, false, true, false, true], null, '15:0 lh45+rh75']);
+
+  // jumpTo / reset keep the loop.
+  f = createFollower(both);
+  f.setLoop(1, 2);
+  f.jumpTo(15); f.reset();
+  assert('jumpTo and reset keep the loop', f.loop(), { from: 1, to: 2, exitAfter: 0, pass: 1, cleanStreak: 0 });
+  f.jumpTo(15);
+  for (const st of both.slice(8, 15)) play(f, st);
+  assert('steps outside the range never wrap: playing bars 15–16 to the end finishes the piece with the loop still set', [f.done(), f.loop() !== null], [true, true]);
+
   // ── the real prelude when present ────────────────────────────────
   try {
     const fs = await import('node:fs');
@@ -321,6 +435,18 @@ async function selfTest() {
         let wrong = 0, last = null;
         for (const s of steps) for (const m of s.expected) { last = f2.noteOn(m); if (last.result !== 'correct') wrong++; }
         assert('prelude: playing every expected note in order finishes the piece with no wrong results', [wrong, last.done, f2.current()], [0, true, null]);
+        // Loop bars 1–4 (both hands): two passes back to step 0 with no wrong results.
+        const f3 = createFollower(steps);
+        f3.setLoop(1, 4);
+        const inRange = steps.filter(s => s.bar >= 1 && s.bar <= 4);
+        let wrong3 = 0, wraps = 0;
+        for (let pass = 0; pass < 2; pass++) for (const s of inRange) for (const m of s.expected) { const x = f3.noteOn(m); if (x.result !== 'correct') wrong3++; if (x.looped) wraps++; }
+        assert(`prelude: loop 1–4 (${inRange.length} steps) for two passes: back to step 0 each time, no wrong results, pass 3 with 2 clean`, [wrong3, wraps, f3.current().index, f3.loop()], [0, 2, 0, { from: 1, to: 4, exitAfter: 0, pass: 3, cleanStreak: 2 }]);
+        const f4 = createFollower(steps);
+        f4.setLoop(1, 4, { exitAfter: 2 });
+        let exited = null;
+        for (let pass = 0; pass < 2; pass++) for (const s of inRange) for (const m of s.expected) { const x = f4.noteOn(m); if (x.loopExited) exited = x; }
+        assert('prelude: with exitAfter 2 the second clean pass exits and play continues into bar 5', [!!exited, f4.loop(), f4.current() && f4.current().bar], [true, null, 5]);
       }
       console.log(`  · prelude step counts: rh ${P.rh.length}, lh ${P.lh.length}, both ${P.both.length}`);
       console.log('  · prelude first 6 steps (both):');

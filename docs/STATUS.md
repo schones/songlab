@@ -935,10 +935,11 @@ Chrome with the RD-2000):**
   Listed in Known Issues.
 
 **Public surfaces (test harness / debugging):**
-- `window.__player` — `state`, `load(name)`, `showBar(bar, {keep})`,
-  `restart()`, `staff`, `keyboard`, `input`, `follower`, `steps`,
-  `noteOn(midi)` / `noteOff(midi)` (drive the follower from the console
-  without a piano).
+- `window.__player` — `state`, `load(name)`, `showLine(index, {bar, keep})`,
+  `stepLine(±1)`, `stepBar(±1)`, `restart()`, `setLoop(from, to, {exitAfter,
+  jump})`, `clearLoop()`, `state.loop`, `staff`, `keyboard`, `input`,
+  `follower`, `steps`, `noteOn(midi)` / `noteOff(midi)` (drive the
+  follower from the console without a piano).
 - Self-tests: `node --input-type=module -e "import('./static/player/player-staff-model.js').then(m => m.selfTest())"`
   and the same for `player-follow.js`.
 

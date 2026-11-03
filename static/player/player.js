@@ -25,7 +25,16 @@
  * called when its next step leaves the drawn range. ← / → page by line,
  * Shift+← / → move by bar.
  *
- * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, staff, keyboard, …).
+ * Loop for practice (state.loop mirrors follower.loop()): "Repeat bar" /
+ * "Repeat line" toggles act on the current bar / drawn line; tapping two
+ * bars on the staff loops that range (state.pendingBar between the taps);
+ * "Move on after" (LOOP_EXIT_KEY) is the follower's exitAfter. Setting a
+ * loop jumps to its first bar. Prev / Next / Shift+arrows that land outside
+ * the range, loading a piece, and a hands change with nothing for that hand
+ * in the range turn it off. R restarts at the loop start while looping.
+ * The looped bars are tinted on the staff (PlayerStaff 'loop' / 'pending').
+ *
+ * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, staff, keyboard, …).
  */
 
 import { PlayerStaff } from './player-staff.js';
@@ -37,6 +46,8 @@ import { loadSampler } from '../shared/voicing-player.js';
 
 const DEVICE_KEY = 'songlab_player_midi_device';   // createShellInput has a fixed key; mapped through its injectable storage
 const SOUND_KEY = 'songlab_player_midi_sound';     // "Sound for MIDI notes" checkbox; off by default
+const LOOP_EXIT_KEY = 'songlab_player_loop_exit';  // "Move on after N clean passes" select (0 = off); default 3
+const LOOP_EXIT_DEFAULT = 3;
 const ECHO_VELOCITY = 0.7;                           // as cycle-of-shells.js
 const CLICK_SECONDS = 0.6;                           // on-screen key: attack + release
 const WRONG_FLASH_MS = 500;
@@ -57,6 +68,8 @@ const els = {
   sound: $('pl-sound'),
   prev: $('pl-prev'), next: $('pl-next'), barLabel: $('pl-bar-label'),
   status: $('pl-status'), restart: $('pl-restart'),
+  loopBar: $('pl-loop-bar'), loopLine: $('pl-loop-line'), loopExit: $('pl-loop-exit'),
+  staffHost: $('pl-staff'),
   keyboardHost: $('pl-keyboard'),
 };
 
@@ -68,6 +81,8 @@ const state = {
   hands: 'both',
   steps: [], follower: null,
   wrong: 0,
+  loop: null,             // follower.loop(): { from, to, exitAfter, pass, cleanStreak } or null
+  pendingBar: null,       // tap-to-select: the first tapped bar, waiting for the second
   held: new Set(),        // midis down on the MIDI device (de-duplicated by the input)
   echoing: new Set(),     // midis sounding on the sampler for MIDI echo
   audioStarted: false,
@@ -225,17 +240,30 @@ function paintStates() {
   updateStatus();
 }
 
+const barsText = (from, to) => (from === to ? `bar ${from}` : `bars ${from}–${to}`);
+
 function updateStatus() {
   const f = state.follower;
   if (!state.norm || !f) { els.status.textContent = ''; els.restart.hidden = true; return; }
+  if (state.pendingBar != null) {
+    els.status.textContent = `Bar ${state.pendingBar} tapped · tap the last bar of the range (or bar ${state.pendingBar} again) · Esc cancels`;
+    els.restart.hidden = true;
+    return;
+  }
   if (f.done()) {
     els.status.textContent = `Done! ${state.wrong} wrong note${state.wrong === 1 ? '' : 's'}`;
     els.restart.hidden = false;
     return;
   }
   const cur = f.current();
-  const where = cur.bar === state.bar ? `Bar ${cur.bar}` : `Bar ${cur.bar} (showing line ${state.line + 1}, bar ${state.bar})`;   // a paged-to line with no steps for this hand at its first bar
-  els.status.textContent = `${where} · step ${cur.index + 1} / ${state.steps.length} · wrong: ${state.wrong}`;
+  const L = state.loop;
+  let where;
+  if (L) where = `Looping ${barsText(L.from, L.to)} · pass ${L.pass} · clean ${L.cleanStreak}${L.exitAfter > 0 ? ` / ${L.exitAfter}` : ''}`;
+  else {
+    where = cur.bar === state.bar ? `Bar ${cur.bar}` : `Bar ${cur.bar} (showing line ${state.line + 1}, bar ${state.bar})`;   // a paged-to line with no steps for this hand at its first bar
+    where += ` · step ${cur.index + 1} / ${state.steps.length}`;
+  }
+  els.status.textContent = `${where} · wrong: ${state.wrong}`;
   els.restart.hidden = true;
 }
 
@@ -255,8 +283,13 @@ function judge(midi) {
   setKey(midi, 'expected', false);
   flashKey(midi, 'correct', CORRECT_FLASH_MS);
   if (!r.completed) { updateStatus(); return; }
+  if (r.looped || r.loopExited) {
+    const L = state.loop;
+    if (r.loopExited && L) banner(`Moved on after ${L.exitAfter} clean pass${L.exitAfter === 1 ? '' : 'es'} of ${barsText(L.from, L.to)}.`);
+    syncLoop();   // pass / streak changed, or the loop cleared itself
+  }
   const next = f.current();
-  if (next && !inDrawnRange(next.bar)) showLine(lineOf(next.bar), { bar: next.bar, keep: true });   // the next step is on another line
+  if (next && !inDrawnRange(next.bar)) showLine(lineOf(next.bar), { bar: next.bar, keep: true });   // the next step is on another line (or the loop start)
   else {
     if (next && next.bar !== state.bar) { state.bar = next.bar; updateBarNav(); }   // bar change within the line: repaint, no re-render
     paintStates();
@@ -340,6 +373,11 @@ els.hands.addEventListener('change', e => {
   e.target.blur();   // so ← / → / R go back to the page, not the radio group
   if (!state.norm) return;
   rebuildFollower(state.bar);
+  if (state.loop) {   // re-apply on the new follower (passes start over); off when the range has nothing for this hand
+    const { from, to } = state.loop;
+    if (!state.follower.setLoop(from, to, { exitAfter: loopExitAfter() })) banner(`Loop off: ${barsText(from, to)} ${from === to ? 'has' : 'have'} no notes for the ${handName()}.`);
+    syncLoop();
+  }
   const cur = state.follower.current();
   if (cur && !inDrawnRange(cur.bar)) showLine(lineOf(cur.bar), { bar: cur.bar, keep: true });   // this line has nothing for that hand from here on
   else {
@@ -396,6 +434,7 @@ async function showLine(index, { bar, keep = false } = {}) {
 function stepLine(delta) {
   const j = state.line + delta;
   if (state.line < 0 || j < 0 || j >= state.lines.length) return;
+  leaveLoopFor(state.lines[j].from);
   showLine(j);
 }
 
@@ -406,6 +445,12 @@ function stepBar(delta) {
   const j = i + delta;
   if (i < 0 || j < 0 || j >= bars.length) return;
   const bar = bars[j];
+  leaveLoopFor(bar);
+  goToBar(bar);
+}
+
+/** Jump the follower to `bar` and show it: a re-render only when it is on another line. */
+function goToBar(bar) {
   const line = lineOf(bar);
   if (line !== state.line || !inDrawnRange(bar)) { showLine(line, { bar }); return; }
   if (state.follower) state.follower.jumpTo(bar);
@@ -415,16 +460,131 @@ function stepBar(delta) {
   paintStates();
 }
 
+/** Navigation that lands outside the looped range turns the loop off; inside it, the loop stays. */
+function leaveLoopFor(bar) {
+  const L = state.loop;
+  if (L && (bar < L.from || bar > L.to)) clearLoop();
+}
+
+/** R: from the top, or from the loop start while looping (the pass count starts over). */
 function restart() {
   if (!state.norm) return;
   const bars = barNumbers();
   if (!bars.length) return;
   state.wrong = 0;
-  const cur = state.follower ? state.follower.reset() : null;
+  cancelPending();
+  const f = state.follower;
+  let bar;
+  if (f && state.loop) {
+    const { from, to } = state.loop;
+    f.setLoop(null); f.setLoop(from, to, { exitAfter: loopExitAfter() });
+    const cur = f.jumpTo(from);
+    syncLoop();
+    bar = cur ? cur.bar : from;
+  } else {
+    const cur = f ? f.reset() : null;
+    bar = cur ? cur.bar : bars[0];
+  }
   clearKeys(['expected', 'correct', 'wrong']);
-  const bar = cur ? cur.bar : bars[0];
   showLine(Math.max(0, lineOf(bar)), { bar, keep: true });
 }
+
+// ════════════════════════════════════════════════════════════════════
+// LOOP
+// ════════════════════════════════════════════════════════════════════
+
+const handName = () => (state.hands === 'rh' ? 'right hand' : state.hands === 'lh' ? 'left hand' : 'either hand');
+
+function loopExitAfter() {
+  const n = parseInt(els.loopExit.value, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+try {
+  const saved = localStorage.getItem(LOOP_EXIT_KEY);
+  const v = saved == null ? LOOP_EXIT_DEFAULT : parseInt(saved, 10);
+  els.loopExit.value = String([...els.loopExit.options].some(o => o.value === String(v)) ? v : LOOP_EXIT_DEFAULT);
+} catch (_) { els.loopExit.value = String(LOOP_EXIT_DEFAULT); }
+
+/** state.loop from the follower; toggles, staff tint and status follow. */
+function syncLoop() {
+  state.loop = state.follower ? state.follower.loop() : null;
+  const L = state.loop;
+  const line = state.lines[state.line];
+  const on = !!state.norm;
+  els.loopBar.disabled = !on; els.loopLine.disabled = !on;
+  els.loopBar.setAttribute('aria-pressed', String(!!(L && state.bar != null && L.from === state.bar && L.to === state.bar)));
+  els.loopLine.setAttribute('aria-pressed', String(!!(L && line && L.from === line.from && L.to === line.to)));
+  staff.setBarTint('loop', L ? barNumbers().filter(b => b >= L.from && b <= L.to) : []);
+  updateStatus();
+}
+
+/**
+ * Loop bars from..to for the selected hands and jump to the range start
+ * (jump: false keeps the follower where it is, for the console). Returns
+ * the follower's loop, or null (loop off, banner note) when the range has
+ * no steps for these hands. opts.exitAfter overrides the select.
+ */
+function setLoop(from, to = from, { exitAfter, jump = true } = {}) {
+  const f = state.follower;
+  if (!f) return null;
+  cancelPending();
+  const r = f.setLoop(from, to, { exitAfter: exitAfter == null ? loopExitAfter() : exitAfter });
+  if (!r) {
+    const a = Math.min(from, to), b = Math.max(from, to);
+    banner(`Loop off: ${barsText(a, b)} ${a === b ? 'has' : 'have'} no notes for the ${handName()}.`);
+    syncLoop();
+    return null;
+  }
+  if (jump) goToBar(r.from);
+  syncLoop();
+  return state.loop;
+}
+
+function clearLoop() {
+  if (state.follower) state.follower.setLoop(null);
+  syncLoop();
+}
+
+/** Tap-to-select on the staff: the first tap marks a bar as pending; the second tap loops the range. */
+function onBarTap(bar) {
+  if (!state.follower) return;
+  if (state.pendingBar == null) {
+    state.pendingBar = bar;
+    staff.setBarTint('pending', [bar]);
+    updateStatus();
+    return;
+  }
+  const first = state.pendingBar;
+  cancelPending();
+  setLoop(first, bar);
+}
+function cancelPending() {
+  if (state.pendingBar == null) return;
+  state.pendingBar = null;
+  staff.setBarTint('pending', []);
+  updateStatus();
+}
+staff.onBarTap = onBarTap;
+document.addEventListener('pointerdown', e => {
+  if (state.pendingBar != null && !(e.target instanceof Node && els.staffHost.contains(e.target))) cancelPending();
+}, { capture: true });
+
+els.loopBar.addEventListener('click', () => {
+  els.loopBar.blur();
+  if (els.loopBar.getAttribute('aria-pressed') === 'true') clearLoop();
+  else if (state.bar != null) setLoop(state.bar, state.bar);
+});
+els.loopLine.addEventListener('click', () => {
+  els.loopLine.blur();
+  const line = state.lines[state.line];
+  if (els.loopLine.getAttribute('aria-pressed') === 'true') clearLoop();
+  else if (line) setLoop(line.from, line.to);
+});
+els.loopExit.addEventListener('change', () => {
+  try { localStorage.setItem(LOOP_EXIT_KEY, els.loopExit.value); } catch (_) { /* storage unavailable */ }
+  if (state.loop && state.follower) { state.follower.setLoop(state.loop.from, state.loop.to, { exitAfter: loopExitAfter() }); syncLoop(); }   // same range: passes kept
+  els.loopExit.blur();
+});
 
 els.prev.addEventListener('click', () => stepLine(-1));
 els.next.addEventListener('click', () => stepLine(1));
@@ -437,6 +597,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft') { move(-1); e.preventDefault(); }
   else if (e.key === 'ArrowRight') { move(1); e.preventDefault(); }
   else if (e.key === 'r' || e.key === 'R') { restart(); e.preventDefault(); }
+  else if (e.key === 'Escape' && state.pendingBar != null) { cancelPending(); e.preventDefault(); }
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -463,7 +624,8 @@ function showHeader(name, norm) {
 function unload() {
   state.norm = null; state.bar = null; state.steps = []; state.follower = null; state.wrong = 0;
   state.lines = []; state.lineWarnings = []; state.line = -1;
-  updateBarNav(); staff.clear(); clearKeys(); updateStatus();
+  cancelPending();
+  updateBarNav(); staff.clear(); clearKeys(); syncLoop();
 }
 
 async function load(name) {
@@ -489,7 +651,9 @@ async function load(name) {
       mountKeyboard(norm);
       clearKeys();
       staff.clear();          // old hits must not attach to the new piece's steps
-      rebuildFollower(null);
+      cancelPending();
+      rebuildFollower(null);  // a new follower: no loop
+      syncLoop();
       const cur = state.follower.current();
       const bar = cur ? cur.bar : bars[0];
       showLine(Math.max(0, lineOf(bar)), { bar, keep: true });
@@ -558,6 +722,7 @@ setupMidi();   // not awaited: the piece loads while the browser asks for MIDI a
 // Debug handle for the browser console (no behaviour depends on it).
 window.__player = {
   state, load, pieces: () => state.pieces, staff, showLine, stepLine, stepBar, restart,
+  setLoop, clearLoop,
   get keyboard() { return keyboard; }, get input() { return input; }, get follower() { return state.follower; }, get steps() { return state.steps; },
   noteOn: onMidiNoteOn, noteOff: onMidiNoteOff,
 };

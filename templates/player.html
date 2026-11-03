@@ -16,6 +16,7 @@
     --accent-blue:    #2D5F8A;
     --accent-green:   #1E7B34;
     --accent-coral:   #B9341F;
+    --pl-loop:        #B07A0A;   /* loop tint / pressed toggles (amber, distinct from the blue bar marker) */
     max-width: none;
     background: var(--pl-bg);
     color: var(--text-primary);
@@ -96,6 +97,21 @@
   .pl-status-line { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
   .pl-barnav .pl-restart { border-color: var(--accent-green); color: var(--accent-green); }
   .pl-barnav .pl-restart[hidden] { display: none; }
+
+  /* Loop controls: Repeat bar / Repeat line toggles (aria-pressed), "Move on after" select; same row as the bar nav */
+  .pl-loopnav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.5rem; }
+  .pl-loopnav__label { font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .pl-loopnav button {
+    font: inherit; font-size: 1rem; font-weight: 700; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary);
+  }
+  .pl-loopnav button:hover:not(:disabled) { border-color: var(--pl-loop, #B07A0A); color: var(--pl-loop, #B07A0A); }
+  .pl-loopnav button:disabled { opacity: 0.4; cursor: default; }
+  .pl-loopnav button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+  .pl-loopnav button[aria-pressed="true"] { background: var(--pl-loop, #B07A0A); border-color: var(--pl-loop, #B07A0A); color: #FFFFFF; }
+  .pl-loopnav button[aria-pressed="true"]:hover { color: #FFFFFF; }
+  .pl-loopnav select { padding: 6px 10px; font: inherit; font-size: 1rem; border-radius: 8px; border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary); }
+  .pl-loopnav__hint { font-size: 0.85rem; color: var(--text-muted); }
 </style>
 {% endblock %}
 
@@ -157,6 +173,19 @@
         <span class="pl-barnav__hint">← / → line · Shift+← / → bar · R restarts</span>
         <span class="pl-status-line" id="pl-status" aria-live="polite"></span>
         <button type="button" id="pl-restart" class="pl-restart" hidden>Restart</button>
+      </div>
+      <div class="pl-loopnav">
+        <span class="pl-loopnav__label">Loop</span>
+        <button type="button" id="pl-loop-bar" aria-pressed="false" disabled>Repeat bar</button>
+        <button type="button" id="pl-loop-line" aria-pressed="false" disabled>Repeat line</button>
+        <label class="pl-loopnav__hint" for="pl-loop-exit">Move on after</label>
+        <select id="pl-loop-exit" aria-label="Move on after this many clean passes">
+          <option value="0">off</option>
+          <option value="2">2 clean passes</option>
+          <option value="3" selected>3 clean passes</option>
+          <option value="5">5 clean passes</option>
+        </select>
+        <span class="pl-loopnav__hint" id="pl-loop-hint">Or tap a bar on the staff, then the last bar of the range (Esc cancels)</span>
       </div>
       <div class="pl-staff-host" id="pl-staff">Staff loads with the piece.</div>
     </section>

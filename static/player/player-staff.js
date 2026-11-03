@@ -15,6 +15,9 @@
  *   staff.clearStates();
  *   staff.setDimmed(ids);                        // the other hand, drawn faint (pl-note--dim); [] clears
  *   staff.setBarMarker(6);                       // faint tint behind bar 6's measure; null clears
+ *   staff.setBarTint('loop', [6, 7]);            // 'loop' | 'pending' tint behind those bars ([] clears); kept across renders
+ *   staff.onBarTap = bar => …;                   // a click / tap on a drawn measure (null to ignore); cursor: pointer while set
+ *   staff.barAt(clientX, clientY)                // the bar under a point (g.measure#pl-m<bar>, else bounding rects), or null
  *   staff.hits                                   // { id → { midi, bar, staff, hand, onset, at, tieStop } }
  *   staff.noteIds({ bar, hand })                 // ids in drawing order, optionally filtered
  *   staff.range                                  // { from, to } of the drawn bars, or null
@@ -51,12 +54,13 @@ const PLAYER_OPTIONS = {
 const TRANSITION_MS = 250;            // slide-and-fade on a line change
 const TRANSITION_FALLBACK_MS = 400;   // overlay removal when transitionend never fires
 const SLIDE = '30%';                  // translateY distance for the out / in SVGs
-const MARKER_PAD = 0.12;              // marker rect extends above / below the measure bbox by this fraction of its height
+const MARKER_PAD = 0.12;              // marker / tint rects extend above / below the line's extent by this fraction of its height
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const CSS = /* css */ `
-.pl-staff-wrap { position: relative; width: 100%; min-height: 200px; --pl-bar-marker: rgba(45, 95, 138, 0.10); }
-[data-theme="dark"] .pl-staff-wrap { --pl-bar-marker: rgba(58, 139, 201, 0.22); }
+.pl-staff-wrap { position: relative; width: 100%; min-height: 200px; --pl-bar-marker: rgba(45, 95, 138, 0.10); --pl-bar-loop: rgba(214, 150, 20, 0.16); --pl-bar-pending: rgba(214, 150, 20, 0.08); --pl-bar-pending-stroke: rgba(176, 120, 10, 0.7); }
+[data-theme="dark"] .pl-staff-wrap { --pl-bar-marker: rgba(58, 139, 201, 0.22); --pl-bar-loop: rgba(240, 180, 50, 0.22); --pl-bar-pending: rgba(240, 180, 50, 0.10); --pl-bar-pending-stroke: rgba(240, 180, 50, 0.8); }
+.pl-staff-wrap[data-tappable="1"] g.measure { cursor: pointer; }
 /* The host clips the slide-and-fade; its height is locked by script during a line change. */
 .pl-staff-svg { position: relative; overflow: hidden; }
 /* Sized by width: a line of bars fills the panel; height follows the viewBox ratio. */
@@ -69,6 +73,8 @@ const CSS = /* css */ `
 .pl-staff-svg g.note.pl-note--wrong    { color: var(--accent-coral, #B9341F); fill: var(--accent-coral, #B9341F); }
 .pl-staff-svg g.note.pl-note--dim      { opacity: 0.35; }
 .pl-staff-svg rect.pl-bar-marker       { fill: var(--pl-bar-marker); stroke: none; }
+.pl-staff-svg rect.pl-bar-loop         { fill: var(--pl-bar-loop); stroke: none; }
+.pl-staff-svg rect.pl-bar-pending      { fill: var(--pl-bar-pending); stroke: var(--pl-bar-pending-stroke); stroke-width: 6; stroke-dasharray: 24 14; }
 .pl-staff-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; color: var(--text-muted, #4E4A43); pointer-events: none; }
 .pl-staff-wrap[data-state="ready"] .pl-staff-status { display: none; }
 .pl-staff-wrap[data-state="loading"] .pl-staff-svg, .pl-staff-wrap[data-state="error"] .pl-staff-svg { opacity: 0.3; }
@@ -76,7 +82,16 @@ const CSS = /* css */ `
 `;
 
 const STATES = ['expected', 'correct', 'wrong'];
+const TINTS = ['loop', 'pending'];   // rect.pl-bar-<tint>, painted under the bar marker
 const CSS_escape = s => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(s) : s.replace(/[^\w-]/g, '\\$&'));
+/** Bar number from a g.measure: its id pl-m<bar> (toMEI), else its data-n / n attribute when Verovio keeps one. */
+function barOfMeasure(m) {
+  const id = m.getAttribute('id') || '';
+  const mm = /^pl-m(\d+)$/.exec(id);
+  if (mm) return Number(mm[1]);
+  const n = m.getAttribute('data-n') || m.getAttribute('n');
+  return n && /^\d+$/.test(n) ? Number(n) : null;
+}
 const reducedMotion = () => !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
 class PlayerStaff {
@@ -92,6 +107,9 @@ class PlayerStaff {
     this._overlay = null;       // the outgoing SVG during a line change
     this._overlayTimer = 0;
     this._markerBar = null;
+    this._extent = null;        // { y, height } shared by every marker / tint rect: the union of the drawn measures' y-ranges, padded; per render
+    this._tints = { loop: [], pending: [] };   // tint → bars; re-applied after every render
+    this._onBarTap = null;
 
     if (!document.getElementById('pl-staff-styles')) {
       const st = document.createElement('style');
@@ -107,6 +125,18 @@ class PlayerStaff {
     this._status = this._wrap.querySelector('.pl-staff-status');
     this._host.textContent = '';
     this._host.appendChild(this._wrap);
+    this._svgHost.addEventListener('click', e => {
+      if (!this._onBarTap || !this._svg) return;
+      const bar = this.barAt(e.clientX, e.clientY);
+      if (bar != null) { e.preventDefault(); this._onBarTap(bar, e); }
+    });
+  }
+
+  /** A click / tap on a drawn measure calls fn(bar, event); null turns taps off. */
+  get onBarTap() { return this._onBarTap; }
+  set onBarTap(fn) {
+    this._onBarTap = typeof fn === 'function' ? fn : null;
+    this._wrap.dataset.tappable = this._onBarTap ? '1' : '0';
   }
 
   /**
@@ -140,6 +170,8 @@ class PlayerStaff {
     for (const [id, hit] of Object.entries(built.hits)) if (this._find(id)) this.hits[id] = hit;
     this.range = { from: bar, to: last };
     this._setState('ready', '');
+    this._extent = this._lineExtent();
+    for (const t of TINTS) this._drawTint(t);
     return { hits: this.hits, warnings: built.warnings };
   }
 
@@ -171,7 +203,8 @@ class PlayerStaff {
 
   /**
    * Faint tinted rectangle behind the measure that holds `bar` (found through
-   * one of the bar's drawn notes → g.measure → getBBox; inserted as the
+   * its id or one of the bar's drawn notes → g.measure; x / width from that
+   * measure, y / height shared by the whole line (see _lineExtent); inserted as the
    * measure's first child so it paints under everything). null clears. A
    * bar with no drawn notes gets no marker. Returns true when a marker shows.
    */
@@ -181,31 +214,116 @@ class PlayerStaff {
     for (const r of this._svg.querySelectorAll('rect.pl-bar-marker')) r.remove();
     this._markerBar = null;
     if (bar == null) return false;
-    let measure = null;
-    for (const id of this.noteIds({ bar })) {
-      const el = this._find(id);
-      measure = el && el.closest('g.measure');
-      if (measure) break;
-    }
-    if (!measure) return false;
-    let box;
-    try { box = measure.getBBox(); } catch (_) { return false; }   // not rendered (display: none)
-    if (!box || !(box.width > 0) || !(box.height > 0)) return false;
-    const pad = box.height * MARKER_PAD;
-    const rect = document.createElementNS(SVG_NS, 'rect');
-    rect.setAttribute('class', 'pl-bar-marker');
-    rect.setAttribute('x', String(box.x));
-    rect.setAttribute('y', String(box.y - pad));
-    rect.setAttribute('width', String(box.width));
-    rect.setAttribute('height', String(box.height + 2 * pad));
+    const measure = this._measureOf(bar);
+    const rect = measure && this._measureRect(measure, 'pl-bar-marker');
+    if (!rect) return false;
     measure.insertBefore(rect, measure.firstChild);
     this._markerBar = bar;
     return true;
   }
 
+  /**
+   * Tint the measures of `bars` ('loop' or 'pending'; [] or null clears that
+   * tint). Remembered and redrawn after every render, so the page sets it
+   * once per change, not per line. Returns the bars that were drawn.
+   */
+  setBarTint(tint, bars) {
+    if (!TINTS.includes(tint)) return [];
+    this._tints[tint] = Array.isArray(bars) ? bars.filter(b => typeof b === 'number') : [];
+    return this._drawTint(tint);
+  }
+
+  getBarTint(tint) { return (this._tints[tint] || []).slice(); }
+
+  _drawTint(tint) {
+    if (!this._svg) return [];
+    const cls = `pl-bar-${tint}`;
+    for (const r of this._svg.querySelectorAll(`rect.${cls}`)) r.remove();
+    const drawn = [];
+    for (const bar of this._tints[tint]) {
+      const measure = this._measureOf(bar);
+      const rect = measure && this._measureRect(measure, cls);
+      if (!rect) continue;
+      measure.insertBefore(rect, measure.firstChild);   // first child paints at the bottom: the current-bar marker (if any) stays in front
+      drawn.push(bar);
+    }
+    return drawn;
+  }
+
+  /** The bar under a client point: the measure's id (pl-m<bar>) when the hit lands on one, else the measure whose bounding rect holds the point. */
+  barAt(clientX, clientY) {
+    if (!this._svg) return null;
+    const target = document.elementFromPoint(clientX, clientY);
+    const hit = target && target.closest && target.closest('g.measure');
+    if (hit && this._svg.contains(hit)) { const b = barOfMeasure(hit); if (b != null) return b; }
+    for (const m of this._svg.querySelectorAll('g.measure')) {
+      const r = m.getBoundingClientRect();
+      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) { const b = barOfMeasure(m); if (b != null) return b; }
+    }
+    return null;
+  }
+
+  /** g.measure for `bar`: by id (pl-m<bar>, from toMEI), else through one of the bar's drawn notes. */
+  _measureOf(bar) {
+    if (!this._svg) return null;
+    const byId = this._find(`pl-m${bar}`);
+    if (byId && byId.classList.contains('measure')) return byId;
+    for (const id of this.noteIds({ bar })) {
+      const el = this._find(id);
+      const m = el && el.closest('g.measure');
+      if (m) return m;
+    }
+    return null;
+  }
+
+  /** The measure's own bbox without our pl-bar-* rects (they are already padded, so layered tints would grow); null when not rendered. */
+  _measureBox(measure) {
+    const own = [...measure.querySelectorAll(':scope > rect[class^="pl-bar-"]')].map(r => ({ r, next: r.nextSibling }));
+    for (const { r } of own) r.remove();
+    let box = null;
+    try { box = measure.getBBox(); } catch (_) { box = null; }   // not rendered (display: none)
+    for (const { r, next } of own) measure.insertBefore(r, next);
+    return box && box.width > 0 && box.height > 0 ? box : null;
+  }
+
+  /**
+   * One vertical extent for the drawn line: the union of every measure's
+   * y-range, padded by MARKER_PAD, so marker and tint rects are the same
+   * height whatever each bar holds (high notes, ties, low notes). null when
+   * nothing is rendered.
+   */
+  _lineExtent() {
+    if (!this._svg) return null;
+    let top = Infinity, bottom = -Infinity;
+    for (const m of this._svg.querySelectorAll('g.measure')) {
+      const box = this._measureBox(m);
+      if (!box) continue;
+      top = Math.min(top, box.y);
+      bottom = Math.max(bottom, box.y + box.height);
+    }
+    if (!(bottom > top)) return null;
+    const pad = (bottom - top) * MARKER_PAD;
+    return { y: top - pad, height: bottom - top + 2 * pad };
+  }
+
+  /** A rect with class `cls`: x / width from the measure, y / height from the line's shared extent; null when either is missing. */
+  _measureRect(measure, cls) {
+    const box = this._measureBox(measure);
+    if (!box) return null;
+    const extent = this._extent || (this._extent = this._lineExtent());
+    if (!extent) return null;
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('class', cls);
+    rect.setAttribute('x', String(box.x));
+    rect.setAttribute('y', String(extent.y));
+    rect.setAttribute('width', String(box.width));
+    rect.setAttribute('height', String(extent.height));
+    return rect;
+  }
+
   clear() {
     this._token++;
-    this.hits = {}; this._states = new Map(); this.range = null; this._markerBar = null;
+    this.hits = {}; this._states = new Map(); this.range = null; this._markerBar = null; this._extent = null;
     this._endTransition();
     this._svgHost.innerHTML = '';
     this._svg = null;

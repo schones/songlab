@@ -8,7 +8,8 @@
  * key, filler rests, ties across bar lines, optional clefs).
  *
  *   toMEI(norm, { from, to, beams = true })  → { mei, hits, warnings }
- *       mei       one <section> with a <measure> per bar from..to (inclusive)
+ *       mei       one <section> with a <measure> per bar from..to (inclusive),
+ *                 each with xml:id="pl-m<bar>" (so the SVG's g.measure#pl-m<bar> maps clicks to bars)
  *       hits      { [noteId]: { id, midi, name, bar, staff, hand, onset, at, q, tieStop } }
  *       warnings  strings: skipped graces, overruns, unparseable pitches, …
  *   splitDur(quarters)          → [{ q, dur, dots }] longest first (meter-rules.js, re-exported for tests)
@@ -381,7 +382,7 @@ function toMEI(norm, { from, to, beams = true } = {}) {
       if (n.tieOut === 'bar') controls.push(`<tie startid="#${n.id}" tstamp2="0m+${beatsPerBar + 1}"/>`);
     }
     const right = m.bar === lastBar ? 'end' : 'single';
-    return `<measure n="${m.bar}" right="${right}">\n      ${staves.join('\n      ')}${controls.length ? '\n      ' + controls.join('\n      ') : ''}\n    </measure>`;
+    return `<measure n="${m.bar}" xml:id="pl-m${m.bar}" right="${right}">\n      ${staves.join('\n      ')}${controls.length ? '\n      ' + controls.join('\n      ') : ''}\n    </measure>`;
   });
 
   const staffDef = (n, clef) =>
@@ -531,6 +532,7 @@ async function selfTest() {
   assert('bar 16: tie-stop notes have tieStop in hits, last bar ends with a final bar line', [b16.hits['pl-b16-1-0'].tieStop, b16.hits['pl-b16-1-1'].tieStop, count(b16.mei, /right="end"/g)], [true, true, 1]);
   assert('bar 16 lh: A2 shows ♮, G♭3 is in the 5-flat signature (accid.ges only)', staffBody(b16.mei, 16, 2), '<layer n="1"><note xml:id="pl-b16-2-0" dur="4" pname="a" oct="2" accid="n"/><note xml:id="pl-b16-2-1" dur="2" pname="g" oct="3" accid.ges="f"/></layer>');
   const b1516 = toMEI(PRELUDE, { from: 15, to: 16 });
+  assert('bars 15–16: measures carry stable ids pl-m15, pl-m16', (b1516.mei.match(/<measure n="\d+" xml:id="([^"]+)"/g) || []).map(x => x.replace(/.*xml:id="/, '').slice(0, -1)), ['pl-m15', 'pl-m16']);
   assert('bars 15–16 together: two measures, the chord ties by id into bar 16, no bar-line ties', [count(b1516.mei, /<measure /g), measureTies(b1516.mei, 15), measureTies(b1516.mei, 16), b1516.warnings],
     [2, ['<tie startid="#pl-b15-1-3" endid="#pl-b16-1-0"/>', '<tie startid="#pl-b15-1-4" endid="#pl-b16-1-1"/>', '<tie startid="#pl-b15-2-1" endid="#pl-b15-2-2"/>'], [], []]);
   const silent = toMEI({ key: 'C', time: '4/4', bars: [{ bar: 1, rh: [rest(0, 4)], lh: [] }] }, { from: 1, to: 1 });
