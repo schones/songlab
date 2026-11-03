@@ -17,6 +17,7 @@
     --accent-green:   #1E7B34;
     --accent-coral:   #B9341F;
     --pl-loop:        #B07A0A;   /* loop tint / pressed toggles (amber, distinct from the blue bar marker) */
+    --pl-trouble:     #B9341F;   /* trouble-spot tint / "Loop these" (coral, as wrong notes) */
     max-width: none;
     background: var(--pl-bg);
     color: var(--text-primary);
@@ -112,6 +113,20 @@
   .pl-loopnav button[aria-pressed="true"]:hover { color: #FFFFFF; }
   .pl-loopnav select { padding: 6px 10px; font: inherit; font-size: 1rem; border-radius: 8px; border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary); }
   .pl-loopnav__hint { font-size: 0.85rem; color: var(--text-muted); }
+
+  /* Trouble spots after a pass: "Trouble spots: bars 6–7 (4 misses) [Loop these]" or "Clean pass!" */
+  .pl-trouble { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; margin: 0 0 0.5rem; font-size: 1rem; color: var(--text-secondary); }
+  .pl-trouble[hidden] { display: none; }
+  .pl-trouble__label { font-weight: 700; }
+  .pl-trouble--clean .pl-trouble__label { color: var(--accent-green); }
+  .pl-trouble__spot { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .pl-trouble__spot + .pl-trouble__spot::before { content: '·'; color: var(--text-muted); margin-right: 0.35rem; }
+  .pl-trouble button {
+    font: inherit; font-size: 0.9rem; font-weight: 700; padding: 3px 10px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--pl-trouble, #B9341F); background: #FFFFFF; color: var(--pl-trouble, #B9341F);
+  }
+  .pl-trouble button:hover { background: var(--pl-trouble, #B9341F); color: #FFFFFF; }
+  .pl-trouble button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 </style>
 {% endblock %}
 
@@ -187,6 +202,8 @@
         </select>
         <span class="pl-loopnav__hint" id="pl-loop-hint">Or tap a bar on the staff, then the last bar of the range (Esc cancels)</span>
       </div>
+      <!-- Trouble spots (player-trouble.js): filled by player.js at the end of a pass; "Loop these" starts a loop on that range -->
+      <div class="pl-trouble" id="pl-trouble" hidden role="status" aria-live="polite"></div>
       <div class="pl-staff-host" id="pl-staff">Staff loads with the piece.</div>
     </section>
   </div>

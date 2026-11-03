@@ -38,12 +38,14 @@
  *
  *       Loop for practice (a detour: the walk-through pauses inside a bar
  *       range, it does not stop):
- *       setLoop(from, to = from, { exitAfter = 0 })  → loop() or null
+ *       setLoop(from, to = from, { exitAfter = 0, resume })  → loop() or null
  *           Loop bars from..to (a reversed range is swapped). Returns null and
  *           clears the loop when the range has no steps for these hands. Does
  *           not move the follower: steps before the range play into it. Setting
  *           the same range again only updates exitAfter (passes are kept); a
- *           different range starts at pass 1.
+ *           different range starts at pass 1, or at resume: { pass, cleanStreak }
+ *           when given (a hand's counts brought back after a hands change; the
+ *           pass under way starts clean).
  *       setLoop(null)  clears the loop
  *       loop()         { from, to, exitAfter, pass, cleanStreak } or null
  *           pass:        the pass under way, from 1
@@ -55,6 +57,15 @@
  *       With exitAfter N > 0, the N-th clean pass in a row clears the loop at
  *       the wrap point instead and play continues past `to` (loopExited: true).
  *       jumpTo and reset keep the loop.
+ *   createLoopCounts()                 → counts
+ *       Per-hand pass counts for one loop range, kept across the follower
+ *       rebuild that a hands change causes (the page owns one of these):
+ *       save(hand, loop())             remember { pass, cleanStreak } for 'lh' | 'rh' | 'both';
+ *                                      a loop on a different range than the stored one resets all three first
+ *       get(hand, from, to)            → { pass, cleanStreak } to resume with, or null (nothing saved);
+ *                                      a different range resets all three and returns null
+ *       reset()                        forget all three (the loop was cleared or restarted)
+ *       range()                        → { from, to } of the stored counts, or null
  *   selfTest()                         → console report, { passed, total }
  *
  * Self-test:
@@ -187,7 +198,7 @@ function createFollower(steps) {
     return out;
   }
 
-  function setLoop(from, to = from, { exitAfter = 0 } = {}) {
+  function setLoop(from, to = from, { exitAfter = 0, resume = null } = {}) {
     if (from == null) { loopState = null; return null; }
     let a = Number(from), b = Number(to);
     if (!Number.isFinite(a) || !Number.isFinite(b)) { loopState = null; return null; }
@@ -196,7 +207,11 @@ function createFollower(steps) {
     if (start < 0) { loopState = null; return null; }
     const n = Math.max(0, Number(exitAfter) || 0);
     if (loopState && loopState.from === a && loopState.to === b) loopState.exitAfter = n;   // same range: keep the pass count
-    else loopState = { from: a, to: b, exitAfter: n, pass: 1, cleanStreak: 0, dirty: false, start };
+    else {
+      const pass = resume && Number.isFinite(Number(resume.pass)) ? Math.max(1, Math.floor(Number(resume.pass))) : 1;
+      const cleanStreak = resume && Number.isFinite(Number(resume.cleanStreak)) ? Math.max(0, Math.floor(Number(resume.cleanStreak))) : 0;
+      loopState = { from: a, to: b, exitAfter: n, pass, cleanStreak, dirty: false, start };
+    }
     return loop();
   }
 
@@ -224,7 +239,37 @@ function createFollower(steps) {
 // EXPORTS
 // ════════════════════════════════════════════════════════════════════
 
-export { buildSteps, attachIds, createFollower, selfTest };
+// ════════════════════════════════════════════════════════════════════
+// PER-HAND LOOP COUNTS
+// ════════════════════════════════════════════════════════════════════
+
+const LOOP_HANDS = ['lh', 'rh', 'both'];
+
+function createLoopCounts() {
+  let range = null;   // { from, to } the counts belong to
+  let counts = { lh: null, rh: null, both: null };
+  const norm = (from, to) => { let a = Number(from), b = Number(to); if (b < a) [a, b] = [b, a]; return { from: a, to: b }; };
+  const same = r => !!range && range.from === r.from && range.to === r.to;
+  function reset() { range = null; counts = { lh: null, rh: null, both: null }; }
+  return {
+    save(hand, loop) {
+      if (!loop || !LOOP_HANDS.includes(hand)) return;
+      const r = norm(loop.from, loop.to);
+      if (!same(r)) { reset(); range = r; }
+      counts[hand] = { pass: loop.pass, cleanStreak: loop.cleanStreak };
+    },
+    get(hand, from, to) {
+      const r = norm(from, to);
+      if (!same(r)) { reset(); return null; }
+      const c = LOOP_HANDS.includes(hand) ? counts[hand] : null;
+      return c ? { pass: c.pass, cleanStreak: c.cleanStreak } : null;
+    },
+    reset,
+    range: () => (range ? { from: range.from, to: range.to } : null),
+  };
+}
+
+export { buildSteps, attachIds, createFollower, createLoopCounts, selfTest };
 
 // ════════════════════════════════════════════════════════════════════
 // SELF-TEST
@@ -411,6 +456,30 @@ async function selfTest() {
   f.jumpTo(15);
   for (const st of both.slice(8, 15)) play(f, st);
   assert('steps outside the range never wrap: playing bars 15–16 to the end finishes the piece with the loop still set', [f.done(), f.loop() !== null], [true, true]);
+
+  // ── per-hand loop counts across a hands change ───────────────────
+  // The page rebuilds the follower on a hands change; createLoopCounts keeps each hand's pass count for the active range.
+  f = createFollower(both);
+  assert('setLoop with resume seeds pass and clean streak on a new range', f.setLoop(1, 2, { resume: { pass: 4, cleanStreak: 2 } }), { from: 1, to: 2, exitAfter: 0, pass: 4, cleanStreak: 2 });
+  assert('resume is ignored when the same range is set again (counts kept)', f.setLoop(1, 2, { exitAfter: 3, resume: { pass: 9, cleanStreak: 9 } }), { from: 1, to: 2, exitAfter: 3, pass: 4, cleanStreak: 2 });
+  assert('a bad resume falls back to pass 1', createFollower(both).setLoop(1, 2, { resume: { pass: 'x' } }), { from: 1, to: 2, exitAfter: 0, pass: 1, cleanStreak: 0 });
+  const counts = createLoopCounts();
+  const lhBars = lh.filter(s => s.bar >= 1 && s.bar <= 2), rhBars = rh.filter(s => s.bar >= 1 && s.bar <= 2);
+  let fl = createFollower(lh);
+  fl.setLoop(1, 2, { resume: counts.get('lh', 1, 2) });
+  for (let p = 0; p < 2; p++) for (const st of lhBars) play(fl, st);   // two clean LH passes
+  counts.save('lh', fl.loop());
+  assert('LH: two clean passes over 1–2 → pass 3, clean 2, saved', [fl.loop(), counts.range()], [{ from: 1, to: 2, exitAfter: 0, pass: 3, cleanStreak: 2 }, { from: 1, to: 2 }]);
+  let fr = createFollower(rh);
+  assert('RH takes over the same range: nothing saved for it, so it starts at pass 1', [counts.get('rh', 1, 2), fr.setLoop(1, 2, { resume: counts.get('rh', 1, 2) })], [null, { from: 1, to: 2, exitAfter: 0, pass: 1, cleanStreak: 0 }]);
+  for (const st of rhBars) play(fr, st);   // one clean RH pass
+  counts.save('rh', fr.loop());
+  fl = createFollower(lh);
+  assert('back to LH mid-loop: resumes at pass 3, clean 2 (not pass 1)', fl.setLoop(1, 2, { resume: counts.get('lh', 1, 2) }), { from: 1, to: 2, exitAfter: 0, pass: 3, cleanStreak: 2 });
+  assert('RH kept its own count (pass 2, clean 1) meanwhile', counts.get('rh', 1, 2), { pass: 2, cleanStreak: 1 });
+  assert('a new range resets all three and resumes nothing', [counts.get('lh', 15, 16), counts.get('rh', 1, 2), counts.get('both', 1, 2), counts.range()], [null, null, null, null]);
+  counts.save('both', { from: 2, to: 1, pass: 2, cleanStreak: 0 });
+  assert('save normalises a reversed range; get with the reversed range finds it; reset forgets', [counts.range(), counts.get('both', 2, 1), (counts.reset(), counts.get('both', 1, 2))], [{ from: 1, to: 2 }, { pass: 2, cleanStreak: 0 }, null]);
 
   // ── the real prelude when present ────────────────────────────────
   try {

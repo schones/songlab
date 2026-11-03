@@ -33,12 +33,28 @@
  * the range, loading a piece, and a hands change with nothing for that hand
  * in the range turn it off. R restarts at the loop start while looping.
  * The looped bars are tinted on the staff (PlayerStaff 'loop' / 'pending').
+ * Pass counts are per hand: a hands change rebuilds the follower, so the
+ * outgoing hand's { pass, cleanStreak } is kept in loopCounts (player-follow
+ * createLoopCounts) and the incoming hand's is passed back as setLoop's
+ * `resume`. A new range, clearing the loop and R reset all three.
  *
- * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, staff, keyboard, …).
+ * Trouble spots (player-trouble.js): one pass at a time is recorded — a full
+ * run of the piece or one loop pass — from the moment the follower sits at
+ * the first step of its range (syncPass: load, restart, loop set / wrap,
+ * navigation to the start) until it is done or wraps. Any other jump cancels
+ * the recording. At the end of a pass the raw per-step rows go to
+ * console.table, and from the second pass of the same piece / hands / range
+ * (passHistory: counted at pass end, cleared on piece load, kept across R)
+ * the flagged bars are shown under the loop controls with a "Loop these"
+ * button (the 1a setLoop) and tinted 'trouble' on the staff; a new loop or
+ * piece clears them. Nothing flagged → "Clean pass!".
+ *
+ * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, trouble, staff, keyboard, …).
  */
 
 import { PlayerStaff } from './player-staff.js';
-import { buildSteps, attachIds, createFollower } from './player-follow.js';
+import { buildSteps, attachIds, createFollower, createLoopCounts } from './player-follow.js';
+import { createPassRecorder, createPassHistory, scorePass, troubleLabel, shouldSuggest, passKey, passRows, THRESHOLDS } from './player-trouble.js';
 import { lineRanges, lineIndexFor } from './player-staff-model.js';
 import { createShellInput } from '../games/cycle-of-shells-input.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
@@ -69,6 +85,7 @@ const els = {
   prev: $('pl-prev'), next: $('pl-next'), barLabel: $('pl-bar-label'),
   status: $('pl-status'), restart: $('pl-restart'),
   loopBar: $('pl-loop-bar'), loopLine: $('pl-loop-line'), loopExit: $('pl-loop-exit'),
+  trouble: $('pl-trouble'),
   staffHost: $('pl-staff'),
   keyboardHost: $('pl-keyboard'),
 };
@@ -83,11 +100,15 @@ const state = {
   wrong: 0,
   loop: null,             // follower.loop(): { from, to, exitAfter, pass, cleanStreak } or null
   pendingBar: null,       // tap-to-select: the first tapped bar, waiting for the second
+  trouble: null,          // the last scored pass: { pass, score, number, suggested } (console / debug)
   held: new Set(),        // midis down on the MIDI device (de-duplicated by the input)
   echoing: new Set(),     // midis sounding on the sampler for MIDI echo
   audioStarted: false,
 };
 const staff = new PlayerStaff('pl-staff');
+const loopCounts = createLoopCounts();     // per-hand { pass, cleanStreak } for the active loop range
+const passHistory = createPassHistory();   // passes per piece / hands / range (suggestions from the second); cleared on piece load. Not `history`: that is window.history
+let recorder = createPassRecorder([]);     // the pass under way, rebuilt with the follower
 let keyboard = null;
 let input = null;
 let sampler = null;
@@ -195,6 +216,7 @@ const otherHand = () => (state.hands === 'rh' ? 'lh' : state.hands === 'lh' ? 'r
 function rebuildFollower(bar) {
   state.steps = state.norm ? buildSteps(state.norm, { hands: state.hands }, staff.hits) : [];
   state.follower = createFollower(state.steps);
+  recorder = createPassRecorder(state.steps);
   if (bar != null) state.follower.jumpTo(bar);
 }
 
@@ -258,7 +280,7 @@ function updateStatus() {
   const cur = f.current();
   const L = state.loop;
   let where;
-  if (L) where = `Looping ${barsText(L.from, L.to)} · pass ${L.pass} · clean ${L.cleanStreak}${L.exitAfter > 0 ? ` / ${L.exitAfter}` : ''}`;
+  if (L) where = `Looping ${barsText(L.from, L.to)} · ${state.hands === 'both' ? '' : `${state.hands.toUpperCase()} `}pass ${L.pass} · clean ${L.cleanStreak}${L.exitAfter > 0 ? ` / ${L.exitAfter}` : ''}`;
   else {
     where = cur.bar === state.bar ? `Bar ${cur.bar}` : `Bar ${cur.bar} (showing line ${state.line + 1}, bar ${state.bar})`;   // a paged-to line with no steps for this hand at its first bar
     where += ` · step ${cur.index + 1} / ${state.steps.length}`;
@@ -274,6 +296,7 @@ function judge(midi) {
   const r = f.noteOn(midi);
   if (r.result === 'wrong') {
     state.wrong += 1;
+    recorder.miss(r.step, midi);
     flashKey(midi, 'wrong', WRONG_FLASH_MS);
     updateStatus();
     return;
@@ -283,13 +306,16 @@ function judge(midi) {
   setKey(midi, 'expected', false);
   flashKey(midi, 'correct', CORRECT_FLASH_MS);
   if (!r.completed) { updateStatus(); return; }
+  recorder.complete(r.step);
+  if (r.done || r.looped || r.loopExited) endPass();   // a full run or a loop pass is over: score it
   if (r.looped || r.loopExited) {
     const L = state.loop;
     if (r.loopExited && L) banner(`Moved on after ${L.exitAfter} clean pass${L.exitAfter === 1 ? '' : 'es'} of ${barsText(L.from, L.to)}.`);
     syncLoop();   // pass / streak changed, or the loop cleared itself
+    syncPass();   // the next loop pass begins at the loop start; after an exit, nothing is recorded
   }
   const next = f.current();
-  if (next && !inDrawnRange(next.bar)) showLine(lineOf(next.bar), { bar: next.bar, keep: true });   // the next step is on another line (or the loop start)
+  if (next && !inDrawnRange(next.bar)) { recorder.skipTiming(); showLine(lineOf(next.bar), { bar: next.bar, keep: true }); }   // the next step is on another line (or the loop start): its time is not counted
   else {
     if (next && next.bar !== state.bar) { state.bar = next.bar; updateBarNav(); }   // bar change within the line: repaint, no re-render
     paintStates();
@@ -373,11 +399,12 @@ els.hands.addEventListener('change', e => {
   e.target.blur();   // so ← / → / R go back to the page, not the radio group
   if (!state.norm) return;
   rebuildFollower(state.bar);
-  if (state.loop) {   // re-apply on the new follower (passes start over); off when the range has nothing for this hand
+  if (state.loop) {   // re-apply on the new follower with this hand's own pass count (loopCounts); off when the range has nothing for this hand
     const { from, to } = state.loop;
-    if (!state.follower.setLoop(from, to, { exitAfter: loopExitAfter() })) banner(`Loop off: ${barsText(from, to)} ${from === to ? 'has' : 'have'} no notes for the ${handName()}.`);
+    if (!state.follower.setLoop(from, to, { exitAfter: loopExitAfter(), resume: loopCounts.get(state.hands, from, to) })) banner(`Loop off: ${barsText(from, to)} ${from === to ? 'has' : 'have'} no notes for the ${handName()}.`);
     syncLoop();
   }
+  syncPass();
   const cur = state.follower.current();
   if (cur && !inDrawnRange(cur.bar)) showLine(lineOf(cur.bar), { bar: cur.bar, keep: true });   // this line has nothing for that hand from here on
   else {
@@ -419,7 +446,7 @@ async function showLine(index, { bar, keep = false } = {}) {
   if (!range) return;
   state.line = index;
   const want = bar != null ? bar : range.from;
-  if (!keep) { if (state.follower) state.follower.jumpTo(want); clearKeys(['expected', 'correct', 'wrong']); }
+  if (!keep) { if (state.follower) state.follower.jumpTo(want); clearKeys(['expected', 'correct', 'wrong']); syncPass(); }
   state.bar = activeBar(range, want);
   updateBarNav();
   const result = await staff.render(state.norm, range.from, { to: range.to });
@@ -454,6 +481,7 @@ function goToBar(bar) {
   const line = lineOf(bar);
   if (line !== state.line || !inDrawnRange(bar)) { showLine(line, { bar }); return; }
   if (state.follower) state.follower.jumpTo(bar);
+  syncPass();
   clearKeys(['expected', 'correct', 'wrong']);
   state.bar = activeBar(state.lines[state.line], bar);
   updateBarNav();
@@ -466,7 +494,7 @@ function leaveLoopFor(bar) {
   if (L && (bar < L.from || bar > L.to)) clearLoop();
 }
 
-/** R: from the top, or from the loop start while looping (the pass count starts over). */
+/** R: from the top, or from the loop start while looping (the pass counts of all three hands start over). */
 function restart() {
   if (!state.norm) return;
   const bars = barNumbers();
@@ -477,6 +505,7 @@ function restart() {
   let bar;
   if (f && state.loop) {
     const { from, to } = state.loop;
+    loopCounts.reset();
     f.setLoop(null); f.setLoop(from, to, { exitAfter: loopExitAfter() });
     const cur = f.jumpTo(from);
     syncLoop();
@@ -485,6 +514,7 @@ function restart() {
     const cur = f ? f.reset() : null;
     bar = cur ? cur.bar : bars[0];
   }
+  syncPass();
   clearKeys(['expected', 'correct', 'wrong']);
   showLine(Math.max(0, lineOf(bar)), { bar, keep: true });
 }
@@ -505,10 +535,11 @@ try {
   els.loopExit.value = String([...els.loopExit.options].some(o => o.value === String(v)) ? v : LOOP_EXIT_DEFAULT);
 } catch (_) { els.loopExit.value = String(LOOP_EXIT_DEFAULT); }
 
-/** state.loop from the follower; toggles, staff tint and status follow. */
+/** state.loop from the follower; toggles, staff tint, status and the active hand's saved counts follow. */
 function syncLoop() {
   state.loop = state.follower ? state.follower.loop() : null;
   const L = state.loop;
+  if (L) loopCounts.save(state.hands, L); else loopCounts.reset();   // a different range resets the other hands' counts inside save
   const line = state.lines[state.line];
   const on = !!state.norm;
   els.loopBar.disabled = !on; els.loopLine.disabled = !on;
@@ -528,14 +559,16 @@ function setLoop(from, to = from, { exitAfter, jump = true } = {}) {
   const f = state.follower;
   if (!f) return null;
   cancelPending();
+  clearTrouble();   // a loop starting is the suggestion taken (or superseded)
   const r = f.setLoop(from, to, { exitAfter: exitAfter == null ? loopExitAfter() : exitAfter });
   if (!r) {
     const a = Math.min(from, to), b = Math.max(from, to);
     banner(`Loop off: ${barsText(a, b)} ${a === b ? 'has' : 'have'} no notes for the ${handName()}.`);
     syncLoop();
+    syncPass();
     return null;
   }
-  if (jump) goToBar(r.from);
+  if (jump) goToBar(r.from); else syncPass();   // goToBar syncs the pass itself
   syncLoop();
   return state.loop;
 }
@@ -543,6 +576,7 @@ function setLoop(from, to = from, { exitAfter, jump = true } = {}) {
 function clearLoop() {
   if (state.follower) state.follower.setLoop(null);
   syncLoop();
+  syncPass();   // the range changed under the recording
 }
 
 /** Tap-to-select on the staff: the first tap marks a bar as pending; the second tap loops the range. */
@@ -601,6 +635,81 @@ document.addEventListener('keydown', e => {
 });
 
 // ════════════════════════════════════════════════════════════════════
+// TROUBLE SPOTS
+// ════════════════════════════════════════════════════════════════════
+
+/** The range a pass covers: the loop while looping, else the whole piece (first to last step bar). */
+function passRange() {
+  const L = state.follower ? state.follower.loop() : null;
+  if (L) return { from: L.from, to: L.to };
+  if (!state.steps.length) return null;
+  return { from: state.steps[0].bar, to: state.steps[state.steps.length - 1].bar };
+}
+
+/**
+ * Start recording a pass when the follower sits at the first step of its
+ * range (load, restart, a loop set or wrapped, navigation to the start);
+ * cancel the recording otherwise (any other jump breaks the run).
+ */
+function syncPass() {
+  const f = state.follower;
+  const range = f ? passRange() : null;
+  const cur = f ? f.current() : null;
+  if (!range || !cur) { recorder.cancel(); return; }
+  const first = state.steps.find(s => s.bar >= range.from && s.bar <= range.to);
+  if (first && first.index === cur.index) { recorder.start(range, cur.index); console.log(`[player] pass recording: ${barsText(range.from, range.to)} (${state.hands}) from step ${cur.index}`); }
+  else { if (recorder.active()) console.log(`[player] pass recording cancelled at step ${cur.index} (bar ${cur.bar})`); recorder.cancel(); }
+}
+
+/** The pass under way is over: score it, log the raw rows, show the suggestion (from the second pass of this piece / hands / range). */
+function endPass() {
+  const pass = recorder.end();
+  if (!pass || !state.piece) return;
+  const number = passHistory.record(passKey(state.piece, state.hands, pass.from, pass.to));
+  const score = scorePass(pass);
+  const suggested = shouldSuggest(number);
+  state.trouble = { pass, score, number, suggested };
+  const med = score.medianMs == null ? '–' : `${Math.round(score.medianMs)} ms`;
+  console.log(`[player] pass ${number} of ${barsText(pass.from, pass.to)} (${state.hands}) · ${pass.steps.length} steps · median step ${med}, slow ≥ ${score.slowMs == null ? '–' : `${Math.round(score.slowMs)} ms`} · ${score.ranges.length ? `trouble: ${score.ranges.map(troubleLabel).join(', ')}` : 'clean'}${suggested ? '' : ` · first pass: suggestions from pass ${THRESHOLDS.MIN_PASS_TO_SUGGEST}`}`);
+  console.table(passRows(pass, score));
+  showTrouble(score, suggested);
+}
+
+function showTrouble(score, suggested) {
+  const el = els.trouble;
+  el.textContent = '';
+  el.classList.remove('pl-trouble--clean');
+  if (!score.ranges.length) {
+    el.classList.add('pl-trouble--clean');
+    const label = document.createElement('span'); label.className = 'pl-trouble__label'; label.textContent = 'Clean pass!';
+    el.appendChild(label);
+    el.hidden = false;
+    staff.setBarTint('trouble', []);
+    return;
+  }
+  if (!suggested) { el.hidden = true; staff.setBarTint('trouble', []); return; }
+  const label = document.createElement('span'); label.className = 'pl-trouble__label'; label.textContent = 'Trouble spots:';
+  el.appendChild(label);
+  for (const r of score.ranges) {
+    const spot = document.createElement('span'); spot.className = 'pl-trouble__spot';
+    const text = document.createElement('span'); text.textContent = troubleLabel(r);
+    const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = 'Loop these';
+    btn.setAttribute('aria-label', `Loop ${barsText(r.from, r.to)}`);
+    btn.addEventListener('click', () => { btn.blur(); setLoop(r.from, r.to); });
+    spot.append(text, btn);
+    el.appendChild(spot);
+  }
+  el.hidden = false;
+  staff.setBarTint('trouble', barNumbers().filter(b => score.ranges.some(r => b >= r.from && b <= r.to)));
+}
+
+function clearTrouble() {
+  els.trouble.hidden = true;
+  els.trouble.textContent = '';
+  staff.setBarTint('trouble', []);
+}
+
+// ════════════════════════════════════════════════════════════════════
 // PIECES
 // ════════════════════════════════════════════════════════════════════
 
@@ -624,7 +733,7 @@ function showHeader(name, norm) {
 function unload() {
   state.norm = null; state.bar = null; state.steps = []; state.follower = null; state.wrong = 0;
   state.lines = []; state.lineWarnings = []; state.line = -1;
-  cancelPending();
+  cancelPending(); clearTrouble(); recorder.cancel();
   updateBarNav(); staff.clear(); clearKeys(); syncLoop();
 }
 
@@ -651,9 +760,11 @@ async function load(name) {
       mountKeyboard(norm);
       clearKeys();
       staff.clear();          // old hits must not attach to the new piece's steps
-      cancelPending();
+      cancelPending(); clearTrouble();
+      passHistory.reset();    // pass counts start over with the piece (a restart keeps them: it begins the next pass)
       rebuildFollower(null);  // a new follower: no loop
       syncLoop();
+      syncPass();             // the first pass of the piece begins at step 0
       const cur = state.follower.current();
       const bar = cur ? cur.bar : bars[0];
       showLine(Math.max(0, lineOf(bar)), { bar, keep: true });
@@ -723,6 +834,7 @@ setupMidi();   // not awaited: the piece loads while the browser asks for MIDI a
 window.__player = {
   state, load, pieces: () => state.pieces, staff, showLine, stepLine, stepBar, restart,
   setLoop, clearLoop,
+  get trouble() { return state.trouble; }, loopCounts, passHistory, get recorder() { return recorder; }, thresholds: THRESHOLDS,
   get keyboard() { return keyboard; }, get input() { return input; }, get follower() { return state.follower; }, get steps() { return state.steps; },
   noteOn: onMidiNoteOn, noteOff: onMidiNoteOff,
 };

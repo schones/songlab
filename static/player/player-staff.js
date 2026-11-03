@@ -15,7 +15,7 @@
  *   staff.clearStates();
  *   staff.setDimmed(ids);                        // the other hand, drawn faint (pl-note--dim); [] clears
  *   staff.setBarMarker(6);                       // faint tint behind bar 6's measure; null clears
- *   staff.setBarTint('loop', [6, 7]);            // 'loop' | 'pending' tint behind those bars ([] clears); kept across renders
+ *   staff.setBarTint('loop', [6, 7]);            // 'loop' | 'pending' | 'trouble' tint behind those bars ([] clears); kept across renders
  *   staff.onBarTap = bar => …;                   // a click / tap on a drawn measure (null to ignore); cursor: pointer while set
  *   staff.barAt(clientX, clientY)                // the bar under a point (g.measure#pl-m<bar>, else bounding rects), or null
  *   staff.hits                                   // { id → { midi, bar, staff, hand, onset, at, tieStop } }
@@ -58,8 +58,8 @@ const MARKER_PAD = 0.12;              // marker / tint rects extend above / belo
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const CSS = /* css */ `
-.pl-staff-wrap { position: relative; width: 100%; min-height: 200px; --pl-bar-marker: rgba(45, 95, 138, 0.10); --pl-bar-loop: rgba(214, 150, 20, 0.16); --pl-bar-pending: rgba(214, 150, 20, 0.08); --pl-bar-pending-stroke: rgba(176, 120, 10, 0.7); }
-[data-theme="dark"] .pl-staff-wrap { --pl-bar-marker: rgba(58, 139, 201, 0.22); --pl-bar-loop: rgba(240, 180, 50, 0.22); --pl-bar-pending: rgba(240, 180, 50, 0.10); --pl-bar-pending-stroke: rgba(240, 180, 50, 0.8); }
+.pl-staff-wrap { position: relative; width: 100%; min-height: 200px; --pl-bar-marker: rgba(45, 95, 138, 0.10); --pl-bar-loop: rgba(214, 150, 20, 0.16); --pl-bar-pending: rgba(214, 150, 20, 0.08); --pl-bar-pending-stroke: rgba(176, 120, 10, 0.7); --pl-bar-trouble: rgba(185, 52, 31, 0.11); }
+[data-theme="dark"] .pl-staff-wrap { --pl-bar-marker: rgba(58, 139, 201, 0.22); --pl-bar-loop: rgba(240, 180, 50, 0.22); --pl-bar-pending: rgba(240, 180, 50, 0.10); --pl-bar-pending-stroke: rgba(240, 180, 50, 0.8); --pl-bar-trouble: rgba(230, 90, 60, 0.20); }
 .pl-staff-wrap[data-tappable="1"] g.measure { cursor: pointer; }
 /* The host clips the slide-and-fade; its height is locked by script during a line change. */
 .pl-staff-svg { position: relative; overflow: hidden; }
@@ -75,6 +75,7 @@ const CSS = /* css */ `
 .pl-staff-svg rect.pl-bar-marker       { fill: var(--pl-bar-marker); stroke: none; }
 .pl-staff-svg rect.pl-bar-loop         { fill: var(--pl-bar-loop); stroke: none; }
 .pl-staff-svg rect.pl-bar-pending      { fill: var(--pl-bar-pending); stroke: var(--pl-bar-pending-stroke); stroke-width: 6; stroke-dasharray: 24 14; }
+.pl-staff-svg rect.pl-bar-trouble      { fill: var(--pl-bar-trouble); stroke: none; }
 .pl-staff-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; color: var(--text-muted, #4E4A43); pointer-events: none; }
 .pl-staff-wrap[data-state="ready"] .pl-staff-status { display: none; }
 .pl-staff-wrap[data-state="loading"] .pl-staff-svg, .pl-staff-wrap[data-state="error"] .pl-staff-svg { opacity: 0.3; }
@@ -82,7 +83,7 @@ const CSS = /* css */ `
 `;
 
 const STATES = ['expected', 'correct', 'wrong'];
-const TINTS = ['loop', 'pending'];   // rect.pl-bar-<tint>, painted under the bar marker
+const TINTS = ['loop', 'pending', 'trouble'];   // rect.pl-bar-<tint>, painted under the bar marker ('trouble': suggested bars after a pass)
 const CSS_escape = s => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(s) : s.replace(/[^\w-]/g, '\\$&'));
 /** Bar number from a g.measure: its id pl-m<bar> (toMEI), else its data-n / n attribute when Verovio keeps one. */
 function barOfMeasure(m) {
@@ -108,7 +109,7 @@ class PlayerStaff {
     this._overlayTimer = 0;
     this._markerBar = null;
     this._extent = null;        // { y, height } shared by every marker / tint rect: the union of the drawn measures' y-ranges, padded; per render
-    this._tints = { loop: [], pending: [] };   // tint → bars; re-applied after every render
+    this._tints = { loop: [], pending: [], trouble: [] };   // tint → bars; re-applied after every render
     this._onBarTap = null;
 
     if (!document.getElementById('pl-staff-styles')) {
@@ -223,7 +224,7 @@ class PlayerStaff {
   }
 
   /**
-   * Tint the measures of `bars` ('loop' or 'pending'; [] or null clears that
+   * Tint the measures of `bars` ('loop', 'pending' or 'trouble'; [] or null clears that
    * tint). Remembered and redrawn after every render, so the page sets it
    * once per change, not per line. Returns the bars that were drawn.
    */
