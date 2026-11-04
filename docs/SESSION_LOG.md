@@ -3,6 +3,154 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-11-03 (later) — follow-along player 2a: Listen + tempo slider
+
+Guided-practice track, on `dev` after 1b / 1c the same day. Roadmap
+chunk "Player: Listen + metronome on one shared tempo slider", Listen
+half only; the metronome and count-in are 2b. Built read → report →
+go-ahead → build, with the Node self-test first; not yet checked in
+Chrome (steps under "Setup for next session").
+
+### Landed
+- **`static/player/player-listen.js`** (new, pure, 19/19):
+  `listenSchedule(norm, { from, to, bpm })` → `{ notes, duration, bars,
+  from, to, bpm, secPerQuarter, barQuarters }` in VoicingPlayer's shape
+  (seconds from the downbeat of `from`; both hands always; rh →
+  'melody', lh → 'bass'). Each note carries `bar / hand / onset / midi`
+  and `spans: [{ bar, onset }]` (its attack plus every tie continuation)
+  so `player.js` matches `staff.hits` on bar / hand / midi / onset at
+  sound time, exactly as `attachIds` does. Ties extend instead of
+  re-attacking; a continuation with no attack in the range (a loop from
+  bar 11 with the D5 tied in from bar 10) sounds as a fresh attack at
+  its own onset (Listen only; `buildSteps` unchanged); rests and graces
+  skipped; every note cut at the range end; nothing starts before
+  `from`. Bar length from `meterLevels(norm.time, norm.beatsPerBar).bar`.
+  `pieceBpm(norm)` → `{ bpm, assumed }` (90 when the norm has no tempo),
+  `tempoLabel(pct, bpm)` → "60% · 49 bpm". Self-test cases: seconds at a
+  bpm, two bars at 82, tie merge across the bar line (spans), clip at the
+  range end, continuation at the range start, both hands / roles, rests
+  and graces skipped, 3/4 and 4/4 bar durations, a 3-bar tie chain
+  (start → both → stop).
+- **`static/player/player-staff.js`**: `'playing'` note state
+  (`pl-note--playing`, gold `--pl-playing` #D4A03C); `render(norm, bar,
+  { to, animate: false })` skips the slide (a hard cut, as with
+  prefers-reduced-motion) for Listen's page turns and its restore.
+- **`templates/player.html`**: `--pl-playing` token; `pl-key--playing`
+  in the key cascade (held < playing < expected < correct < wrong);
+  a Listen row under the Loop row: "▶ Listen" button (`aria-pressed`
+  while playing), tempo range 25–110 step 5 with the readout, hint
+  "Space plays the loop, or the current bar". 2b's metronome toggle,
+  volume and count-in go on this row.
+- **`static/player/player.js`**: `state.listen` + `state.tempoPct`
+  (`songlab_player_tempo_pct`, default 100, same try/catch pattern;
+  slider `input` updates the readout and storage, read at `play()` time
+  so a change applies on the next Listen). `listen()`: range = the loop
+  or `state.bar`; schedule at `pieceBpm × pct`; banner when the tempo is
+  assumed; clears the follower's paint (states, dim, marker, expected
+  keys; held keys stay), builds `hitIndex` from `staff.hits`, plays on
+  one module-level `VoicingPlayer`. `onNote` lights / clears every
+  drawn id of the note's spans and `pl-key--playing` with a per-midi
+  refcount (doubled pitches). `judge()` returns at once while
+  `state.listen.active`, so MIDI and clicks still sound per the existing
+  rules but nothing is judged, counted, recorded or clocked.
+  `scheduleTurns`: for each bar whose line differs from the one that
+  will be drawn, `Tone.Transport.scheduleOnce` at `bar.time −
+  TURN_LEAD` (0.15 s; VoicingPlayer plays 80 ms after the schedule
+  time) → `Tone.Draw` → `listenTurnTo(line)`: `staff.render(…, {
+  animate: false })` directly (not `showLine`: state.line / state.bar /
+  follower untouched), re-index, re-light sounding notes (a tied D5 lights
+  in bar 11 as the page arrives). A turn already due runs at once. The
+  player's own `Transport.cancel(0)` on stop / end clears the turns.
+  `stopListen()` → `VoicingPlayer.stop()` → `onEnd` (synchronous) →
+  `finishListen()`: active false, token bumped (late callbacks dropped),
+  gold cleared, button reset, `showLine(state.line, { bar: state.bar,
+  keep: true, animate: false })` when the page was turned else
+  `paintStates()`. A `play()` that returns `{ played: false }` runs the
+  same restore, with banners for muted / blocked / error. A stop while
+  `play()` is still loading restores at once and stops the playback as
+  soon as `play()` reports it started, with no page turns scheduled.
+  `stopListen()` is the first statement of `stepLine`, `stepBar`,
+  `restart`, `setLoop` (Repeat bar / line, second tap, "Loop these"),
+  `clearLoop`, `onBarTap`, the hands change, `setNoStress`, `load` and
+  `unload`. Space in the page keydown (same input / select / textarea
+  filter as the arrows; `preventDefault` so a focused button does not
+  click as well). Header comment and `window.__player` (`listen`,
+  `stopListen`, `tempo` get / set, `listenPlayer`) updated.
+- `voicing-player.js` unchanged.
+
+### Diagnosed / decided
+- **Page turns on the Transport, not from note callbacks.**
+  VoicingPlayer only calls back per note; turning on the first note of a
+  new line would show the line after Verovio's render, late by the render
+  time. Scheduling on the running Transport (started from 0 by `play()`)
+  with a small lead gets the line up before its first note in the common
+  case, and `relightSounding()` after the render makes correctness
+  independent of the lead.
+- **Ids at sound time, not precomputed.** `staff.hits` only covers the
+  drawn line, so the schedule carries `spans` and the page keeps a
+  per-render index keyed by bar / hand / midi / onset; checked against
+  Carol bars 9–12: every span of every note resolves, the tied D5 to
+  `pl-b10-1-3` + `pl-b11-1-0`.
+- **A tie continuation at the range start plays** (fresh attack at its
+  onset) in Listen only; the follower still makes no step for it.
+  Decided with Dustin after the report flagged the silence a loop from
+  bar 11 would otherwise have.
+- **Shared sampler.** `VoicingPlayer.stop()` / end call `releaseAll()`
+  on the same Tone.Sampler the MIDI echo uses, so a MIDI note still held
+  when Listen ends goes silent then; `state.echoing` stays consistent.
+  Accepted for 2a rather than touch `voicing-player.js`.
+- **2b must not use Tone.Transport**: `play()` and `stop()` stop and
+  cancel it. The metronome gets its own clock.
+
+### Setup for next session
+- `dev`, working tree: `static/player/player-listen.js` (new),
+  `static/player/player-staff.js`, `static/player/player.js`,
+  `templates/player.html`, this log and `docs/STATUS.md`. Dustin commits.
+- Self-tests: `player-listen.js` 19/19, `player-follow.js` 89/89,
+  `player-trouble.js` 30/30, `player-staff-model.js` 77/77,
+  `meter-rules.js` 125/125.
+- **Chrome check owed for 2a** (Flask in the tmux session, port 5001,
+  Carol loaded, console open):
+  1. Repeat line on line 1 (bars 1–4), slider to 60 % (readout "60% ·
+     49 bpm"), press ▶ Listen: the button reads ■ Stop, blue / green
+     paint and the bar marker go, both hands light gold on the staff
+     and the keyboard as they sound, the loop tint stays; after ~14.7 s
+     the button resets and the follower is back where it was (status
+     line shows the same step and the same "pass N").
+  2. Tap bar 3, then bar 6 (loop 3–6), Listen: the staff cuts to line 2
+     (no slide) just before bar 5, the gold continues, and afterwards
+     line 1 is back with bar 3's colours. Then Prev / Next, Shift+→, R,
+     Repeat bar, a hands change and No stress mid-playback: each stops
+     the playback first and then does its usual thing.
+  3. With "Sound for MIDI notes" on, play keys on the RD-2000 during
+     Listen: they sound and show grey (held) but no blue / green / red,
+     `wrong:` does not change, and `__player.practice.playedMs` is the
+     same before and after.
+  4. Space toggles Listen / Stop from the page (not while the slider or
+     a select has focus); Esc still cancels a pending tap.
+  5. Reload: the slider keeps its percentage
+     (`localStorage.songlab_player_tempo_pct`).
+  6. Mute via the header speaker icon, press Listen: banner "Sound is
+     muted …", page restored at once.
+- RD-2000 check still owed for 1b and 1c; trouble thresholds want tuning
+  from real `console.table` rows.
+
+### Flagged for later
+- `TURN_LEAD` 0.15 s is a guess at Verovio's render time for a 4-bar
+  line on the Mac mini; if the first chord of a new line lights late,
+  raise it (the turn cannot be earlier than the previous line's last
+  bar in practice, so there is room).
+- A `Transport.seconds` read guards against scheduling a turn in the
+  past; if Tone ever reports a turn that never fires, that is the place
+  to look.
+- The Listen row's hint duplicates what the keydown filter implies; drop
+  it when 2b fills the row.
+
+### Out of scope / deferred
+- Metronome, count-in, volume (2b). Listen for the selected hand only
+  (decided: both hands always). Playing a range larger than the loop or
+  the bar (whole line / piece) — one more button when wanted.
+
 ## 2026-11-03 — follow-along player loop chunk 1b + 1c: trouble spots, per-hand loop counts, "No stress" mode
 
 Guided-practice track, on `dev` after 1a (`7c96992`, loops) earlier the

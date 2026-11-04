@@ -11,7 +11,8 @@
  *   const staff = new PlayerStaff('pl-staff');
  *   await staff.render(norm, 1);                 // bar 1; the latest call wins
  *   await staff.render(norm, 5, { to: 8 });      // a line (bars 5–8)
- *   staff.setNoteState('pl-b1-1-0', 'expected'); // 'expected' | 'correct' | 'wrong' | null
+ *   await staff.render(norm, 9, { to: 12, animate: false });   // hard cut, no slide (Listen page turns)
+ *   staff.setNoteState('pl-b1-1-0', 'expected'); // 'expected' | 'correct' | 'wrong' | 'playing' | null
  *   staff.clearStates();
  *   staff.setDimmed(ids);                        // the other hand, drawn faint (pl-note--dim); [] clears
  *   staff.setBarMarker(6);                       // faint tint behind bar 6's measure; null clears
@@ -22,8 +23,9 @@
  *   staff.noteIds({ bar, hand })                 // ids in drawing order, optionally filtered
  *   staff.range                                  // { from, to } of the drawn bars, or null
  *
- * States are classes on g.note (pl-note--expected / --correct / --wrong);
- * the CSS colours them blue / green / red, as the keyboard does. pl-note--dim
+ * States are classes on g.note (pl-note--expected / --correct / --wrong /
+ * --playing); the CSS colours them blue / green / red / gold (playing: a note
+ * sounding under Listen), as the keyboard does. pl-note--dim
  * is independent of the state (an unselected hand stays dim whatever happens).
  *
  * Line change: when render() is asked for a different range than the one
@@ -31,7 +33,7 @@
  * stripped) and slides up and out while the new SVG slides in from below
  * (forward) — or the reverse when paging back. The new SVG is live at once:
  * states, the marker and hit lookups all go to it. prefers-reduced-motion
- * makes it a hard cut. The host keeps its height through the transition
+ * and `animate: false` make it a hard cut. The host keeps its height through the transition
  * (locked, then eased to the new height) so the page does not jump.
  *
  * The SVG is sized by width (width: 100%, height: auto), so the staff fills
@@ -71,6 +73,7 @@ const CSS = /* css */ `
 .pl-staff-svg g.note.pl-note--expected { color: var(--accent-blue, #2D5F8A); fill: var(--accent-blue, #2D5F8A); }
 .pl-staff-svg g.note.pl-note--correct  { color: var(--accent-green, #1E7B34); fill: var(--accent-green, #1E7B34); }
 .pl-staff-svg g.note.pl-note--wrong    { color: var(--accent-coral, #B9341F); fill: var(--accent-coral, #B9341F); }
+.pl-staff-svg g.note.pl-note--playing  { color: var(--pl-playing, #D4A03C); fill: var(--pl-playing, #D4A03C); }
 .pl-staff-svg g.note.pl-note--dim      { opacity: 0.35; }
 .pl-staff-svg rect.pl-bar-marker       { fill: var(--pl-bar-marker); stroke: none; }
 .pl-staff-svg rect.pl-bar-loop         { fill: var(--pl-bar-loop); stroke: none; }
@@ -82,7 +85,7 @@ const CSS = /* css */ `
 .pl-staff-wrap[data-state="error"] .pl-staff-status { color: var(--accent-coral, #B9341F); }
 `;
 
-const STATES = ['expected', 'correct', 'wrong'];
+const STATES = ['expected', 'correct', 'wrong', 'playing'];   // 'playing': sounding under Listen (gold)
 const TINTS = ['loop', 'pending', 'trouble'];   // rect.pl-bar-<tint>, painted under the bar marker ('trouble': suggested bars after a pass)
 const CSS_escape = s => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(s) : s.replace(/[^\w-]/g, '\\$&'));
 /** Bar number from a g.measure: its id pl-m<bar> (toMEI), else its data-n / n attribute when Verovio keeps one. */
@@ -143,9 +146,10 @@ class PlayerStaff {
   /**
    * Engrave bar `bar` (through `options.to` for a range). Resolves to
    * { hits, warnings } when drawn, or null when superseded or failed. A
-   * different range than the drawn one plays the slide-and-fade transition.
+   * different range than the drawn one plays the slide-and-fade transition
+   * unless `animate` is false (a hard cut, as with prefers-reduced-motion).
    */
-  async render(norm, bar, { to } = {}) {
+  async render(norm, bar, { to, animate = true } = {}) {
     const token = ++this._token;
     const last = to ?? bar;
     this.hits = {}; this._states = new Map(); this._markerBar = null;
@@ -166,7 +170,7 @@ class PlayerStaff {
 
     tk.setOptions(PLAYER_OPTIONS);
     if (!tk.loadData(built.mei)) { this._setState('error', `Bar${last !== bar ? `s ${bar}–${last}` : ` ${bar}`} could not be engraved`); return null; }
-    this._swapSvg(tk.renderToSVG(1), bar, last);
+    this._swapSvg(tk.renderToSVG(1), bar, last, animate);
     this._svgHost.setAttribute('aria-label', last !== bar ? `Staff notation for bars ${bar} to ${last}` : `Staff notation for bar ${bar}`);
     for (const [id, hit] of Object.entries(built.hits)) if (this._find(id)) this.hits[id] = hit;
     this.range = { from: bar, to: last };
@@ -355,13 +359,14 @@ class PlayerStaff {
    * Put the new SVG in the host. When a different range than `this.range`
    * was drawn (and motion is allowed), the old SVG is cloned into an overlay
    * that slides out while the new one slides in; forward when `from` is
-   * past the old range's start, backward otherwise.
+   * past the old range's start, backward otherwise. `allowAnimate` false
+   * (Listen's page turns and its restore render) skips the overlay.
    */
-  _swapSvg(html, from, to) {
+  _swapSvg(html, from, to, allowAnimate = true) {
     const host = this._svgHost;
     const old = this._svg;
     const prev = this.range;
-    const animate = !!(old && prev && (from !== prev.from || to !== prev.to) && !reducedMotion());
+    const animate = !!(allowAnimate && old && prev && (from !== prev.from || to !== prev.to) && !reducedMotion());
     this._endTransition();   // a transition still running ends now: its overlay goes first
 
     let overlay = null;

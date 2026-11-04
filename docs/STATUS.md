@@ -87,8 +87,12 @@ lines 1–2, 16 bars, G minor, 3/4), private and gitignored under
 chunk — 1a loops (Repeat bar / line, tap-to-select, move on after N clean
 passes), 1b trouble spots ("Loop these" from the second pass) with
 per-hand loop counts, 1c "No stress" mode (forgiving follower: wrong
-notes never block, aren't shown or counted). Next: Listen, then metronome.
-Detail below under "What's Working".
+notes never block, aren't shown or counted), and 2a Listen (▶ Listen /
+Space plays the loop or the current bar, both hands, at a tempo slider's
+percentage of the piece's tempo; notes light gold as they sound, the
+staff pages with the playback, the follower is untouched). Next: 2b
+metronome + count-in on the same tempo slider. Detail below under
+"What's Working".
 
 ### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
 Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
@@ -133,7 +137,8 @@ torus math in two (audit §3).
 Full version: [Claude doc](https://claude.ai/artifact/DHHd1R3qux19CPWyX7fPaA) · [Google Doc](https://docs.google.com/document/d/1hSHjvxwwdnaob214H_i3YD881rywSCIJAUuO6V8uUo0/edit).
 - **Thread A — kids' practice track (active until 2026-12-14 freeze):**
   player loop (1a loops, 1b trouble spots + per-hand counts, 1c No
-  stress — all done 2026-11-03) → listen → metronome → RD-2000 recording
+  stress) and 2a Listen + tempo slider — all done 2026-11-03 → 2b
+  metronome + count-in → RD-2000 recording
   session (Carol lines 3–4, Run Rudolph Run, Feel Good Inc., Linus and
   Lucy) → learner picker → practice log (JSON on the mini, written by
   Flask; `practiceEvent` funnel + `state.practice.playedMs` already in
@@ -160,8 +165,9 @@ wait-for-me mode with the staff, keyboard and follower pieces under
 `static/player/`. Milestone 1 is done and checked with the RD-2000. The
 loop chunk landed 2026-11-03 (1a loops, 1b trouble spots + per-hand loop
 counts, 1c "No stress" mode; 1b and 1c need an RD-2000 check and the
-trouble thresholds tuning from the `console.table` rows). Next, in order:
-Listen; metronome; then the RD-2000 recording session, warm-up screen and
+trouble thresholds tuning from the `console.table` rows), then 2a Listen
++ tempo slider the same day (needs its Chrome check). Next, in order:
+2b metronome + count-in; then the RD-2000 recording session, warm-up screen and
 practice logging (`createResultLog` with key `songlab_results_player`,
 hanging off `practiceEvent` in `player.js`). Current state block below.
 
@@ -951,6 +957,37 @@ from console snippets only):**
   console.debug for now) and `state.practice.playedMs` from
   `createPracticeClock` (gaps between notes up to `IDLE_GAP_MS` = 30 s
   count; a longer gap adds nothing), the same in both modes.
+- Listen (2a; `static/player/player-listen.js`, new, pure, 19/19):
+  `listenSchedule(norm, { from, to, bpm })` → `{ notes, duration, bars }`
+  in VoicingPlayer's shape (seconds; both hands always, rh → 'melody',
+  lh → 'bass'; each note carries bar / hand / onset / midi and `spans`,
+  one per attack or tie continuation, so the page finds its staff ids at
+  sound time); a tie continuation extends the note it continues, one at
+  the range start sounds as a fresh attack (Listen only; the follower
+  still makes no step for it), rests and graces skipped, notes cut at
+  the range end; bar length from `meterLevels`. `pieceBpm` (norm.tempo,
+  else 90 with a banner), `tempoLabel` ("60% · 49 bpm"). Page: "▶
+  Listen" / "■ Stop" + Space (not in inputs), a Listen row under the Loop
+  row with the tempo slider 25–110 % step 5 (`songlab_player_tempo_pct`,
+  default 100; a change applies on the next Listen); plays the loop range
+  or the current bar once on the shared `VoicingPlayer` (voicing-player.js
+  unchanged). While playing: `judge()` returns at once (MIDI / clicks
+  sound per the usual rules, nothing judged, counted, recorded or
+  clocked), the follower's paint is cleared and notes light `playing`
+  (gold `#D4A03C`: `pl-note--playing` on the staff, `pl-key--playing` on
+  the keyboard) from a per-render index of `staff.hits`; a range across
+  lines turns the page on `Tone.Transport.scheduleOnce` 150 ms before
+  each line's first bar (`PlayerStaff.render(..., { animate: false })`,
+  new option; state.line / state.bar and the follower untouched; sounding
+  notes re-lit after the render). Stop, the end, a `play()` that does not
+  start (muted / blocked banners) and every navigation or state change
+  (`stopListen()` first in stepLine / stepBar / restart / setLoop /
+  clearLoop / onBarTap / hands / No stress / load) restore the original
+  line (no slide) and `paintStates()`. A stop during the first, loading
+  `play()` is honoured (stopped as soon as it starts, no page turns). The
+  shared sampler's `releaseAll()` at the end also releases a MIDI echo
+  note still held (accepted for 2a). Debug: `__player.listen()`,
+  `stopListen()`, `tempo`, `listenPlayer`.
 - `static/player/player.js`: page glue over `createShellInput` (its
   injectable storage mapped to the player's own key), `VoicingKeyboard`
   (range from the piece ± 3 keys, snapped to white keys; own state
@@ -982,9 +1019,14 @@ from console snippets only):**
   No stress have only been exercised from console snippets, see
   SESSION_LOG 2026-11-03) and trouble-threshold tuning from real
   `console.table` rows.
+- 2a Listen awaits its Chrome check (steps in SESSION_LOG 2026-11-03,
+  Listen entry): bars 1–4 at 60 %, a loop across two lines, MIDI during
+  playback.
 
 **Open / deferred:**
-- Next, in order: Listen (step 2); metronome (step 3); then the RD-2000
+- Next, in order: 2b metronome + count-in (on the Listen row and its
+  tempo slider; not on Tone.Transport, which VoicingPlayer stops and
+  cancels on play / stop); then the RD-2000
   recording session, warm-up screen in the song's key, practice logging
   (`createResultLog` with key `songlab_results_player`, per the
   game-engine spec envelope, off the `practiceEvent` funnel).
@@ -1031,7 +1073,7 @@ from console snippets only):**
 
 ### Games & Tools
 - Harmony Trainer, Chord Walks (4 tiers), Rhythm Lab, Strum Patterns, Chord Spotter, Scale Builder, Melody Match
-- **Follow-along player** `/player` (2026-10-30, loops + trouble spots + No stress 2026-11-03): wait-for-me practice of a recorded piece from MIDI; see the current-state block above
+- **Follow-along player** `/player` (2026-10-30, loops + trouble spots + No stress + Listen 2026-11-03): wait-for-me practice of a recorded piece from MIDI; see the current-state block above
 - **Cycle of Shells** (2026-10-22, branch `cycle-of-shells`): ii–V–I shell voicings round the cycle from MIDI; see the current-state block above
 - **Swing Trainer**: ear-training for jazz swing feel (rotary knob, waveform viz, Practice/Test)
 - **Polyrhythm Trainer** (new): Guitar Hero-style falling-note game. Practice Mode (phase-based BPM ramp: Listen → Layer A → Layer B → Both → Victory) and Challenge Mode (arcade adaptive with leaderboard). Dark DAW theme, drum pads, lane breathing waves. First game on `input-provider.js` + `onset-detection.js`. Spec: `docs/polyrhythm-trainer-spec.md`

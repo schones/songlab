@@ -10,7 +10,10 @@
  *                          player-follow.js           step list + wait-for-me matcher
  *   createShellInput       games/cycle-of-shells-input.js   MIDI device + de-duplicated notes
  *   VoicingKeyboard        shared/voicing-keyboard.js on-screen keys (clickable)
- *   loadSampler            shared/voicing-player.js   shared Salamander piano
+ *   loadSampler / VoicingPlayer
+ *                          shared/voicing-player.js   shared Salamander piano; schedule playback (Listen)
+ *   listenSchedule / pieceBpm / tempoLabel
+ *                          player-listen.js           bar range → timed notes for VoicingPlayer
  *
  * Nothing musical lives here: the norm → steps → ids mapping is the
  * follower's, the engraving is the staff's. This file owns the DOM, the
@@ -63,7 +66,23 @@
  * note attacks in either mode (player-trouble createPracticeClock: a gap
  * over IDLE_GAP_MS adds nothing).
  *
- * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, setNoStress, trouble, practice, staff, keyboard, …).
+ * Listen (2a; state.listen, TEMPO_KEY): "▶ Listen" / Space plays the loop
+ * range, or the current bar, once, both hands, at state.tempoPct of the
+ * piece's tempo (player-listen listenSchedule on the shared VoicingPlayer).
+ * While it plays, judge() does nothing (MIDI and clicks still sound per the
+ * usual rules, nothing is judged, counted, recorded or clocked), the
+ * follower's paint is cleared and each note lights 'playing' (gold) on the
+ * staff and the keyboard as it sounds — its ids looked up at sound time in
+ * the drawn line's hits (hitIndex), so tied pieces on a later line light
+ * too. A range that spans lines turns the page on Tone.Transport, a little
+ * before each line's first bar (listenTurnTo: staff.render without the
+ * slide, the follower untouched), and sounding notes are re-lit after the
+ * render. Stop, the end of the range, a play() that does not start, and any
+ * navigation or state change (every handler calls stopListen() first) run
+ * finishListen(): the original line is re-drawn when the page was turned
+ * and paintStates() restores the follower exactly as it was.
+ *
+ * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, setNoStress, listen, stopListen, tempo, trouble, practice, staff, keyboard, …).
  */
 
 import { PlayerStaff } from './player-staff.js';
@@ -72,19 +91,24 @@ import { createPassRecorder, createPassHistory, createPracticeClock, scorePass, 
 import { lineRanges, lineIndexFor } from './player-staff-model.js';
 import { createShellInput } from '../games/cycle-of-shells-input.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
-import { loadSampler } from '../shared/voicing-player.js';
+import { loadSampler, VoicingPlayer } from '../shared/voicing-player.js';
+import { listenSchedule, pieceBpm, tempoLabel, DEFAULT_BPM } from './player-listen.js';
 
 const DEVICE_KEY = 'songlab_player_midi_device';   // createShellInput has a fixed key; mapped through its injectable storage
 const SOUND_KEY = 'songlab_player_midi_sound';     // "Sound for MIDI notes" checkbox; off by default
 const LOOP_EXIT_KEY = 'songlab_player_loop_exit';  // "Move on after N clean passes" select (0 = off); default 3
 const LOOP_EXIT_DEFAULT = 3;
 const NO_STRESS_KEY = 'songlab_player_no_stress';  // "No stress" checkbox (forgiving follower); off by default
+const TEMPO_KEY = 'songlab_player_tempo_pct';       // Listen tempo slider, percent of the piece's tempo (25–110, step 5); default 100
+const TEMPO_DEFAULT = 100;
+const TEMPO_MIN = 25, TEMPO_MAX = 110, TEMPO_STEP = 5;
+const TURN_LEAD = 0.15;                              // seconds before a line's first bar that Listen turns the page (VoicingPlayer plays 80 ms after the schedule time, so the sound follows the turn by ~230 ms)
 const ECHO_VELOCITY = 0.7;                           // as cycle-of-shells.js
 const CLICK_SECONDS = 0.6;                           // on-screen key: attack + release
 const WRONG_FLASH_MS = 500;
 const CORRECT_FLASH_MS = 400;                        // minimum green on a key (clicks release at once)
 const KEY_MARGIN = 3;                                // keys past the piece's lowest / highest
-const KEY_STATES = ['expected', 'correct', 'wrong', 'held'];
+const KEY_STATES = ['expected', 'correct', 'wrong', 'held', 'playing'];
 const BLACK_PCS = new Set([1, 3, 6, 8, 10]);
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 /** ASCII spelling for Tone (parseNote gives ♯, which Tone's note parser does not read). */
@@ -101,6 +125,7 @@ const els = {
   prev: $('pl-prev'), next: $('pl-next'), barLabel: $('pl-bar-label'),
   status: $('pl-status'), restart: $('pl-restart'),
   loopBar: $('pl-loop-bar'), loopLine: $('pl-loop-line'), loopExit: $('pl-loop-exit'), noStressHint: $('pl-no-stress-hint'),
+  listen: $('pl-listen'), tempo: $('pl-tempo'), tempoReadout: $('pl-tempo-readout'),
   trouble: $('pl-trouble'),
   staffHost: $('pl-staff'),
   keyboardHost: $('pl-keyboard'),
@@ -119,6 +144,8 @@ const state = {
   pendingBar: null,       // tap-to-select: the first tapped bar, waiting for the second
   trouble: null,          // the last scored pass: { pass, score, number, suggested } (console / debug)
   practice: null,         // { playedMs } active time in either mode (set below; practice-log hook)
+  tempoPct: TEMPO_DEFAULT,   // Listen tempo, percent of the piece's tempo (TEMPO_KEY)
+  listen: { active: false, token: 0, range: null, schedule: null, sounding: new Set() },   // Listen under way; see the header
   held: new Set(),        // midis down on the MIDI device (de-duplicated by the input)
   echoing: new Set(),     // midis sounding on the sampler for MIDI echo
   audioStarted: false,
@@ -323,7 +350,7 @@ function updateStatus() {
 /** A note attack from the MIDI device or an on-screen key. */
 function judge(midi) {
   const f = state.follower;
-  if (!f) return;
+  if (!f || state.listen.active) return;   // Listen: the note sounds (echo / click) but is not judged, counted, recorded or clocked
   practiceClock.note();   // time spent counts the same in both modes
   const r = f.noteOn(midi);
   if (r.result === 'wrong') {
@@ -430,6 +457,7 @@ els.hands.addEventListener('change', e => {
   state.hands = e.target.value === 'lh' || e.target.value === 'rh' ? e.target.value : 'both';
   e.target.blur();   // so ← / → / R go back to the page, not the radio group
   if (!state.norm) return;
+  stopListen();
   rebuildFollower(state.bar);
   if (state.loop) {   // re-apply on the new follower with this hand's own pass count (loopCounts); off when the range has nothing for this hand
     const { from, to } = state.loop;
@@ -450,6 +478,7 @@ els.hands.addEventListener('change', e => {
 function setNoStress(on) {
   const want = !!on;
   if (want === state.noStress) { els.noStress.checked = want; return state.noStress; }
+  stopListen();
   state.noStress = want;
   els.noStress.checked = want;
   try { localStorage.setItem(NO_STRESS_KEY, want ? '1' : '0'); } catch (_) { /* storage unavailable */ }
@@ -490,9 +519,10 @@ function updateBarNav() {
  * bar. With `keep` the follower stays where it is (auto-paging after a
  * step completes, restart, a hands change); otherwise it jumps to `bar`'s
  * first step and the pressed notes are cleared (Prev / Next, arrows).
- * A re-render of the drawn line (same range) has no transition.
+ * A re-render of the drawn line (same range) has no transition; `animate:
+ * false` skips it for a line change too (the restore after Listen).
  */
-async function showLine(index, { bar, keep = false } = {}) {
+async function showLine(index, { bar, keep = false, animate = true } = {}) {
   if (!state.norm) return;
   const range = state.lines[index];
   if (!range) return;
@@ -501,7 +531,7 @@ async function showLine(index, { bar, keep = false } = {}) {
   if (!keep) { if (state.follower) state.follower.jumpTo(want); clearKeys(['expected', 'correct', 'wrong']); syncPass(); }
   state.bar = activeBar(range, want);
   updateBarNav();
-  const result = await staff.render(state.norm, range.from, { to: range.to });
+  const result = await staff.render(state.norm, range.from, { to: range.to, animate });
   if (!result) return;   // superseded by a later render, or failed (the staff shows why)
   const warnings = [...state.lineWarnings, ...result.warnings.map(w => `line ${index + 1}: ${w}`)];
   banner(warnings.join('; '));
@@ -513,6 +543,7 @@ async function showLine(index, { bar, keep = false } = {}) {
 function stepLine(delta) {
   const j = state.line + delta;
   if (state.line < 0 || j < 0 || j >= state.lines.length) return;
+  stopListen();
   leaveLoopFor(state.lines[j].from);
   showLine(j);
 }
@@ -523,6 +554,7 @@ function stepBar(delta) {
   const i = bars.indexOf(state.bar);
   const j = i + delta;
   if (i < 0 || j < 0 || j >= bars.length) return;
+  stopListen();
   const bar = bars[j];
   leaveLoopFor(bar);
   goToBar(bar);
@@ -551,6 +583,7 @@ function restart() {
   if (!state.norm) return;
   const bars = barNumbers();
   if (!bars.length) return;
+  stopListen();
   state.wrong = 0;
   cancelPending();
   const f = state.follower;
@@ -612,6 +645,7 @@ function syncLoop() {
 function setLoop(from, to = from, { exitAfter, jump = true } = {}) {
   const f = state.follower;
   if (!f) return null;
+  stopListen();
   cancelPending();
   clearTrouble();   // a loop starting is the suggestion taken (or superseded)
   const r = f.setLoop(from, to, { exitAfter: exitAfter == null ? loopExitAfter() : exitAfter });
@@ -628,6 +662,7 @@ function setLoop(from, to = from, { exitAfter, jump = true } = {}) {
 }
 
 function clearLoop() {
+  stopListen();
   if (state.follower) state.follower.setLoop(null);
   syncLoop();
   syncPass();   // the range changed under the recording
@@ -636,6 +671,7 @@ function clearLoop() {
 /** Tap-to-select on the staff: the first tap marks a bar as pending; the second tap loops the range. */
 function onBarTap(bar) {
   if (!state.follower) return;
+  stopListen();
   if (state.pendingBar == null) {
     state.pendingBar = bar;
     staff.setBarTint('pending', [bar]);
@@ -685,8 +721,172 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft') { move(-1); e.preventDefault(); }
   else if (e.key === 'ArrowRight') { move(1); e.preventDefault(); }
   else if (e.key === 'r' || e.key === 'R') { restart(); e.preventDefault(); }
+  else if (e.key === ' ' || e.key === 'Spacebar') { if (state.listen.active) stopListen(); else listen(); e.preventDefault(); }   // preventDefault: a focused button must not click as well
   else if (e.key === 'Escape' && state.pendingBar != null) { cancelPending(); e.preventDefault(); }
 });
+
+// ════════════════════════════════════════════════════════════════════
+// LISTEN (player-listen.js schedule on the shared VoicingPlayer)
+// ════════════════════════════════════════════════════════════════════
+
+const listenPlayer = new VoicingPlayer();
+let hitIndex = new Map();        // `${bar}|${hand}|${midi}|${onset}` → [id] from staff.hits, rebuilt after every render while listening
+const playingKeys = new Map();   // midi → number of sounding notes (a pitch doubled in both hands keeps its key lit until the last ends)
+const hitKey = (bar, hand, midi, onset) => `${bar}|${hand}|${midi}|${Math.round(onset * 1000)}`;
+
+function indexHits() {
+  hitIndex = new Map();
+  for (const h of Object.values(staff.hits)) {
+    const k = hitKey(h.bar, h.hand, h.midi, h.onset);
+    if (!hitIndex.has(k)) hitIndex.set(k, []);
+    hitIndex.get(k).push(h.id);
+  }
+}
+/** The drawn ids of a schedule note: every piece of every span (attack + tie continuations) on the drawn line. */
+function noteIdsOf(note) {
+  const ids = [];
+  for (const sp of note.spans) for (const id of hitIndex.get(hitKey(sp.bar, note.hand, note.midi, sp.onset)) || []) ids.push(id);
+  return ids;
+}
+function lightNote(note, on) {
+  const L = state.listen;
+  if (on) L.sounding.add(note); else L.sounding.delete(note);
+  for (const id of noteIdsOf(note)) staff.setNoteState(id, on ? 'playing' : null);
+  const n = (playingKeys.get(note.midi) || 0) + (on ? 1 : -1);
+  if (n > 0) playingKeys.set(note.midi, n); else playingKeys.delete(note.midi);
+  setKey(note.midi, 'playing', n > 0);
+}
+/** After a page turn: the notes still sounding light on the new line (a tie's continuation pieces, a long note). */
+function relightSounding() {
+  for (const note of state.listen.sounding) for (const id of noteIdsOf(note)) staff.setNoteState(id, 'playing');
+}
+
+// ── Tempo slider (percent of the piece's tempo; remembered) ──────
+function clampPct(v) {
+  const n = Math.round(Number(v) / TEMPO_STEP) * TEMPO_STEP;
+  return Number.isFinite(n) ? Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, n)) : TEMPO_DEFAULT;
+}
+/** Set the slider percentage (clamped to 25–110, step 5) and its readout "60% · 49 bpm"; applies on the next Listen. */
+function setTempoPct(pct, { save = true } = {}) {
+  state.tempoPct = clampPct(pct);
+  els.tempo.value = String(state.tempoPct);
+  els.tempoReadout.textContent = state.norm ? tempoLabel(state.tempoPct, pieceBpm(state.norm).bpm) : `${state.tempoPct}%`;
+  if (save) { try { localStorage.setItem(TEMPO_KEY, String(state.tempoPct)); } catch (_) { /* storage unavailable */ } }
+  return state.tempoPct;
+}
+try { setTempoPct(localStorage.getItem(TEMPO_KEY) ?? TEMPO_DEFAULT, { save: false }); } catch (_) { setTempoPct(TEMPO_DEFAULT, { save: false }); }
+els.tempo.addEventListener('input', () => setTempoPct(els.tempo.value));
+els.tempo.addEventListener('change', () => els.tempo.blur());   // so Space / arrows go back to the page
+
+/** Button + readout follow the loaded piece (load / unload). */
+function syncListen() {
+  els.listen.disabled = !state.norm;
+  setTempoPct(state.tempoPct, { save: false });
+}
+
+/** The range Listen plays: the loop while looping, else the current bar. */
+function listenRange() {
+  if (state.loop) return { from: state.loop.from, to: state.loop.to };
+  return state.bar != null ? { from: state.bar, to: state.bar } : null;
+}
+
+/**
+ * Play the range once at the slider's tempo. Resolves true when playback
+ * started. A play() that does not start (muted, blocked, samples missing,
+ * superseded) restores the page like the end of playback would, with a
+ * banner for muted / blocked. stopListen() during the first (loading)
+ * await is honoured: the restore runs then, and the playback is stopped as
+ * soon as play() reports it started, with no page turns scheduled.
+ */
+async function listen() {
+  const L = state.listen;
+  if (!state.norm || L.active) return false;
+  const range = listenRange();
+  if (!range) return false;
+  startAudio();
+  const { bpm: base, assumed } = pieceBpm(state.norm);
+  const bpm = base * state.tempoPct / 100;
+  const schedule = listenSchedule(state.norm, { from: range.from, to: range.to, bpm });
+  if (!schedule.notes.length) { banner(`Nothing to play in ${barsText(range.from, range.to)}.`); return false; }
+  cancelPending();
+  const token = ++L.token;
+  L.active = true; L.range = range; L.schedule = schedule; L.sounding = new Set(); playingKeys.clear();
+  if (assumed) banner(`No tempo in this piece: playing at ${Math.round(bpm)} bpm (${state.tempoPct}% of an assumed ${DEFAULT_BPM}).`);
+  // The follower's paint goes; held keys stay. paintStates() brings it back in finishListen.
+  staff.clearStates(); staff.setDimmed([]); staff.setBarMarker(null); clearKeys(['expected', 'correct', 'wrong']);
+  indexHits();
+  els.listen.textContent = '■ Stop'; els.listen.setAttribute('aria-pressed', 'true');
+  const result = await listenPlayer.play(schedule, {
+    onNote: (note, phase) => { if (L.token === token) lightNote(note, phase === 'on'); },
+    onEnd: () => { if (L.token === token) finishListen(); },
+  });
+  if (!result.played) {
+    if (L.token === token) finishListen();
+    if (result.reason === 'muted') banner('Sound is muted (speaker icon in the header): unmute and press Listen again.');
+    else if (result.reason === 'blocked') banner('The browser blocked audio: click the page, then press Listen again.');
+    else if (result.reason === 'error') banner('Piano samples did not load; Listen is unavailable.', true);
+    return false;
+  }
+  if (L.token !== token || !L.active) { listenPlayer.stop(); return false; }   // stopped while play() was loading: it started anyway → stop now, no page turns
+  scheduleTurns(schedule, token);
+  return true;
+}
+
+/** Stop playback (no-op when nothing plays); the restore runs synchronously (VoicingPlayer.stop → onEnd), or here when play() is still loading. */
+function stopListen() {
+  const L = state.listen;
+  if (!L.active) return;
+  listenPlayer.stop();            // → onEnd → finishListen when playing
+  if (L.active) finishListen();   // still loading: nothing to stop yet; listen() stops it when play() resolves
+}
+
+/** Playback over or stopped: clear the gold, put the original line back if the page was turned, repaint the follower. */
+function finishListen() {
+  const L = state.listen;
+  if (!L.active) return;
+  L.active = false; L.token++;   // late callbacks of this playback are dropped
+  for (const note of [...L.sounding]) lightNote(note, false);
+  L.sounding.clear(); playingKeys.clear();
+  staff.clearStates(); clearKeys(['playing']);
+  els.listen.textContent = '▶ Listen'; els.listen.setAttribute('aria-pressed', 'false');
+  const want = state.lines[state.line];
+  if (want && staff.range && (staff.range.from !== want.from || staff.range.to !== want.to)) showLine(state.line, { bar: state.bar, keep: true, animate: false });
+  else paintStates();
+}
+
+/**
+ * Page turns for a range that spans lines: on the running Transport (play()
+ * started it from 0; its own cancel(0) at stop / end clears these), TURN_LEAD
+ * before the first bar of each new line, frame-aligned with Tone.Draw. A turn
+ * already due (the range starts on a line that is not drawn) happens now.
+ */
+function scheduleTurns(schedule, token) {
+  const Tone = window.Tone;
+  const L = state.listen;
+  let drawn = state.line;
+  for (const { bar, time } of schedule.bars) {
+    const line = lineOf(bar);
+    if (line < 0 || line === drawn) continue;
+    drawn = line;
+    const at = time - TURN_LEAD;
+    const turn = () => { if (L.active && L.token === token) listenTurnTo(line, token); };
+    if (!Tone || at <= Tone.Transport.seconds + 0.05) turn();
+    else Tone.Transport.scheduleOnce(t => Tone.Draw.schedule(turn, t), at);
+  }
+}
+
+/** Draw line `index` for Listen only: no slide, the follower and state.line / state.bar untouched; sounding notes re-lit once drawn. */
+async function listenTurnTo(index, token) {
+  const L = state.listen;
+  const range = state.lines[index];
+  if (!range || !L.active) return;
+  const result = await staff.render(state.norm, range.from, { to: range.to, animate: false });
+  if (!result || !L.active || L.token !== token) return;
+  indexHits();
+  relightSounding();
+}
+
+els.listen.addEventListener('click', () => { els.listen.blur(); if (state.listen.active) stopListen(); else listen(); });
 
 // ════════════════════════════════════════════════════════════════════
 // TROUBLE SPOTS
@@ -786,13 +986,15 @@ function showHeader(name, norm) {
 }
 
 function unload() {
+  stopListen();
   state.norm = null; state.bar = null; state.steps = []; state.follower = null; state.wrong = 0;
   state.lines = []; state.lineWarnings = []; state.line = -1;
   cancelPending(); clearTrouble(); recorder.cancel();
-  updateBarNav(); staff.clear(); clearKeys(); syncLoop();
+  updateBarNav(); staff.clear(); clearKeys(); syncLoop(); syncListen();
 }
 
 async function load(name) {
+  stopListen();
   banner('');
   els.title.textContent = '…';
   els.meta.textContent = '';
@@ -819,6 +1021,7 @@ async function load(name) {
       passHistory.reset();    // pass counts start over with the piece (a restart keeps them: it begins the next pass)
       rebuildFollower(null);  // a new follower: no loop
       syncLoop();
+      syncListen();
       syncPass();             // the first pass of the piece begins at step 0
       practiceEvent('load', { piece: name });
       const cur = state.follower.current();
@@ -890,6 +1093,7 @@ setupMidi();   // not awaited: the piece loads while the browser asks for MIDI a
 window.__player = {
   state, load, pieces: () => state.pieces, staff, showLine, stepLine, stepBar, restart,
   setLoop, clearLoop, setNoStress,
+  listen, stopListen, get tempo() { return state.tempoPct; }, set tempo(v) { setTempoPct(v); }, listenPlayer,
   get trouble() { return state.trouble; }, get practice() { return state.practice; }, loopCounts, passHistory, get recorder() { return recorder; }, thresholds: THRESHOLDS,
   get keyboard() { return keyboard; }, get input() { return input; }, get follower() { return state.follower; }, get steps() { return state.steps; },
   noteOn: onMidiNoteOn, noteOff: onMidiNoteOff,

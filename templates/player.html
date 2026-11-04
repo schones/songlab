@@ -18,6 +18,7 @@
     --accent-coral:   #B9341F;
     --pl-loop:        #B07A0A;   /* loop tint / pressed toggles (amber, distinct from the blue bar marker) */
     --pl-trouble:     #B9341F;   /* trouble-spot tint / "Loop these" (coral, as wrong notes) */
+    --pl-playing:     #D4A03C;   /* a note sounding under Listen (gold; staff pl-note--playing and keyboard pl-key--playing) */
     max-width: none;
     background: var(--pl-bg);
     color: var(--text-primary);
@@ -76,13 +77,14 @@
   .pl-keyboard-host > .vk-wrap { align-self: stretch; }
 
   /* Keyboard states (player's own; vk-key--hit's white ring is invisible on white keys).
-     Later rules win: held < expected < correct < wrong. */
+     Later rules win: held < playing < expected < correct < wrong. */
   .pl-page .vk-key.pl-key--held     { background: #B9B4A8; }
   .pl-page .vk-key--black.pl-key--held { background: #5C5751; }
+  .pl-page .vk-key.pl-key--playing  { background: var(--pl-playing); box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25); }
   .pl-page .vk-key.pl-key--expected { background: var(--accent-blue);  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25); }
   .pl-page .vk-key.pl-key--correct  { background: var(--accent-green); box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25); }
   .pl-page .vk-key.pl-key--wrong    { background: var(--accent-coral); box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25); }
-  .pl-page .vk-key.pl-key--expected .vk-key__label, .pl-page .vk-key.pl-key--correct .vk-key__label, .pl-page .vk-key.pl-key--wrong .vk-key__label { opacity: 1; color: #fff; }
+  .pl-page .vk-key.pl-key--playing .vk-key__label, .pl-page .vk-key.pl-key--expected .vk-key__label, .pl-page .vk-key.pl-key--correct .vk-key__label, .pl-page .vk-key.pl-key--wrong .vk-key__label { opacity: 1; color: #fff; }
 
   /* Bar navigation: Prev / Next, "Bar N / M", status line, Restart (at the end) */
   .pl-barnav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.5rem; }
@@ -113,6 +115,22 @@
   .pl-loopnav button[aria-pressed="true"]:hover { color: #FFFFFF; }
   .pl-loopnav select { padding: 6px 10px; font: inherit; font-size: 1rem; border-radius: 8px; border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary); }
   .pl-loopnav__hint { font-size: 0.85rem; color: var(--text-muted); }
+
+  /* Listen row (2a): ▶ Listen / ■ Stop + the tempo slider; 2b adds the metronome toggle, volume and count-in here */
+  .pl-listen { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.5rem; }
+  .pl-listen__label { font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .pl-listen button {
+    font: inherit; font-size: 1rem; font-weight: 700; padding: 6px 14px; border-radius: 8px; cursor: pointer; min-width: 7em;
+    border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary);
+  }
+  .pl-listen button:hover:not(:disabled) { border-color: var(--pl-playing); color: #8A6410; }
+  .pl-listen button:disabled { opacity: 0.4; cursor: default; }
+  .pl-listen button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+  .pl-listen button[aria-pressed="true"] { background: var(--pl-playing); border-color: var(--pl-playing); color: #141210; }
+  .pl-listen__tempo { display: inline-flex; align-items: center; gap: 0.5rem; }
+  .pl-listen input[type="range"] { width: 12em; accent-color: var(--pl-playing); }
+  .pl-listen__readout { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 7.5em; color: var(--text-secondary); }
+  .pl-listen__hint { font-size: 0.85rem; color: var(--text-muted); }
 
   /* Trouble spots after a pass: "Trouble spots: bars 6–7 (4 misses) [Loop these]" or "Clean pass!" */
   .pl-trouble { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; margin: 0 0 0.5rem; font-size: 1rem; color: var(--text-secondary); }
@@ -207,6 +225,17 @@
         </select>
         <span class="pl-loopnav__hint" id="pl-no-stress-hint" hidden>No stress: loops run until turned off</span>
         <span class="pl-loopnav__hint" id="pl-loop-hint">Or tap a bar on the staff, then the last bar of the range (Esc cancels)</span>
+      </div>
+      <!-- Listen (player-listen.js + shared VoicingPlayer): the loop range, or the current bar, both hands, at a percentage of the piece's tempo. Space toggles. -->
+      <div class="pl-listen">
+        <span class="pl-listen__label">Listen</span>
+        <button type="button" id="pl-listen" aria-pressed="false" disabled>&#9654; Listen</button>
+        <span class="pl-listen__tempo">
+          <label class="pl-listen__hint" for="pl-tempo">Tempo</label>
+          <input type="range" id="pl-tempo" min="25" max="110" step="5" value="100" aria-label="Tempo, percent of the piece's tempo">
+          <span class="pl-listen__readout" id="pl-tempo-readout">100%</span>
+        </span>
+        <span class="pl-listen__hint">Space plays the loop, or the current bar</span>
       </div>
       <!-- Trouble spots (player-trouble.js): filled by player.js at the end of a pass; "Loop these" starts a loop on that range -->
       <div class="pl-trouble" id="pl-trouble" hidden role="status" aria-live="polite"></div>
