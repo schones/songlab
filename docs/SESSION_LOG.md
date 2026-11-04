@@ -3,15 +3,45 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
-## 2026-11-03 (later) — follow-along player 2a: Listen + tempo slider
+## 2026-11-03 (later) — follow-along player 2a: Listen + tempo slider; 2a.1 fixes
 
 Guided-practice track, on `dev` after 1b / 1c the same day. Roadmap
 chunk "Player: Listen + metronome on one shared tempo slider", Listen
 half only; the metronome and count-in are 2b. Built read → report →
-go-ahead → build, with the Node self-test first; not yet checked in
-Chrome (steps under "Setup for next session").
+go-ahead → build, with the Node self-test first; 2a committed as
+`ef1eac4`, checked in Chrome by Dustin (page turns, interruptions,
+judging gate, Space, tempo persistence all passed), then 2a.1 from that
+check's findings (working tree).
 
 ### Landed
+- **2a.1 (after the Chrome check)**, `player.js`, `player-staff.js`,
+  `player.html`; `voicing-player.js` still unchanged:
+  1. Echo on its own sampler: `loadEchoSampler()` builds a second
+     `Tone.Sampler` from the exported `SALAMANDER_URLS` /
+     `SALAMANDER_BASE` (−6 dB Volume → destination, as the shared one);
+     `ensureSampler()` uses it for the MIDI echo and clicks, `startAudio`
+     preloads both it and Listen's. A MIDI release no longer cuts a
+     Listen note of the same pitch; Listen's `releaseAll()` no longer
+     silences a held echo.
+  2. Echo latency: `triggerAttack` / `triggerRelease` /
+     `triggerAttackRelease` for live notes take `Tone.immediate()`
+     instead of the default (now + `lookAhead` 0.1 s). `lookAhead`
+     itself is untouched: Listen's schedule and the page turns rely on
+     it.
+  3. Playing colour: purple `#6B4FBB` (`--pl-playing`, both CSS
+     fallbacks); the pressed Listen button is white on purple.
+  4. Range selection across lines: the capture `pointerdown` that cancels
+     a pending tap now spares Prev / Next (`keepsPending`); the arrows
+     never cancelled. The status line adds "(on line k)" while the
+     pending bar is off the drawn line; the dashed pending tint is kept
+     by the staff across renders already.
+  5. Tempo slider 25–200 % in 1 % steps (`TEMPO_MIN / MAX / STEP`); a
+     stored value is clamped by `clampPct`.
+  6. With no loop, Listen plays the drawn line (`state.lines[state.line]`),
+     not the current bar; the hint reads "Space plays the loop, or the
+     drawn line".
+  7. Muted: `listen()` returns before touching anything (no banner, page
+     unchanged); the banner stays for 'blocked' and 'error'.
 - **`static/player/player-listen.js`** (new, pure, 19/19):
   `listenSchedule(norm, { from, to, bpm })` → `{ notes, duration, bars,
   from, to, bpm, secPerQuarter, barQuarters }` in VoicingPlayer's shape
@@ -96,9 +126,18 @@ Chrome (steps under "Setup for next session").
   Decided with Dustin after the report flagged the silence a loop from
   bar 11 would otherwise have.
 - **Shared sampler.** `VoicingPlayer.stop()` / end call `releaseAll()`
-  on the same Tone.Sampler the MIDI echo uses, so a MIDI note still held
-  when Listen ends goes silent then; `state.echoing` stays consistent.
-  Accepted for 2a rather than touch `voicing-player.js`.
+  on the same Tone.Sampler the MIDI echo used, and the echo's
+  `triggerRelease` stopped every active source of that pitch, Listen's
+  included. Accepted for 2a; fixed in 2a.1 with a second sampler instead
+  of touching `voicing-player.js`.
+- **No MIDI-stop bug.** The Chrome check first looked like a MIDI note
+  stopped Listen; a read-only trace found no path from `noteOn` to the
+  restore, and Dustin confirmed: with no loop, Listen played one bar and
+  simply ended while he was playing. Hence 2a.1's "the drawn line"
+  default.
+- **Echo latency** was the `lookAhead`: every un-timed `triggerAttack`
+  lands 100 ms after the gesture. `Tone.immediate()` for live notes
+  only.
 - **2b must not use Tone.Transport**: `play()` and `stop()` stop and
   cancel it. The metronome gets its own clock.
 
@@ -109,8 +148,11 @@ Chrome (steps under "Setup for next session").
 - Self-tests: `player-listen.js` 19/19, `player-follow.js` 89/89,
   `player-trouble.js` 30/30, `player-staff-model.js` 77/77,
   `meter-rules.js` 125/125.
-- **Chrome check owed for 2a** (Flask in the tmux session, port 5001,
-  Carol loaded, console open):
+- 2a checked in Chrome. **Chrome check owed for 2a.1**: hold a MIDI note
+  while Listen plays the same pitch (neither cuts the other); hold a note
+  through Stop (it keeps sounding); echo latency at the piano; purple on
+  white keys with readable labels; tap bar 3, Next, tap bar 6 → loop 3–6.
+- The original 2a steps, for reference:
   1. Repeat line on line 1 (bars 1–4), slider to 60 % (readout "60% ·
      49 bpm"), press ▶ Listen: the button reads ■ Stop, blue / green
      paint and the bar marker go, both hands light gold on the staff
@@ -145,11 +187,13 @@ Chrome (steps under "Setup for next session").
   to look.
 - The Listen row's hint duplicates what the keydown filter implies; drop
   it when 2b fills the row.
+- The second sampler decodes the Salamander mp3s twice (~2 MB each
+  way); fine on the mini, worth remembering if a third consumer appears.
 
 ### Out of scope / deferred
-- Metronome, count-in, volume (2b). Listen for the selected hand only
-  (decided: both hands always). Playing a range larger than the loop or
-  the bar (whole line / piece) — one more button when wanted.
+- Metronome, count-in, volume and a mute control in the controls row
+  (next prompt). Listen for the selected hand only (decided: both hands
+  always). Playing the whole piece — one more button when wanted.
 
 ## 2026-11-03 — follow-along player loop chunk 1b + 1c: trouble spots, per-hand loop counts, "No stress" mode
 

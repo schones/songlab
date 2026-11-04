@@ -10,8 +10,8 @@
  *                          player-follow.js           step list + wait-for-me matcher
  *   createShellInput       games/cycle-of-shells-input.js   MIDI device + de-duplicated notes
  *   VoicingKeyboard        shared/voicing-keyboard.js on-screen keys (clickable)
- *   loadSampler / VoicingPlayer
- *                          shared/voicing-player.js   shared Salamander piano; schedule playback (Listen)
+ *   VoicingPlayer / loadTone / SALAMANDER_*
+ *                          shared/voicing-player.js   schedule playback (Listen); the echo's own sampler is built here from the same samples
  *   listenSchedule / pieceBpm / tempoLabel
  *                          player-listen.js           bar range → timed notes for VoicingPlayer
  *
@@ -66,9 +66,17 @@
  * note attacks in either mode (player-trouble createPracticeClock: a gap
  * over IDLE_GAP_MS adds nothing).
  *
- * Listen (2a; state.listen, TEMPO_KEY): "▶ Listen" / Space plays the loop
- * range, or the current bar, once, both hands, at state.tempoPct of the
+ * Sound: MIDI echo and on-screen clicks play on the page's own Tone.Sampler
+ * (loadEchoSampler: the Salamander samples of voicing-player.js, a second
+ * instance) at Tone.immediate(), so live notes neither wait for the
+ * context's lookAhead nor share sources with Listen's sampler (a release
+ * would cut a Listen note of the same pitch; Listen's releaseAll would
+ * silence a held echo).
+ *
+ * Listen (2a, 2a.1; state.listen, TEMPO_KEY): "▶ Listen" / Space plays the
+ * loop range, or the drawn line, once, both hands, at state.tempoPct of the
  * piece's tempo (player-listen listenSchedule on the shared VoicingPlayer).
+ * Muted (AudioToggle): Listen does not start and nothing changes.
  * While it plays, judge() does nothing (MIDI and clicks still sound per the
  * usual rules, nothing is judged, counted, recorded or clocked), the
  * follower's paint is cleared and each note lights 'playing' (gold) on the
@@ -91,7 +99,7 @@ import { createPassRecorder, createPassHistory, createPracticeClock, scorePass, 
 import { lineRanges, lineIndexFor } from './player-staff-model.js';
 import { createShellInput } from '../games/cycle-of-shells-input.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
-import { loadSampler, VoicingPlayer } from '../shared/voicing-player.js';
+import { loadTone, loadSampler, VoicingPlayer, SALAMANDER_URLS, SALAMANDER_BASE } from '../shared/voicing-player.js';
 import { listenSchedule, pieceBpm, tempoLabel, DEFAULT_BPM } from './player-listen.js';
 
 const DEVICE_KEY = 'songlab_player_midi_device';   // createShellInput has a fixed key; mapped through its injectable storage
@@ -101,7 +109,7 @@ const LOOP_EXIT_DEFAULT = 3;
 const NO_STRESS_KEY = 'songlab_player_no_stress';  // "No stress" checkbox (forgiving follower); off by default
 const TEMPO_KEY = 'songlab_player_tempo_pct';       // Listen tempo slider, percent of the piece's tempo (25–110, step 5); default 100
 const TEMPO_DEFAULT = 100;
-const TEMPO_MIN = 25, TEMPO_MAX = 110, TEMPO_STEP = 5;
+const TEMPO_MIN = 25, TEMPO_MAX = 200, TEMPO_STEP = 1;
 const TURN_LEAD = 0.15;                              // seconds before a line's first bar that Listen turns the page (VoicingPlayer plays 80 ms after the schedule time, so the sound follows the turn by ~230 ms)
 const ECHO_VELOCITY = 0.7;                           // as cycle-of-shells.js
 const CLICK_SECONDS = 0.6;                           // on-screen key: attack + release
@@ -177,18 +185,36 @@ const keyTimers = new Map();   // `${midi}:${state}` → timeout id
 const muted = () => !!(window.AudioToggle && window.AudioToggle.isMuted());
 const midiSound = () => !!(els.sound && els.sound.checked);
 
+let _echoSampler = null;
+/** The page's own piano for live notes (echo, clicks): the vendored Salamander samples (cached after VoicingPlayer's load, or vice versa) on a second Tone.Sampler. Shared promise, reset on failure. */
+function loadEchoSampler() {
+  if (!_echoSampler) {
+    _echoSampler = loadTone().then(Tone => new Promise((resolve, reject) => {
+      const volume = new Tone.Volume(-6).toDestination();
+      const s = new Tone.Sampler({
+        urls: SALAMANDER_URLS, baseUrl: SALAMANDER_BASE, release: 1,
+        onload: () => resolve(s),
+        onerror: err => reject(err instanceof Error ? err : new Error('Salamander samples failed to load')),
+      }).connect(volume);
+    })).catch(err => { _echoSampler = null; throw err; });
+  }
+  return _echoSampler;
+}
 async function ensureSampler() {
   if (sampler) return sampler;
-  try { sampler = await loadSampler(); } catch (err) { console.warn('[player] piano unavailable:', err); sampler = null; }
+  try { sampler = await loadEchoSampler(); } catch (err) { console.warn('[player] piano unavailable:', err); sampler = null; }
   return sampler;
 }
+/** Live notes sound now, not lookAhead (100 ms) later; scheduled playback (Listen) keeps its lead. */
+const immediate = () => (window.Tone ? window.Tone.immediate() : undefined);
 
 /** Tone.start() must run inside a user gesture: the first click or key press on the page. */
 async function startAudio() {
   if (state.audioStarted) return;
   state.audioStarted = true;
   try { if (window.Tone) await window.Tone.start(); } catch (err) { console.warn('[player] Tone.start failed:', err); }
-  ensureSampler();   // preload; not awaited
+  ensureSampler();                   // preload the echo piano; not awaited
+  loadSampler().catch(() => {});     // and Listen's (VoicingPlayer loads it on play; the samples are shared by the browser cache)
 }
 document.addEventListener('pointerdown', startAudio, { capture: true });
 document.addEventListener('keydown', startAudio, { capture: true });
@@ -197,20 +223,20 @@ document.addEventListener('keydown', startAudio, { capture: true });
 function echoOn(midi) {
   if (!state.audioStarted || muted() || !midiSound()) return;
   ensureSampler().then(s => {
-    if (s && state.held.has(midi) && !state.echoing.has(midi)) { state.echoing.add(midi); s.triggerAttack(noteName(midi), undefined, ECHO_VELOCITY); }
+    if (s && state.held.has(midi) && !state.echoing.has(midi)) { state.echoing.add(midi); s.triggerAttack(noteName(midi), immediate(), ECHO_VELOCITY); }
   });
 }
 function echoOff(midi) {
   if (!state.echoing.has(midi)) return;
   state.echoing.delete(midi);
-  if (sampler) sampler.triggerRelease(noteName(midi));
+  if (sampler) sampler.triggerRelease(noteName(midi), immediate());
 }
 function echoAllOff() { for (const m of [...state.echoing]) echoOff(m); }
 
 /** On-screen keys always sound (unless the page is muted). */
 function clickSound(midi) {
   if (muted()) return;
-  ensureSampler().then(s => { if (s) s.triggerAttackRelease(noteName(midi), CLICK_SECONDS, undefined, ECHO_VELOCITY); });
+  ensureSampler().then(s => { if (s) s.triggerAttackRelease(noteName(midi), CLICK_SECONDS, immediate(), ECHO_VELOCITY); });
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -326,7 +352,9 @@ function updateStatus() {
   const f = state.follower;
   if (!state.norm || !f) { els.status.textContent = ''; els.restart.hidden = true; return; }
   if (state.pendingBar != null) {
-    els.status.textContent = `Bar ${state.pendingBar} tapped · tap the last bar of the range (or bar ${state.pendingBar} again) · Esc cancels`;
+    const pl = lineOf(state.pendingBar);
+    const where = pl >= 0 && pl !== state.line ? ` (on line ${pl + 1})` : '';
+    els.status.textContent = `Bar ${state.pendingBar} tapped${where} · tap the last bar of the range (or bar ${state.pendingBar} again) · Esc cancels`;
     els.restart.hidden = true;
     return;
   }
@@ -689,8 +717,10 @@ function cancelPending() {
   updateStatus();
 }
 staff.onBarTap = onBarTap;
+/** A pending tap survives paging (Prev / Next here; the arrow keys never cancel), so a range can span lines; any other click cancels it. */
+const keepsPending = t => t instanceof Node && (els.staffHost.contains(t) || els.prev.contains(t) || els.next.contains(t));
 document.addEventListener('pointerdown', e => {
-  if (state.pendingBar != null && !(e.target instanceof Node && els.staffHost.contains(e.target))) cancelPending();
+  if (state.pendingBar != null && !keepsPending(e.target)) cancelPending();
 }, { capture: true });
 
 els.loopBar.addEventListener('click', () => {
@@ -784,23 +814,24 @@ function syncListen() {
   setTempoPct(state.tempoPct, { save: false });
 }
 
-/** The range Listen plays: the loop while looping, else the current bar. */
+/** The range Listen plays: the loop while looping, else the drawn line. */
 function listenRange() {
   if (state.loop) return { from: state.loop.from, to: state.loop.to };
-  return state.bar != null ? { from: state.bar, to: state.bar } : null;
+  const line = state.lines[state.line];
+  return line ? { from: line.from, to: line.to } : null;
 }
 
 /**
  * Play the range once at the slider's tempo. Resolves true when playback
- * started. A play() that does not start (muted, blocked, samples missing,
- * superseded) restores the page like the end of playback would, with a
- * banner for muted / blocked. stopListen() during the first (loading)
+ * started. Muted: nothing happens at all. A play() that does not start
+ * (blocked, samples missing, superseded) restores the page like the end of
+ * playback would, with a banner for blocked / error. stopListen() during the first (loading)
  * await is honoured: the restore runs then, and the playback is stopped as
  * soon as play() reports it started, with no page turns scheduled.
  */
 async function listen() {
   const L = state.listen;
-  if (!state.norm || L.active) return false;
+  if (!state.norm || L.active || muted()) return false;
   const range = listenRange();
   if (!range) return false;
   startAudio();
@@ -822,8 +853,7 @@ async function listen() {
   });
   if (!result.played) {
     if (L.token === token) finishListen();
-    if (result.reason === 'muted') banner('Sound is muted (speaker icon in the header): unmute and press Listen again.');
-    else if (result.reason === 'blocked') banner('The browser blocked audio: click the page, then press Listen again.');
+    if (result.reason === 'blocked') banner('The browser blocked audio: click the page, then press Listen again.');
     else if (result.reason === 'error') banner('Piano samples did not load; Listen is unavailable.', true);
     return false;
   }

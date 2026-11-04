@@ -88,11 +88,11 @@ chunk — 1a loops (Repeat bar / line, tap-to-select, move on after N clean
 passes), 1b trouble spots ("Loop these" from the second pass) with
 per-hand loop counts, 1c "No stress" mode (forgiving follower: wrong
 notes never block, aren't shown or counted), and 2a Listen (▶ Listen /
-Space plays the loop or the current bar, both hands, at a tempo slider's
-percentage of the piece's tempo; notes light gold as they sound, the
-staff pages with the playback, the follower is untouched). Next: 2b
-metronome + count-in on the same tempo slider. Detail below under
-"What's Working".
+Space plays the loop or the drawn line, both hands, at a tempo slider's
+percentage of the piece's tempo; notes light purple as they sound, the
+staff pages with the playback, the follower is untouched; checked in
+Chrome, 2a.1 fixes from that check landed). Next: 2b metronome + count-in
+on the same tempo slider. Detail below under "What's Working".
 
 ### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
 Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
@@ -137,7 +137,7 @@ torus math in two (audit §3).
 Full version: [Claude doc](https://claude.ai/artifact/DHHd1R3qux19CPWyX7fPaA) · [Google Doc](https://docs.google.com/document/d/1hSHjvxwwdnaob214H_i3YD881rywSCIJAUuO6V8uUo0/edit).
 - **Thread A — kids' practice track (active until 2026-12-14 freeze):**
   player loop (1a loops, 1b trouble spots + per-hand counts, 1c No
-  stress) and 2a Listen + tempo slider — all done 2026-11-03 → 2b
+  stress) and 2a Listen + tempo slider (+ 2a.1 fixes) — all done 2026-11-03 → 2b
   metronome + count-in → RD-2000 recording
   session (Carol lines 3–4, Run Rudolph Run, Feel Good Inc., Linus and
   Lucy) → learner picker → practice log (JSON on the mini, written by
@@ -166,7 +166,10 @@ wait-for-me mode with the staff, keyboard and follower pieces under
 loop chunk landed 2026-11-03 (1a loops, 1b trouble spots + per-hand loop
 counts, 1c "No stress" mode; 1b and 1c need an RD-2000 check and the
 trouble thresholds tuning from the `console.table` rows), then 2a Listen
-+ tempo slider the same day (needs its Chrome check). Next, in order:
++ tempo slider the same day, checked in Chrome, with the 2a.1 fixes from
+that check (echo on its own sampler at Tone.immediate(), purple playing
+colour, pending tap kept across paging, slider 25–200 %, Listen plays the
+drawn line). Next, in order:
 2b metronome + count-in; then the RD-2000 recording session, warm-up screen and
 practice logging (`createResultLog` with key `songlab_results_player`,
 hanging off `practiceEvent` in `player.js`). Current state block below.
@@ -966,34 +969,46 @@ from console snippets only):**
   the range start sounds as a fresh attack (Listen only; the follower
   still makes no step for it), rests and graces skipped, notes cut at
   the range end; bar length from `meterLevels`. `pieceBpm` (norm.tempo,
-  else 90 with a banner), `tempoLabel` ("60% · 49 bpm"). Page: "▶
+  else 90 with a banner), `tempoLabel` ("65% · 53 bpm"). Page: "▶
   Listen" / "■ Stop" + Space (not in inputs), a Listen row under the Loop
-  row with the tempo slider 25–110 % step 5 (`songlab_player_tempo_pct`,
-  default 100; a change applies on the next Listen); plays the loop range
-  or the current bar once on the shared `VoicingPlayer` (voicing-player.js
-  unchanged). While playing: `judge()` returns at once (MIDI / clicks
-  sound per the usual rules, nothing judged, counted, recorded or
-  clocked), the follower's paint is cleared and notes light `playing`
-  (gold `#D4A03C`: `pl-note--playing` on the staff, `pl-key--playing` on
-  the keyboard) from a per-render index of `staff.hits`; a range across
+  row with the tempo slider 25–200 % step 1 (`songlab_player_tempo_pct`,
+  default 100, a stored value clamped; a change applies on the next
+  Listen); plays the loop range or the drawn line once on the shared
+  `VoicingPlayer` (voicing-player.js unchanged). While playing: `judge()`
+  returns at once (MIDI / clicks sound per the usual rules, nothing
+  judged, counted, recorded or clocked), the follower's paint is cleared
+  and notes light `playing` (purple `#6B4FBB`: `pl-note--playing` on the
+  staff, `pl-key--playing` on the keyboard) from a per-render index of
+  `staff.hits`; a range across
   lines turns the page on `Tone.Transport.scheduleOnce` 150 ms before
   each line's first bar (`PlayerStaff.render(..., { animate: false })`,
   new option; state.line / state.bar and the follower untouched; sounding
-  notes re-lit after the render). Stop, the end, a `play()` that does not
-  start (muted / blocked banners) and every navigation or state change
+  notes re-lit after the render). Muted (AudioToggle): Listen does not
+  start and nothing changes. Stop, the end, a `play()` that does not
+  start (banner for blocked / error) and every navigation or state change
   (`stopListen()` first in stepLine / stepBar / restart / setLoop /
   clearLoop / onBarTap / hands / No stress / load) restore the original
   line (no slide) and `paintStates()`. A stop during the first, loading
-  `play()` is honoured (stopped as soon as it starts, no page turns). The
-  shared sampler's `releaseAll()` at the end also releases a MIDI echo
-  note still held (accepted for 2a). Debug: `__player.listen()`,
-  `stopListen()`, `tempo`, `listenPlayer`.
+  `play()` is honoured (stopped as soon as it starts, no page turns).
+  Debug: `__player.listen()`, `stopListen()`, `tempo`, `listenPlayer`.
+  Checked in Chrome 2026-11-03 (page turns, interruptions, judging gate,
+  Space, tempo persistence).
+- 2a.1 (from the Chrome check): the MIDI echo and on-screen clicks play
+  on the page's own second `Tone.Sampler` (`loadEchoSampler` in
+  `player.js`, the same `SALAMANDER_URLS` / `SALAMANDER_BASE` exported by
+  voicing-player.js, browser-cached) at `Tone.immediate()`, so live notes
+  no longer sound `lookAhead` (100 ms) late, a MIDI release no longer cuts
+  a Listen note of the same pitch and Listen's `releaseAll()` no longer
+  silences a held echo (Listen's own sampler keeps its scheduled lead).
+  A pending tap (first bar of a range) survives Prev / Next and the arrow
+  keys so a range can span lines (status says "(on line k)" while the bar
+  is off the drawn line); Esc and any other click still cancel.
 - `static/player/player.js`: page glue over `createShellInput` (its
   injectable storage mapped to the player's own key), `VoicingKeyboard`
   (range from the piece ± 3 keys, snapped to white keys; own state
   classes `pl-key--expected / --correct / --wrong / --held`, since
-  `vk-key--hit`'s white ring is invisible on white keys), `loadSampler`
-  echo as in Cycle of Shells; on-screen clicks = attack + release and
+  `vk-key--hit`'s white ring is invisible on white keys), echo as in
+  Cycle of Shells but on the page's own sampler (2a.1); on-screen clicks = attack + release and
   always sound; "Sound for MIDI notes" off by default (the RD-2000
   sounds itself); Tone.start on the first click / key press. Fixed
   2026-11-03: a module-level `history` shadowed `window.history`
@@ -1019,9 +1034,10 @@ from console snippets only):**
   No stress have only been exercised from console snippets, see
   SESSION_LOG 2026-11-03) and trouble-threshold tuning from real
   `console.table` rows.
-- 2a Listen awaits its Chrome check (steps in SESSION_LOG 2026-11-03,
-  Listen entry): bars 1–4 at 60 %, a loop across two lines, MIDI during
-  playback.
+- 2a.1 awaits a Chrome check: a MIDI note held while Listen plays the
+  same pitch (neither cuts the other), a note held through Stop (keeps
+  sounding), echo latency at the piano, the purple on white keys, a range
+  tapped across lines.
 
 **Open / deferred:**
 - Next, in order: 2b metronome + count-in (on the Listen row and its

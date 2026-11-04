@@ -24,7 +24,7 @@
  *   staff.range                                  // { from, to } of the drawn bars, or null
  *
  * States are classes on g.note (pl-note--expected / --correct / --wrong /
- * --playing); the CSS colours them blue / green / red / gold (playing: a note
+ * --playing); the CSS colours them blue / green / red / purple (playing: a note
  * sounding under Listen), as the keyboard does. pl-note--dim
  * is independent of the state (an unselected hand stays dim whatever happens).
  *
@@ -73,7 +73,7 @@ const CSS = /* css */ `
 .pl-staff-svg g.note.pl-note--expected { color: var(--accent-blue, #2D5F8A); fill: var(--accent-blue, #2D5F8A); }
 .pl-staff-svg g.note.pl-note--correct  { color: var(--accent-green, #1E7B34); fill: var(--accent-green, #1E7B34); }
 .pl-staff-svg g.note.pl-note--wrong    { color: var(--accent-coral, #B9341F); fill: var(--accent-coral, #B9341F); }
-.pl-staff-svg g.note.pl-note--playing  { color: var(--pl-playing, #D4A03C); fill: var(--pl-playing, #D4A03C); }
+.pl-staff-svg g.note.pl-note--playing  { color: var(--pl-playing, #6B4FBB); fill: var(--pl-playing, #6B4FBB); }
 .pl-staff-svg g.note.pl-note--dim      { opacity: 0.35; }
 .pl-staff-svg rect.pl-bar-marker       { fill: var(--pl-bar-marker); stroke: none; }
 .pl-staff-svg rect.pl-bar-loop         { fill: var(--pl-bar-loop); stroke: none; }
@@ -85,7 +85,7 @@ const CSS = /* css */ `
 .pl-staff-wrap[data-state="error"] .pl-staff-status { color: var(--accent-coral, #B9341F); }
 `;
 
-const STATES = ['expected', 'correct', 'wrong', 'playing'];   // 'playing': sounding under Listen (gold)
+const STATES = ['expected', 'correct', 'wrong', 'playing'];   // 'playing': sounding under Listen (purple)
 const TINTS = ['loop', 'pending', 'trouble'];   // rect.pl-bar-<tint>, painted under the bar marker ('trouble': suggested bars after a pass)
 const CSS_escape = s => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(s) : s.replace(/[^\w-]/g, '\\$&'));
 /** Bar number from a g.measure: its id pl-m<bar> (toMEI), else its data-n / n attribute when Verovio keeps one. */
