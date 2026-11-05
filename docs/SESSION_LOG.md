@@ -3,6 +3,81 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-11-05 — follow-along player 2a.2 control rack; 2b metronome + count-in
+
+Guided-practice track, on `dev`. The rack was the "light version, mockup
+A" prompt drafted on 2026-11-03; 2b is the metronome half of the roadmap
+chunk "Listen + metronome on one shared tempo slider". Both built read →
+report → build; 2a.2 committed as `456bb8e`, 2b in the working tree.
+
+### Landed
+- **2a.2 control rack** (`456bb8e`; `player.js`, `player.html`): five
+  cards above the staff — Practice, Listen, Hands / Mode, MIDI, Piece.
+  The piece title is the page h1 with a SONG picker in the header; header,
+  rack, nav strip, hints, staff and keyboard share one 1400 px width. A
+  nav / status strip between the rack and the staff; shortcut hints at
+  body size. Start over always visible; a Clear loop button (Esc and the
+  button share `cancelLoop()`; Esc now also clears an active loop, not
+  just a pending tap). Mute in the MIDI card mirrors the site AudioToggle
+  (one state, changed through its button). Piece card with Key / Time /
+  Tempo plus a derived Italian marking (`TEMPO_MARKINGS` table by
+  quarter-note bpm; an optional `tempoMarking` field in piece data
+  overrides it — none set yet). Loop toggles renamed Repeat bar(s) /
+  Repeat line(s).
+- **2b metronome + count-in** (working tree; `static/player/metronome.js`
+  new, `player.js`, `player.html`, one hook in
+  `static/shared/voicing-player.js`): a lookahead scheduler (25 ms tick,
+  150 ms ahead) on Tone's AudioContext, not `Tone.Transport` (VoicingPlayer
+  stops and cancels it on every play / stop); accented downbeats from
+  `meterLevels` (beat level, bar start accented; 6/8 → two dotted-quarter
+  beats); short sines on their own `Tone.Gain`, apart from both samplers;
+  AudioToggle mute skips the sound, not the grid. Listen card bottom row:
+  Metronome checkbox (off by default), Volume 0–100 (default 70), Count-in
+  0 / 1 / 2 bars (default 1, clicks even with the metronome off, once per
+  Listen), all in localStorage. Anchoring: `VoicingPlayer.play(schedule,
+  { startAt })` takes a time or a function of `now`, evaluated once
+  everything is loaded, right before the Transport starts; `listen()`
+  counts in from `Tone.now()`, anchors the click to bar 1 and starts the
+  Transport `START_DELAY` earlier, so the downbeat click and the first
+  note share one audio time and page turns stay on the Transport. Stop /
+  Space during the count-in cancels the Transport's future start (no note
+  sounds); `finishListen` stops every click, queued ones included. API
+  for the play-along mode later: `start(at, bpm, meter, { bars })`,
+  `stop({ countIn })`, `setTempo` (re-spaces from the last click
+  sounding), `setVolume`, `countIn(bars, bpm, meter, { at })` → bar 1's
+  time; no Listen logic inside. Self-test on a fake clock, 26/26.
+
+### Tested
+- By ear and mouse in Chrome: rack layout and wrapping, Start over,
+  Clear loop, mute mirror, shortcuts, count-in, click sync with the
+  notes, live metronome / volume toggles, remembered settings, cancel
+  during the count-in. All pass.
+- Still to test on the RD-2000: Hands, No stress, the MIDI card (device
+  select, connected light, Sound for my notes), playing with the
+  metronome.
+
+### Diagnosed / decided
+- **Tempo slider applies on the next Listen**, by design: Listen's
+  notes are fixed in seconds when it starts, so the click is fixed with
+  them (`metronome.setTempo` exists for the play-along mode).
+- **Listen plays once** — the loop range or the current line; there is
+  no loop wrap for the click to ride through.
+
+### Setup for next session
+- `dev`, working tree: `static/player/metronome.js` (new),
+  `static/player/player.js`, `static/shared/voicing-player.js`,
+  `templates/player.html`, this log and `docs/STATUS.md`. Dustin commits.
+- Self-tests: `metronome.js` 26/26, `player-listen.js` 19/19,
+  `meter-rules.js` 125/125.
+- **Next:** RD-2000 check of the rack + metronome (the list above), then
+  play-along mode with the metronome.
+
+### Parked
+- Metronome during play-along: `metronome.js` is built to be driven by
+  it the same way Listen drives it.
+- "Explain why a transition works" idea — to brainstorm Fri 2026-11-06.
+
+
 ## 2026-11-03 (later) — follow-along player 2a: Listen + tempo slider; 2a.1 fixes
 
 Guided-practice track, on `dev` after 1b / 1c the same day. Roadmap
@@ -148,10 +223,14 @@ check's findings (working tree).
 - Self-tests: `player-listen.js` 19/19, `player-follow.js` 89/89,
   `player-trouble.js` 30/30, `player-staff-model.js` 77/77,
   `meter-rules.js` 125/125.
-- 2a checked in Chrome. **Chrome check owed for 2a.1**: hold a MIDI note
-  while Listen plays the same pitch (neither cuts the other); hold a note
-  through Stop (it keeps sounding); echo latency at the piano; purple on
-  white keys with readable labels; tap bar 3, Next, tap bar 6 → loop 3–6.
+- 2a and 2a.1 checked in Chrome with the RD-2000 (2026-11-03): echo latency,
+  held note vs the same Listen pitch, held note through Stop, purple, cross-line
+  tap, 25–200 % slider, line by default, quiet mute. All pass.
+- **Next:** the control rack prompt (light version, mockup A: Practice / Listen /
+  Hands / Mode / MIDI modules, Start over always visible, shortcut hints at body
+  size, mute in the rack, slots for 2b), drafted in chat. Then 2b metronome +
+  count-in.
+
 - The original 2a steps, for reference:
   1. Repeat line on line 1 (bars 1–4), slider to 60 % (readout "60% ·
      49 bpm"), press ▶ Listen: the button reads ■ Stop, blue / green

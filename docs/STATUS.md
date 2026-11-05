@@ -91,11 +91,16 @@ notes never block, aren't shown or counted), and 2a Listen (▶ Listen /
 Space plays the loop or the drawn line, both hands, at a tempo slider's
 percentage of the piece's tempo; notes light purple as they sound, the
 staff pages with the playback, the follower is untouched; checked in
-Chrome, 2a.1 fixes from that check landed), and 2b metronome + count-in
-(2026-11-05, `metronome.js`: click on the Listen card's bottom row with a
+Chrome, 2a.1 fixes from that check landed). 2026-11-05: 2a.2 control
+rack (`456bb8e`: Practice / Listen / Hands / Mode / MIDI / Piece cards,
+piece title as h1 with a SONG picker, shared 1400 px width, nav / status
+strip, Start over always visible, Clear loop, mute mirroring AudioToggle,
+Piece card with a derived Italian tempo marking) and 2b metronome +
+count-in (`metronome.js`: click on the Listen card's bottom row with a
 volume slider and a 0 / 1 / 2-bar count-in, on Tone's context clock, not
-the Transport; awaiting a Chrome check). Detail below under "What's
-Working".
+the Transport, anchored to Listen's start so the downbeat and the first
+note share one audio time). Both checked in Chrome by ear and mouse; the
+RD-2000 check is next. Detail below under "What's Working".
 
 ### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
 Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
@@ -140,8 +145,10 @@ torus math in two (audit §3).
 Full version: [Claude doc](https://claude.ai/artifact/DHHd1R3qux19CPWyX7fPaA) · [Google Doc](https://docs.google.com/document/d/1hSHjvxwwdnaob214H_i3YD881rywSCIJAUuO6V8uUo0/edit).
 - **Thread A — kids' practice track (active until 2026-12-14 freeze):**
   player loop (1a loops, 1b trouble spots + per-hand counts, 1c No
-  stress) and 2a Listen + tempo slider (+ 2a.1 fixes) — all done 2026-11-03 → 2b
-  metronome + count-in → RD-2000 recording
+  stress), 2a Listen + tempo slider (+ 2a.1 fixes) — done 2026-11-03 —
+  and 2a.2 control rack + 2b metronome + count-in — done 2026-11-05 →
+  RD-2000 check of the rack + metronome → play-along mode with the
+  metronome → RD-2000 recording
   session (Carol lines 3–4, Run Rudolph Run, Feel Good Inc., Linus and
   Lucy) → learner picker → practice log (JSON on the mini, written by
   Flask; `practiceEvent` funnel + `state.practice.playedMs` already in
@@ -172,10 +179,14 @@ trouble thresholds tuning from the `console.table` rows), then 2a Listen
 + tempo slider the same day, checked in Chrome, with the 2a.1 fixes from
 that check (echo on its own sampler at Tone.immediate(), purple playing
 colour, pending tap kept across paging, slider 25–200 %, Listen plays the
-drawn line). Next, in order:
-2b metronome + count-in; then the RD-2000 recording session, warm-up screen and
-practice logging (`createResultLog` with key `songlab_results_player`,
-hanging off `practiceEvent` in `player.js`). Current state block below.
+drawn line). 2026-11-05: 2a.2 control rack (`456bb8e`) and 2b
+metronome + count-in (`metronome.js`, working tree), both checked in
+Chrome by ear and mouse. Next, in order: RD-2000 check of the rack +
+metronome (Hands, No stress, MIDI card, playing with the click); then
+play-along mode with the metronome; then the RD-2000 recording session,
+warm-up screen and practice logging (`createResultLog` with key
+`songlab_results_player`, hanging off `practiceEvent` in `player.js`).
+Current state block below.
 
 **Voicing Explorer analysis arc (2026-10-14, branch `voicing-explorer`)**
 was the active workstream before that. Motivated by a voiced practice score of
@@ -888,7 +899,7 @@ headless Chrome; not yet merged to dev):**
   MIDI hot-plug, site-wide device default, sharp labels on held notes,
   ii_V_I walkthrough steps without concept_specifics.
 
-### Follow-along player — current state (updated 2026-11-03)
+### Follow-along player — current state (updated 2026-11-05)
 
 **Landed and verified on dev (Node self-tests; Milestone 1 checked in
 Chrome with the RD-2000; the loop chunk 1a checked in Chrome, 1b / 1c
@@ -1006,6 +1017,20 @@ from console snippets only):**
   A pending tap (first bar of a range) survives Prev / Next and the arrow
   keys so a range can span lines (status says "(on line k)" while the bar
   is off the drawn line); Esc and any other click still cancel.
+- Control rack (2a.2, 2026-11-05, `456bb8e`; `player.js`, `player.html`):
+  five cards above the staff — Practice (Repeat bar(s) / Repeat line(s),
+  Clear loop, Move on after, Start over always visible), Listen (button,
+  tempo slider, the 2b row), Hands / Mode (stacked), MIDI (device,
+  connected light, mute, Sound for my notes), Piece (Key / Time / Tempo
+  with a derived Italian marking from the `TEMPO_MARKINGS` table by
+  quarter-note bpm; an optional `tempoMarking` field in piece data
+  overrides it, none set yet). The piece title is the h1 with a SONG
+  picker in the header; header, rack, nav / status strip, shortcut hints
+  (body size), staff and keyboard share one 1400 px width. Esc and the
+  Clear loop button share `cancelLoop()`, which now also clears an
+  active loop; the rack's mute mirrors the site AudioToggle (one state,
+  changed through its button). Checked in Chrome 2026-11-05 (layout and
+  wrapping, Start over, Clear loop, mute mirror, shortcuts).
 - Metronome + count-in (2b, 2026-11-05; `static/player/metronome.js`,
   new, 26/26 with a fake clock): a lookahead scheduler (25 ms tick, 150 ms
   ahead) on Tone's AudioContext — not `Tone.Transport`, which VoicingPlayer
@@ -1034,8 +1059,11 @@ from console snippets only):**
   (v/100)² × 0.9, immediate), Count-in 0 / 1 / 2 segmented buttons with
   `aria-pressed` (`songlab_player_count_in`, default 1). Debug:
   `__player.metronome`, `setMetronome`, `setMetroVolume`, `setCountIn`,
-  `metro`. Needs a Chrome check (sync of clicks with notes, count-in
-  cancel, mid-play toggles).
+  `metro`. Checked in Chrome 2026-11-05 by ear and mouse (count-in, click
+  sync with the notes, live toggles, remembered settings, cancel during
+  the count-in). By design: the tempo slider applies on the next Listen
+  (notes and click are fixed at start) and Listen plays the loop range or
+  the current line once.
 - `static/player/player.js`: page glue over `createShellInput` (its
   injectable storage mapped to the player's own key), `VoicingKeyboard`
   (range from the piece ± 3 keys, snapped to white keys; own state
@@ -1067,16 +1095,18 @@ from console snippets only):**
   No stress have only been exercised from console snippets, see
   SESSION_LOG 2026-11-03) and trouble-threshold tuning from real
   `console.table` rows.
-- 2a.1 awaits a Chrome check: a MIDI note held while Listen plays the
-  same pitch (neither cuts the other), a note held through Stop (keeps
-  sounding), echo latency at the piano, the purple on white keys, a range
-  tapped across lines.
+- 2a.2 + 2b await an RD-2000 check: Hands, No stress, the MIDI card
+  (device select, connected light, Sound for my notes), playing with the
+  metronome.
 
 **Open / deferred:**
-- Next, in order: a Chrome check of 2b (metronome + count-in); then the
-  RD-2000 recording session, warm-up screen in the song's key, practice logging
-  (`createResultLog` with key `songlab_results_player`, per the
-  game-engine spec envelope, off the `practiceEvent` funnel).
+- Next, in order: RD-2000 check of the rack + metronome; then play-along
+  mode with the metronome (`metronome.js` is built to be driven by it the
+  way Listen drives it); then the RD-2000 recording session, warm-up
+  screen in the song's key, practice logging (`createResultLog` with key
+  `songlab_results_player`, per the game-engine spec envelope, off the
+  `practiceEvent` funnel).
+- Parked idea: "explain why a transition works" (brainstorm 2026-11-06).
 - Trouble spots: no cap on a merged range's length yet (a whole-piece
   first read could flag bars 1–16; add `MAX_RANGE_BARS` if it shows up);
   anticipation only looks at the next step in score order, not the loop
@@ -1120,7 +1150,7 @@ from console snippets only):**
 
 ### Games & Tools
 - Harmony Trainer, Chord Walks (4 tiers), Rhythm Lab, Strum Patterns, Chord Spotter, Scale Builder, Melody Match
-- **Follow-along player** `/player` (2026-10-30, loops + trouble spots + No stress + Listen 2026-11-03): wait-for-me practice of a recorded piece from MIDI; see the current-state block above
+- **Follow-along player** `/player` (2026-10-30; loops + trouble spots + No stress + Listen 2026-11-03; control rack + metronome 2026-11-05): wait-for-me practice of a recorded piece from MIDI; see the current-state block above
 - **Cycle of Shells** (2026-10-22, branch `cycle-of-shells`): ii–V–I shell voicings round the cycle from MIDI; see the current-state block above
 - **Swing Trainer**: ear-training for jazz swing feel (rotary knob, waveform viz, Practice/Test)
 - **Polyrhythm Trainer** (new): Guitar Hero-style falling-note game. Practice Mode (phase-based BPM ramp: Listen → Layer A → Layer B → Both → Victory) and Challenge Mode (arcade adaptive with leaderboard). Dark DAW theme, drum pads, lane breathing waves. First game on `input-provider.js` + `onset-detection.js`. Spec: `docs/polyrhythm-trainer-spec.md`
