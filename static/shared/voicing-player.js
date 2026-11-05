@@ -9,8 +9,15 @@
  *
  * Usage:
  *   const player = new VoicingPlayer({ onState: s => … });   // 'idle' | 'loading' | 'ready' | 'playing' | 'blocked' | 'error'
- *   const result = await player.play(schedule, { onNote, onPiece, onEnd });
- *     result: { played: true } | { played: false, reason: 'muted' | 'blocked' | 'error' | 'empty' }
+ *   const result = await player.play(schedule, { onNote, onPiece, onEnd, startAt });
+ *     result: { played: true, startedAt } | { played: false, reason: 'muted' | 'blocked' | 'error' | 'empty' }
+ *     startAt  (optional) the AudioContext time (seconds) at which schedule time 0 lies — the
+ *                                         Transport start; a note at schedule time t sounds at startAt + t +
+ *                                         START_DELAY. A number, or a function (now) => number called once
+ *                                         everything is loaded, right before the Transport starts, with `now`
+ *                                         = Tone.now() (the earliest start). Default / anything earlier: now.
+ *                                         The player's count-in anchors its click here (metronome.js).
+ *     startedAt                           the time actually used
  *     onNote(note, 'on' | 'off')          at each note's attack and release (frame-aligned via Tone.Draw);
  *                                         a lead-in note fires 'on' at the bar start (schedule.barStart) if it
  *                                         is still sounding then, and not at all if it ended before
@@ -114,9 +121,9 @@ class VoicingPlayer {
    * Play a schedule. Stops any current playback first. Must be called from a
    * user gesture the first time (Tone.start()).
    * @param {{ notes: Array, duration: number }} schedule  from toSchedule()
-   * @param {{ onNote?: (note, phase: 'on'|'off') => void, onPiece?: (piece, phase: 'on'|'off', note) => void, onEnd?: ({ stopped: boolean }) => void }} [callbacks]
+   * @param {{ onNote?: (note, phase: 'on'|'off') => void, onPiece?: (piece, phase: 'on'|'off', note) => void, onEnd?: ({ stopped: boolean }) => void, startAt?: number | ((now: number) => number) }} [callbacks]
    */
-  async play(schedule, { onNote = () => {}, onPiece = () => {}, onEnd = () => {} } = {}) {
+  async play(schedule, { onNote = () => {}, onPiece = () => {}, onEnd = () => {}, startAt } = {}) {
     if (this.playing) this.stop();
     if (typeof window !== 'undefined' && window.AudioToggle && window.AudioToggle.isMuted()) return { played: false, reason: 'muted' };
     if (!schedule || !schedule.notes || !schedule.notes.length) return { played: false, reason: 'empty' };
@@ -165,9 +172,13 @@ class VoicingPlayer {
     this._endId = transport.scheduleOnce(time => {
       Tone.Draw.schedule(() => { if (this._part) this._finish(false); }, time);
     }, schedule.duration + START_DELAY + END_TAIL);
-    transport.start();
+    // Transport time 0 at `startedAt` on the context clock: now, or later when the caller says so (a count-in).
+    const now = Tone.now();
+    const wanted = typeof startAt === 'function' ? startAt(now) : startAt;
+    const startedAt = Number.isFinite(wanted) ? Math.max(now, wanted) : now;
+    transport.start(startedAt);
     this._setState('playing');
-    return { played: true };
+    return { played: true, startedAt };
   }
 
   /** Stop now: future notes cancelled, sounding notes released. */
@@ -198,7 +209,7 @@ class VoicingPlayer {
 export {
   VoicingPlayer, loadTone, loadSampler, SALAMANDER_VERSION, SALAMANDER_BASE, SALAMANDER_URLS,
   // Explainer layer (Session 6.5): read-only constants for interpolation into content.
-  TONE_URL, VELOCITY, LEAD_IN_GAIN, START_TIMEOUT_MS,
+  TONE_URL, VELOCITY, LEAD_IN_GAIN, START_TIMEOUT_MS, START_DELAY,
 };
 
 if (typeof window !== 'undefined') {

@@ -109,7 +109,7 @@
   .pl-stack { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
   .pl-stack > .pl-card { flex: 1 1 auto; }
 
-  /* Listen card: button + tempo on one row, then the reserved metronome row (2b) under a dashed divider */
+  /* Listen card: button + tempo on one row, then the metronome row (2b) under a dashed divider */
   .pl-listen-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
   .pl-tempo { display: flex; flex-direction: column; gap: 0.2rem; flex: 1 1 10em; min-width: 10em; }
   .pl-tempo__top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
@@ -119,8 +119,25 @@
   .pl-tempo input[type="range"]:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 4px; border-radius: 4px; }
   .pl-metro-row {
     margin-top: auto; padding-top: 0.6rem; border-top: 1px dashed var(--pl-border);
-    min-height: 44px; display: flex; align-items: center; color: var(--text-muted); font-size: 0.95rem;
+    min-height: 44px; display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 1rem;
   }
+  .pl-metro-row .pl-check { flex: none; }
+  .pl-metro-vol { display: flex; align-items: center; gap: 0.5rem; flex: 1 1 7em; min-width: 7em; min-height: 44px; }
+  .pl-metro-vol label { font-size: 0.9rem; color: var(--text-secondary); white-space: nowrap; }
+  .pl-metro-vol input[type="range"] { flex: 1 1 auto; width: 100%; min-width: 4em; margin: 0; accent-color: var(--accent-blue); min-height: 28px; }
+  .pl-metro-vol input[type="range"]:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 4px; border-radius: 4px; }
+  /* Count-in: segmented 0 / 1 / 2 (buttons with aria-pressed, styled as the Hands control) */
+  .pl-seg { display: inline-flex; align-items: center; gap: 0.5rem; flex: none; }
+  .pl-seg__label { font-size: 0.9rem; color: var(--text-secondary); white-space: nowrap; }
+  .pl-seg__group { display: inline-flex; border: 1px solid var(--pl-border); border-radius: 10px; overflow: hidden; }
+  .pl-seg__btn {
+    min-width: 44px; min-height: 44px; padding: 6px 12px; font: inherit; font-size: 1rem; font-weight: 700;
+    color: var(--text-secondary); background: #FFFFFF; border: 0; cursor: pointer;
+  }
+  .pl-seg__btn + .pl-seg__btn { border-left: 1px solid var(--pl-border); }
+  .pl-seg__btn:hover:not([aria-pressed="true"]) { color: var(--accent-blue); }
+  .pl-seg__btn[aria-pressed="true"] { background: var(--accent-blue); color: #FFFFFF; }
+  .pl-seg__btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
 
   /* Hands: segmented LH / RH / Both (radios styled as one control) */
   .pl-hands { display: flex; border: 1px solid var(--pl-border); border-radius: 10px; overflow: hidden; }
@@ -267,8 +284,22 @@
             <input type="range" id="pl-tempo" min="25" max="200" step="1" value="100" aria-label="Tempo, percent of the piece's tempo">
           </div>
         </div>
-        <!-- 2b lands here: metronome checkbox, click volume, count-in 0 / 1 / 2. Height reserved so the card doesn't jump. -->
-        <div class="pl-metro-row" id="pl-metro-row"><span>Metronome — coming next</span></div>
+        <!-- Metronome (2b, metronome.js): click while Listen plays, its volume, and a count-in of 0 / 1 / 2 bars that clicks even with the metronome off. All remembered. -->
+        <div class="pl-metro-row" id="pl-metro-row">
+          <label class="pl-check" title="A click on every beat while Listen plays (the downbeat accented)"><input type="checkbox" id="pl-metro"> Metronome</label>
+          <div class="pl-metro-vol">
+            <label for="pl-metro-volume">Volume</label>
+            <input type="range" id="pl-metro-volume" min="0" max="100" step="1" value="70" aria-label="Metronome volume">
+          </div>
+          <div class="pl-seg">
+            <span class="pl-seg__label" id="pl-count-in-label">Count-in</span>
+            <div class="pl-seg__group" role="group" aria-labelledby="pl-count-in-label" id="pl-count-in" title="Bars of clicks before Listen starts, at the slider tempo">
+              <button type="button" class="pl-seg__btn" data-count-in="0" aria-pressed="false" aria-label="No count-in">0</button>
+              <button type="button" class="pl-seg__btn" data-count-in="1" aria-pressed="true" aria-label="Count in one bar">1</button>
+              <button type="button" class="pl-seg__btn" data-count-in="2" aria-pressed="false" aria-label="Count in two bars">2</button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <div class="pl-stack">

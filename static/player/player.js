@@ -14,6 +14,7 @@
  *                          shared/voicing-player.js   schedule playback (Listen); the echo's own sampler is built here from the same samples
  *   listenSchedule / pieceBpm / tempoLabel
  *                          player-listen.js           bar range → timed notes for VoicingPlayer
+ *   metronome / patternFor  metronome.js               click track + count-in on the context clock (2b)
  *
  * Nothing musical lives here: the norm → steps → ids mapping is the
  * follower's, the engraving is the staff's. This file owns the DOM, the
@@ -91,7 +92,22 @@
  * finishListen(): the original line is re-drawn when the page was turned
  * and paintStates() restores the follower exactly as it was.
  *
- * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, setNoStress, listen, stopListen, tempo, trouble, practice, staff, keyboard, …).
+ * Metronome + count-in (2b; state.metro, METRO_* keys, metronome.js): the
+ * Listen card's bottom row — Metronome checkbox, click Volume 0–100,
+ * Count-in 0 / 1 / 2 bars — all remembered. The count-in clicks whether or
+ * not the click is on, at the slider tempo, before Listen's first note:
+ * listen() passes VoicingPlayer a `startAt` hook that, once everything is
+ * loaded, starts the count-in at Tone.now() and returns bar 1's time less
+ * START_DELAY, so the Transport (and the page turns on it) start at bar 1
+ * and the downbeat click lands exactly on the first note. The click itself
+ * (metronome.start, when on) is anchored to that same bar-1 time for the
+ * range's bar count; state.listen.click keeps the anchor so the checkbox
+ * can join mid-play. Listen's notes are fixed in seconds when it starts, so
+ * the click is too: the slider applies to the next Listen for both. Stop /
+ * Space during the count-in cancels it (the Transport's future start is
+ * cancelled; no note sounds); finishListen stops every click.
+ *
+ * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, setNoStress, listen, stopListen, tempo, metronome, trouble, practice, staff, keyboard, …).
  */
 
 import { PlayerStaff } from './player-staff.js';
@@ -100,8 +116,9 @@ import { createPassRecorder, createPassHistory, createPracticeClock, scorePass, 
 import { lineRanges, lineIndexFor } from './player-staff-model.js';
 import { createShellInput } from '../games/cycle-of-shells-input.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
-import { loadTone, loadSampler, VoicingPlayer, SALAMANDER_URLS, SALAMANDER_BASE } from '../shared/voicing-player.js';
+import { loadTone, loadSampler, VoicingPlayer, SALAMANDER_URLS, SALAMANDER_BASE, START_DELAY } from '../shared/voicing-player.js';
 import { listenSchedule, pieceBpm, tempoLabel, DEFAULT_BPM } from './player-listen.js';
+import { metronome, patternFor, DEFAULT_VOLUME as METRO_VOLUME_DEFAULT } from './metronome.js';
 
 const DEVICE_KEY = 'songlab_player_midi_device';   // createShellInput has a fixed key; mapped through its injectable storage
 const SOUND_KEY = 'songlab_player_midi_sound';     // "Sound for MIDI notes" checkbox; off by default
@@ -111,6 +128,10 @@ const NO_STRESS_KEY = 'songlab_player_no_stress';  // "No stress" checkbox (forg
 const TEMPO_KEY = 'songlab_player_tempo_pct';       // Listen tempo slider, percent of the piece's tempo (25–110, step 5); default 100
 const TEMPO_DEFAULT = 100;
 const TEMPO_MIN = 25, TEMPO_MAX = 200, TEMPO_STEP = 1;
+const METRO_KEY = 'songlab_player_metro_on';          // Metronome checkbox (click while Listen plays); off by default
+const METRO_VOLUME_KEY = 'songlab_player_metro_volume'; // click volume 0–100; default 70
+const COUNT_IN_KEY = 'songlab_player_count_in';       // count-in bars 0 / 1 / 2 before Listen's first note; default 1
+const COUNT_IN_DEFAULT = 1, COUNT_IN_MAX = 2;
 const TURN_LEAD = 0.15;                              // seconds before a line's first bar that Listen turns the page (VoicingPlayer plays 80 ms after the schedule time, so the sound follows the turn by ~230 ms)
 const ECHO_VELOCITY = 0.7;                           // as cycle-of-shells.js
 const CLICK_SECONDS = 0.6;                           // on-screen key: attack + release
@@ -137,6 +158,7 @@ const els = {
   status: $('pl-status'), restart: $('pl-restart'),
   loopBar: $('pl-loop-bar'), loopLine: $('pl-loop-line'), loopClear: $('pl-loop-clear'), loopExit: $('pl-loop-exit'), noStressHint: $('pl-no-stress-hint'),
   listen: $('pl-listen'), tempo: $('pl-tempo'), tempoReadout: $('pl-tempo-readout'),
+  metro: $('pl-metro'), metroVolume: $('pl-metro-volume'), countIn: $('pl-count-in'),   // Listen card, bottom row (2b)
   trouble: $('pl-trouble'),
   staffHost: $('pl-staff'),
   keyboardHost: $('pl-keyboard'),
@@ -156,7 +178,8 @@ const state = {
   trouble: null,          // the last scored pass: { pass, score, number, suggested } (console / debug)
   practice: null,         // { playedMs } active time in either mode (set below; practice-log hook)
   tempoPct: TEMPO_DEFAULT,   // Listen tempo, percent of the piece's tempo (TEMPO_KEY)
-  listen: { active: false, token: 0, range: null, schedule: null, sounding: new Set() },   // Listen under way; see the header
+  listen: { active: false, token: 0, range: null, schedule: null, sounding: new Set(), click: null },   // Listen under way; see the header. click: { origin, bpm, pattern, bars } the click's anchor
+  metro: { on: false, volume: METRO_VOLUME_DEFAULT, countIn: COUNT_IN_DEFAULT },   // Metronome row (METRO_KEY, METRO_VOLUME_KEY, COUNT_IN_KEY)
   held: new Set(),        // midis down on the MIDI device (de-duplicated by the input)
   echoing: new Set(),     // midis sounding on the sampler for MIDI echo
   audioStarted: false,
@@ -873,15 +896,26 @@ async function listen() {
   const bpm = base * state.tempoPct / 100;
   const schedule = listenSchedule(state.norm, { from: range.from, to: range.to, bpm });
   if (!schedule.notes.length) { banner(`Nothing to play in ${barsText(range.from, range.to)}.`); return false; }
+  const pattern = patternFor(state.norm.time, state.norm.beatsPerBar);   // the same grid as the bar length above
   cancelPending();
   const token = ++L.token;
-  L.active = true; L.range = range; L.schedule = schedule; L.sounding = new Set(); playingKeys.clear();
+  L.active = true; L.range = range; L.schedule = schedule; L.sounding = new Set(); L.click = null; playingKeys.clear();
   if (assumed) banner(`No tempo in this piece: playing at ${Math.round(bpm)} bpm (${state.tempoPct}% of an assumed ${DEFAULT_BPM}).`);
   // The follower's paint goes; held keys stay. paintStates() brings it back in finishListen.
   staff.clearStates(); staff.setDimmed([]); staff.setBarMarker(null); clearKeys(['expected', 'correct', 'wrong']);
   indexHits();
   els.listen.textContent = '■ Stop'; els.listen.setAttribute('aria-pressed', 'true');
   const result = await listenPlayer.play(schedule, {
+    // Everything loaded, the Transport about to start: count in from `now` (even with the click off), then
+    // anchor the click and the Transport to bar 1 — its downbeat is START_DELAY after the Transport start.
+    startAt: now => {
+      if (L.token !== token || !L.active) return now;   // stopped while loading: play() is stopped right after
+      const bars = state.metro.countIn;
+      const barOne = bars > 0 ? metronome.countIn(bars, bpm, pattern, { at: now }) : now + START_DELAY;
+      L.click = { origin: barOne, bpm, pattern, bars: schedule.bars.length };
+      if (state.metro.on) metronome.start(barOne, bpm, pattern, { bars: schedule.bars.length });
+      return barOne - START_DELAY;
+    },
     onNote: (note, phase) => { if (L.token === token) lightNote(note, phase === 'on'); },
     onEnd: () => { if (L.token === token) finishListen(); },
   });
@@ -891,7 +925,7 @@ async function listen() {
     else if (result.reason === 'error') banner('Piano samples did not load; Listen is unavailable.', true);
     return false;
   }
-  if (L.token !== token || !L.active) { listenPlayer.stop(); return false; }   // stopped while play() was loading: it started anyway → stop now, no page turns
+  if (L.token !== token || !L.active) { listenPlayer.stop(); metronome.stop(); return false; }   // stopped while play() was loading: it started anyway → stop now, no page turns, no clicks
   scheduleTurns(schedule, token);
   return true;
 }
@@ -909,6 +943,7 @@ function finishListen() {
   const L = state.listen;
   if (!L.active) return;
   L.active = false; L.token++;   // late callbacks of this playback are dropped
+  metronome.stop(); L.click = null;   // the click and any count-in, including clicks already queued
   for (const note of [...L.sounding]) lightNote(note, false);
   L.sounding.clear(); playingKeys.clear();
   staff.clearStates(); clearKeys(['playing']);
@@ -951,6 +986,44 @@ async function listenTurnTo(index, token) {
 }
 
 els.listen.addEventListener('click', () => { els.listen.blur(); if (state.listen.active) stopListen(); else listen(); });
+
+// ── Metronome row: checkbox, click volume, count-in (remembered; changes apply at once, mid-Listen too) ──
+const saveMetro = (key, value) => { try { localStorage.setItem(key, String(value)); } catch (_) { /* storage unavailable */ } };
+const readMetro = key => { try { return localStorage.getItem(key); } catch (_) { return null; } };
+/** The click on / off; mid-Listen it joins at the next beat of the running anchor, or stops (a count-in under way keeps clicking). */
+function setMetronome(on, { save = true } = {}) {
+  state.metro.on = !!on;
+  els.metro.checked = state.metro.on;
+  if (save) saveMetro(METRO_KEY, state.metro.on ? '1' : '0');
+  const c = state.listen.active ? state.listen.click : null;
+  if (state.metro.on && c) metronome.start(c.origin, c.bpm, c.pattern, { bars: c.bars });
+  else if (!state.metro.on) metronome.stop({ countIn: false });
+}
+function setMetroVolume(v, { save = true } = {}) {
+  const n = Number(v);
+  state.metro.volume = Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : METRO_VOLUME_DEFAULT;
+  els.metroVolume.value = String(state.metro.volume);
+  metronome.setVolume(state.metro.volume);
+  if (save) saveMetro(METRO_VOLUME_KEY, state.metro.volume);
+}
+/** 0 / 1 / 2 bars before Listen's first note (aria-pressed on the segment buttons); applies to the next Listen. */
+function setCountIn(bars, { save = true } = {}) {
+  const n = Number(bars);
+  state.metro.countIn = Number.isInteger(n) && n >= 0 && n <= COUNT_IN_MAX ? n : COUNT_IN_DEFAULT;
+  for (const b of els.countIn.querySelectorAll('[data-count-in]')) b.setAttribute('aria-pressed', String(Number(b.dataset.countIn) === state.metro.countIn));
+  if (save) saveMetro(COUNT_IN_KEY, state.metro.countIn);
+}
+setMetronome(readMetro(METRO_KEY) === '1', { save: false });
+setMetroVolume(readMetro(METRO_VOLUME_KEY) ?? METRO_VOLUME_DEFAULT, { save: false });
+setCountIn(readMetro(COUNT_IN_KEY) ?? COUNT_IN_DEFAULT, { save: false });
+els.metro.addEventListener('change', () => { setMetronome(els.metro.checked); els.metro.blur(); });
+els.metroVolume.addEventListener('input', () => setMetroVolume(els.metroVolume.value));
+els.metroVolume.addEventListener('change', () => els.metroVolume.blur());   // so Space goes back to the page, as the tempo slider
+els.countIn.addEventListener('click', e => {
+  const b = e.target instanceof Element ? e.target.closest('[data-count-in]') : null;
+  if (!b) return;
+  setCountIn(b.dataset.countIn); b.blur();
+});
 
 // ════════════════════════════════════════════════════════════════════
 // TROUBLE SPOTS
@@ -1182,6 +1255,7 @@ window.__player = {
   state, load, pieces: () => state.pieces, staff, showLine, stepLine, stepBar, restart,
   setLoop, clearLoop, setNoStress,
   listen, stopListen, get tempo() { return state.tempoPct; }, set tempo(v) { setTempoPct(v); }, listenPlayer,
+  metronome, setMetronome, setMetroVolume, setCountIn, get metro() { return state.metro; },
   get trouble() { return state.trouble; }, get practice() { return state.practice; }, loopCounts, passHistory, get recorder() { return recorder; }, thresholds: THRESHOLDS,
   get keyboard() { return keyboard; }, get input() { return input; }, get follower() { return state.follower; }, get steps() { return state.steps; },
   noteOn: onMidiNoteOn, noteOff: onMidiNoteOff,

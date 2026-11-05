@@ -1,6 +1,6 @@
 # SongLab Project Status
 
-**Last updated:** 2026-11-03
+**Last updated:** 2026-11-05
 **Branch:** `dev` — all active work. Cycle of Shells merged 2026-10-27;
 Voicing Explorer Sessions 1–6.5 merged `df0e2fc`; Learn Phase 0 + Phase 1
 topics merged via `learn-topics`; Cantor v1; MIDI multi-port fix `57afaa9`.
@@ -91,8 +91,11 @@ notes never block, aren't shown or counted), and 2a Listen (▶ Listen /
 Space plays the loop or the drawn line, both hands, at a tempo slider's
 percentage of the piece's tempo; notes light purple as they sound, the
 staff pages with the playback, the follower is untouched; checked in
-Chrome, 2a.1 fixes from that check landed). Next: 2b metronome + count-in
-on the same tempo slider. Detail below under "What's Working".
+Chrome, 2a.1 fixes from that check landed), and 2b metronome + count-in
+(2026-11-05, `metronome.js`: click on the Listen card's bottom row with a
+volume slider and a 0 / 1 / 2-bar count-in, on Tone's context clock, not
+the Transport; awaiting a Chrome check). Detail below under "What's
+Working".
 
 ### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
 Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
@@ -1003,6 +1006,36 @@ from console snippets only):**
   A pending tap (first bar of a range) survives Prev / Next and the arrow
   keys so a range can span lines (status says "(on line k)" while the bar
   is off the drawn line); Esc and any other click still cancel.
+- Metronome + count-in (2b, 2026-11-05; `static/player/metronome.js`,
+  new, 26/26 with a fake clock): a lookahead scheduler (25 ms tick, 150 ms
+  ahead) on Tone's AudioContext — not `Tone.Transport`, which VoicingPlayer
+  stops and cancels — clicking short sines (downbeat 1600 Hz accented, beat
+  1000 Hz) on its own `Tone.Gain` into Tone's destination, apart from both
+  samplers; beats from `patternFor(time, beatsPerBar)` over `meterLevels`
+  (beat level; the bar start accented; 6/8 → two dotted-quarter beats);
+  AudioToggle mute skips the sound, not the timing. API: `start(at, bpm,
+  meter, { bars })` (an `at` in the past joins at the next beat), `stop({
+  countIn })`, `setTempo` (re-spaces from the last click sounding),
+  `setVolume(0–100)`, `countIn(bars, bpm, meter, { at })` → bar 1's time;
+  no Listen logic inside, for the play-along mode later. Listen hook:
+  `VoicingPlayer.play(schedule, { startAt })` (voicing-player.js, the one
+  change: a number or `(now) => time` evaluated once loaded, right before
+  the Transport starts; result carries `startedAt`; `START_DELAY` exported).
+  `listen()` counts in from `Tone.now()`, anchors the click to bar 1 and
+  starts the Transport `START_DELAY` earlier, so the downbeat click sits on
+  the first note and page turns stay on the Transport. Count-in clicks with
+  the metronome off, once per Listen; Stop / Space during it cancels the
+  Transport's future start (no note sounds); `finishListen` stops every
+  click, queued ones included. The click is fixed with the notes (Listen's
+  schedule is seconds at start; the slider applies to the next Listen for
+  both). UI: the Listen card's bottom row — Metronome checkbox (off by
+  default, `songlab_player_metro_on`; toggling mid-Listen joins / stops at
+  once), Volume 0–100 (`songlab_player_metro_volume`, default 70, gain =
+  (v/100)² × 0.9, immediate), Count-in 0 / 1 / 2 segmented buttons with
+  `aria-pressed` (`songlab_player_count_in`, default 1). Debug:
+  `__player.metronome`, `setMetronome`, `setMetroVolume`, `setCountIn`,
+  `metro`. Needs a Chrome check (sync of clicks with notes, count-in
+  cancel, mid-play toggles).
 - `static/player/player.js`: page glue over `createShellInput` (its
   injectable storage mapped to the player's own key), `VoicingKeyboard`
   (range from the piece ± 3 keys, snapped to white keys; own state
@@ -1040,10 +1073,8 @@ from console snippets only):**
   tapped across lines.
 
 **Open / deferred:**
-- Next, in order: 2b metronome + count-in (on the Listen row and its
-  tempo slider; not on Tone.Transport, which VoicingPlayer stops and
-  cancels on play / stop); then the RD-2000
-  recording session, warm-up screen in the song's key, practice logging
+- Next, in order: a Chrome check of 2b (metronome + count-in); then the
+  RD-2000 recording session, warm-up screen in the song's key, practice logging
   (`createResultLog` with key `songlab_results_player`, per the
   game-engine spec envelope, off the `practiceEvent` funnel).
 - Trouble spots: no cap on a merged range's length yet (a whole-piece
