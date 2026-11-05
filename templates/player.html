@@ -18,6 +18,7 @@
     --accent-coral:   #B9341F;
     --pl-loop:        #B07A0A;   /* loop tint / pressed toggles (amber, distinct from the blue bar marker) */
     --pl-trouble:     #B9341F;   /* trouble-spot tint / "Loop these" (coral, as wrong notes) */
+    --pl-border:      #D8D4CC;   /* card / control hairlines */
     --pl-playing:     #6B4FBB;   /* a note sounding under Listen (purple: differs from blue / green / coral / amber in lightness too; staff pl-note--playing, keyboard pl-key--playing) */
     max-width: none;
     background: var(--pl-bg);
@@ -27,49 +28,153 @@
     min-height: calc(100vh - 72px);
     box-sizing: border-box;
   }
-  .pl-column { max-width: 1100px; margin: 0 auto; }
-  /* The staff gets its own, wider column: a line of four bars needs the width (the SVG is sized by width). */
-  .pl-column--staff { max-width: 1400px; }
-  .pl-page .game-title { font-size: 1.75rem; }
-  .pl-page .game-top-bar { margin-bottom: 0.5rem; }
+  /* One width for header, rack, strip, hints, staff and keyboard: a line of four bars needs it (the staff SVG is sized by width). */
+  .pl-column { max-width: 1400px; margin: 0 auto; }
 
-  /* ── Header: title + piece meta ──────────────────────────── */
-  .pl-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; margin-bottom: 0.75rem; }
-  .pl-piece-title { font-size: 1.5rem; font-weight: 800; margin: 0; }
-  .pl-meta { margin: 0; color: var(--text-secondary); font-size: 1rem; }
-  .pl-meta span + span::before { content: '·'; margin: 0 8px; color: var(--text-muted); }
+  /* ── Header: piece title (h1) left; ← Back + SONG picker right ── */
+  .pl-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 0.5rem 1rem; margin: 0.5rem 0 0.75rem; }
+  .pl-piece-title { font-size: 1.75rem; font-weight: 800; margin: 0; line-height: 1.2; }
+  .pl-header__right { display: flex; align-items: flex-end; gap: 1rem; }
+  .pl-header__back { font-size: 0.9rem; color: var(--text-muted); text-decoration: none; padding-bottom: 12px; white-space: nowrap; }
+  .pl-header__back:hover { color: var(--accent-blue); text-decoration: underline; }
 
-  .pl-banner { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 0.75rem; }
+  .pl-banner { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--pl-border); background: #FFFFFF; color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 0.75rem; }
   .pl-banner--error { border-color: var(--accent-coral); color: var(--accent-coral); }
   .pl-banner[hidden] { display: none; }
 
-  /* ── Controls row: piece, device, hands ──────────────────── */
-  .pl-controls {
-    display: flex; flex-wrap: wrap; align-items: end; gap: 0.75rem 1.5rem;
-    background: #FFFFFF; border: 1px solid var(--border, #D8D4CC); border-radius: 12px;
-    padding: 0.75rem 1rem; margin-bottom: 1rem;
-  }
-  .pl-control { display: flex; flex-direction: column; gap: 0.25rem; }
-  .pl-control > label, .pl-control__label { font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
-  .pl-control select {
-    min-width: 14em; padding: 6px 10px; font: inherit; font-size: 1rem;
-    border-radius: 8px; border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary);
-  }
-  .pl-control select:disabled { opacity: 0.6; }
-  .pl-status { font-size: 0.85rem; color: var(--text-muted); min-height: 1.2em; }
-  .pl-check { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 1rem; color: var(--text-secondary); padding: 6px 0; cursor: pointer; }
+  .pl-header__piece { min-width: 16em; }
 
-  /* Hand toggle: a radio group styled as pills (game-pill from game-shell.css) */
-  .pl-hands { display: inline-flex; gap: 0; border: 1px solid var(--border, #D8D4CC); border-radius: 999px; overflow: hidden; }
-  .pl-hands label { padding: 6px 14px; cursor: pointer; font-size: 1rem; font-weight: 700; color: var(--text-secondary); background: #FFFFFF; user-select: none; }
-  .pl-hands label + label { border-left: 1px solid var(--border, #D8D4CC); }
+  /* ── Shared form bits (rack + header) ────────────────────── */
+  .pl-field { display: flex; flex-direction: column; gap: 0.3rem; }
+  .pl-field--inline { flex-direction: row; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .pl-field > label, .pl-field__label {
+    font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .pl-field--inline > label { text-transform: none; letter-spacing: 0; font-size: 1rem; font-weight: 400; color: var(--text-secondary); }
+  .pl-page select {
+    min-height: 44px; padding: 6px 10px; font: inherit; font-size: 1rem;
+    border-radius: 8px; border: 1px solid var(--pl-border); background: #FFFFFF; color: var(--text-primary);
+  }
+  .pl-page select:disabled { opacity: 0.6; }
+  .pl-page select:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+  .pl-check { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; font-size: 1rem; color: var(--text-secondary); cursor: pointer; }
+  .pl-check input { width: 1.1em; height: 1.1em; margin: 0; accent-color: var(--accent-blue); }
+  .pl-check:has(input:disabled) { opacity: 0.5; cursor: default; }
+  .pl-hint { margin: 0; font-size: 0.9rem; color: var(--text-muted); }
+  .pl-hint[hidden] { display: none; }
+
+  /* Buttons: real <button>s, ≥44px tall; variants per card */
+  .pl-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+    min-height: 44px; padding: 8px 16px; font: inherit; font-size: 1rem; font-weight: 700; line-height: 1.2;
+    border-radius: 10px; cursor: pointer; border: 1px solid var(--pl-border); background: #FFFFFF; color: var(--text-primary);
+  }
+  .pl-btn:disabled { opacity: 0.4; cursor: default; }
+  .pl-btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+  .pl-btn:hover:not(:disabled) { border-color: var(--accent-blue); color: var(--accent-blue); }
+  /* Practice: Repeat bar / Repeat line toggles (aria-pressed), gold when on */
+  .pl-btn--loop:hover:not(:disabled) { border-color: var(--pl-loop); color: var(--pl-loop); }
+  .pl-btn--loop[aria-pressed="true"], .pl-btn--loop[aria-pressed="true"]:hover { background: var(--pl-loop); border-color: var(--pl-loop); color: #FFFFFF; }
+  /* Practice: ↺ Start over, green outline */
+  .pl-btn--restart { border-color: var(--accent-green); color: var(--accent-green); width: 100%; }
+  .pl-btn--restart:hover:not(:disabled) { background: var(--accent-green); border-color: var(--accent-green); color: #FFFFFF; }
+  /* Listen: big ▶ Listen (blue), ■ Stop while playing */
+  .pl-btn--listen { background: var(--accent-blue); border-color: var(--accent-blue); color: #FFFFFF; font-size: 1.15rem; min-height: 52px; padding: 8px 22px; min-width: 9em; }
+  .pl-btn--listen:hover:not(:disabled) { background: #24507A; border-color: #24507A; color: #FFFFFF; }
+  .pl-btn--listen[aria-pressed="true"], .pl-btn--listen[aria-pressed="true"]:hover { background: var(--pl-playing); border-color: var(--pl-playing); color: #FFFFFF; }
+  /* MIDI: mute, mirrors the header speaker */
+  .pl-btn--mute { width: 100%; }
+  .pl-btn--mute[aria-pressed="true"] { background: #EFECE5; color: var(--text-secondary); }
+  .pl-btn--mute svg { flex: none; }
+  /* Nav: ← Prev / Next → */
+  .pl-btn--nav { padding: 8px 14px; }
+
+  /* ── Rack of module cards above the staff ────────────────── */
+  .pl-rack {
+    display: grid; gap: 0.75rem; margin-bottom: 0.75rem; align-items: stretch;
+    grid-template-columns: minmax(15rem, 5fr) minmax(18rem, 6fr) minmax(9rem, 3fr) minmax(13rem, 4fr) minmax(11rem, 3fr);
+  }
+  .pl-card {
+    display: flex; flex-direction: column; gap: 0.6rem; min-width: 0;
+    background: #FFFFFF; border: 1px solid var(--pl-border); border-radius: 14px; padding: 0.75rem 1rem 0.9rem;
+  }
+  .pl-card__title {
+    margin: 0 0 0.15rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--pl-border);
+    font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted);
+  }
+  .pl-card__body { display: flex; flex-direction: column; gap: 0.6rem; flex: 1 1 auto; }
+  .pl-card__foot { margin-top: auto; }
+  .pl-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .pl-row > .pl-btn { flex: 1 1 auto; }   /* three buttons wrap rather than shrink: a button's min-width is its content */
+  .pl-stack { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+  .pl-stack > .pl-card { flex: 1 1 auto; }
+
+  /* Listen card: button + tempo on one row, then the reserved metronome row (2b) under a dashed divider */
+  .pl-listen-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
+  .pl-tempo { display: flex; flex-direction: column; gap: 0.2rem; flex: 1 1 10em; min-width: 10em; }
+  .pl-tempo__top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+  .pl-tempo__top label { font-size: 0.9rem; color: var(--text-secondary); }
+  .pl-tempo__readout { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); white-space: nowrap; }
+  .pl-tempo input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent-blue); min-height: 28px; }
+  .pl-tempo input[type="range"]:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 4px; border-radius: 4px; }
+  .pl-metro-row {
+    margin-top: auto; padding-top: 0.6rem; border-top: 1px dashed var(--pl-border);
+    min-height: 44px; display: flex; align-items: center; color: var(--text-muted); font-size: 0.95rem;
+  }
+
+  /* Hands: segmented LH / RH / Both (radios styled as one control) */
+  .pl-hands { display: flex; border: 1px solid var(--pl-border); border-radius: 10px; overflow: hidden; }
+  .pl-hands label {
+    flex: 1 1 0; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 6px 10px;
+    cursor: pointer; font-size: 1rem; font-weight: 700; color: var(--text-secondary); background: #FFFFFF; user-select: none;
+  }
+  .pl-hands label + label { border-left: 1px solid var(--pl-border); }
   .pl-hands input { position: absolute; opacity: 0; width: 0; height: 0; }
-  .pl-hands input:checked + span { color: #FFFFFF; }
   .pl-hands label:has(input:checked) { background: var(--accent-blue); color: #FFFFFF; }
-  .pl-hands label:has(input:focus-visible) { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+  .pl-hands label:has(input:focus-visible) { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+
+  /* MIDI: device select, connected light, mute, "Sound for my notes" */
+  .pl-midi-status { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; color: var(--text-secondary); min-height: 1.4em; }
+  .pl-dot { width: 10px; height: 10px; border-radius: 50%; background: #B9B4A8; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12); }
+  .pl-dot--on { background: var(--accent-green); }
+
+  /* Piece card: stacked label / value rows (key, time, base tempo + marking) */
+  .pl-info { display: grid; grid-template-columns: auto 1fr; gap: 0.45rem 0.9rem; margin: 0; align-content: start; }
+  .pl-info dt { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; align-self: baseline; }
+  .pl-info dd { margin: 0; font-size: 1rem; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; align-self: baseline; }
+  .pl-info dd .pl-info__marking { font-weight: 400; color: var(--text-secondary); font-style: italic; }
+
+  /* ── Nav / status strip between the rack and the staff ───── */
+  .pl-strip {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem;
+    background: #FFFFFF; border: 1px solid var(--pl-border); border-radius: 14px; padding: 0.5rem 0.75rem; margin-bottom: 0.5rem;
+  }
+  .pl-strip__nav { display: flex; align-items: center; gap: 0.5rem; }
+  .pl-bar-label { font-weight: 700; min-width: 11em; text-align: center; font-variant-numeric: tabular-nums; }
+  .pl-status-line { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-secondary); text-align: right; }
+
+  /* Shortcut hints under the strip, body size, <kbd> styled */
+  .pl-shortcuts { margin: 0 0 0.75rem; font-size: 1rem; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; align-items: center; }
+  .pl-shortcuts span + span::before { content: '·'; color: var(--text-muted); margin-right: 0.5rem; }
+  .pl-page kbd {
+    display: inline-block; min-width: 1.6em; padding: 1px 6px; text-align: center; font: inherit; font-size: 0.9rem; font-weight: 700;
+    color: var(--text-primary); background: #FFFFFF; border: 1px solid var(--pl-border); border-bottom-width: 2px; border-radius: 6px; line-height: 1.4;
+  }
+
+  /* Narrow widths: the cards wrap (two per row, then one) */
+  @media (max-width: 1180px) {
+    .pl-rack { grid-template-columns: 1fr 1fr; }
+    .pl-stack { flex-direction: row; }
+    .pl-header__piece { min-width: 0; flex: 1 1 100%; }
+  }
+  @media (max-width: 600px) {
+    .pl-rack { grid-template-columns: 1fr; }
+    .pl-stack { flex-direction: column; }
+    .pl-status-line { margin-left: 0; flex: 1 1 100%; text-align: left; }
+  }
 
   /* ── Hosts: staff and keyboard ─────────────────────────────── */
-  .pl-panel { background: #FFFFFF; border: 1px solid var(--border, #D8D4CC); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+  .pl-panel { background: #FFFFFF; border: 1px solid var(--pl-border); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
   .pl-panel__label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: 0 0 0.5rem; }
   .pl-staff-host { min-height: 220px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
   .pl-staff-host > .pl-staff-wrap { align-self: stretch; }
@@ -85,52 +190,6 @@
   .pl-page .vk-key.pl-key--correct  { background: var(--accent-green); box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25); }
   .pl-page .vk-key.pl-key--wrong    { background: var(--accent-coral); box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25); }
   .pl-page .vk-key.pl-key--playing .vk-key__label, .pl-page .vk-key.pl-key--expected .vk-key__label, .pl-page .vk-key.pl-key--correct .vk-key__label, .pl-page .vk-key.pl-key--wrong .vk-key__label { opacity: 1; color: #fff; }
-
-  /* Bar navigation: Prev / Next, "Bar N / M", status line, Restart (at the end) */
-  .pl-barnav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.5rem; }
-  .pl-barnav button {
-    font: inherit; font-size: 1rem; font-weight: 700; padding: 6px 14px; border-radius: 8px; cursor: pointer;
-    border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary);
-  }
-  .pl-barnav button:hover:not(:disabled) { border-color: var(--accent-blue); color: var(--accent-blue); }
-  .pl-barnav button:disabled { opacity: 0.4; cursor: default; }
-  .pl-barnav button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
-  .pl-bar-label { font-weight: 700; min-width: 11em; font-variant-numeric: tabular-nums; }
-  .pl-barnav__hint { font-size: 0.85rem; color: var(--text-muted); }
-  .pl-status-line { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
-  .pl-barnav .pl-restart { border-color: var(--accent-green); color: var(--accent-green); }
-  .pl-barnav .pl-restart[hidden] { display: none; }
-
-  /* Loop controls: Repeat bar / Repeat line toggles (aria-pressed), "Move on after" select; same row as the bar nav */
-  .pl-loopnav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.5rem; }
-  .pl-loopnav__label { font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
-  .pl-loopnav button {
-    font: inherit; font-size: 1rem; font-weight: 700; padding: 6px 14px; border-radius: 8px; cursor: pointer;
-    border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary);
-  }
-  .pl-loopnav button:hover:not(:disabled) { border-color: var(--pl-loop, #B07A0A); color: var(--pl-loop, #B07A0A); }
-  .pl-loopnav button:disabled { opacity: 0.4; cursor: default; }
-  .pl-loopnav button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
-  .pl-loopnav button[aria-pressed="true"] { background: var(--pl-loop, #B07A0A); border-color: var(--pl-loop, #B07A0A); color: #FFFFFF; }
-  .pl-loopnav button[aria-pressed="true"]:hover { color: #FFFFFF; }
-  .pl-loopnav select { padding: 6px 10px; font: inherit; font-size: 1rem; border-radius: 8px; border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary); }
-  .pl-loopnav__hint { font-size: 0.85rem; color: var(--text-muted); }
-
-  /* Listen row (2a): ▶ Listen / ■ Stop + the tempo slider; 2b adds the metronome toggle, volume and count-in here */
-  .pl-listen { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.5rem; }
-  .pl-listen__label { font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
-  .pl-listen button {
-    font: inherit; font-size: 1rem; font-weight: 700; padding: 6px 14px; border-radius: 8px; cursor: pointer; min-width: 7em;
-    border: 1px solid var(--border, #D8D4CC); background: #FFFFFF; color: var(--text-primary);
-  }
-  .pl-listen button:hover:not(:disabled) { border-color: var(--pl-playing); color: var(--pl-playing); }
-  .pl-listen button:disabled { opacity: 0.4; cursor: default; }
-  .pl-listen button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
-  .pl-listen button[aria-pressed="true"] { background: var(--pl-playing); border-color: var(--pl-playing); color: #FFFFFF; }
-  .pl-listen__tempo { display: inline-flex; align-items: center; gap: 0.5rem; }
-  .pl-listen input[type="range"] { width: 14em; accent-color: var(--pl-playing); }
-  .pl-listen__readout { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 7.5em; color: var(--text-secondary); }
-  .pl-listen__hint { font-size: 0.85rem; color: var(--text-muted); }
 
   /* Trouble spots after a pass: "Trouble spots: bars 6–7 (4 misses) [Loop these]" or "Clean pass!" */
   .pl-trouble { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; margin: 0 0 0.5rem; font-size: 1rem; color: var(--text-secondary); }
@@ -152,91 +211,132 @@
 <div class="pl-page game-page">
   <div class="pl-column">
 
-    <div class="game-top-bar">
-      <h1 class="game-title">Player</h1>
-      <a href="/" class="game-back-link">&larr; Back</a>
-    </div>
-
     <header class="pl-header">
-      <h2 class="pl-piece-title" id="pl-piece-title">…</h2>
-      <p class="pl-meta" id="pl-meta"></p>
+      <h1 class="pl-piece-title" id="pl-piece-title">…</h1>
+      <div class="pl-header__right">
+        <a href="/" class="pl-header__back">&larr; Back</a>
+        <div class="pl-field pl-header__piece">
+          <label for="pl-piece-select">Song</label>
+          <select id="pl-piece-select"><option value="">(loading…)</option></select>
+        </div>
+      </div>
     </header>
 
     <div class="pl-banner" id="pl-banner" hidden role="status"></div>
 
-    <!-- Controls: piece picker (from /player/pieces), MIDI device, hands, mode (No stress), sound -->
-    <div class="pl-controls">
-      <div class="pl-control">
-        <label for="pl-piece-select">Piece</label>
-        <select id="pl-piece-select" aria-label="Piece"><option value="">(loading…)</option></select>
-      </div>
+    <!-- Control rack: Practice · Listen · Hands / Mode · MIDI · Piece. Ids are what player.js wires; the layout is this template's. -->
+    <div class="pl-rack">
 
-      <div class="pl-control">
-        <label for="pl-device-select">MIDI device</label>
-        <select id="pl-device-select" aria-label="MIDI device" disabled><option value="">(none)</option></select>
-        <div class="pl-status" id="pl-device-status">Not connected yet</div>
-      </div>
-
-      <div class="pl-control">
-        <span class="pl-control__label" id="pl-hands-label">Hands</span>
-        <div class="pl-hands" role="radiogroup" aria-labelledby="pl-hands-label" id="pl-hands">
-          <label><input type="radio" name="pl-hands" value="lh"><span>LH</span></label>
-          <label><input type="radio" name="pl-hands" value="rh"><span>RH</span></label>
-          <label><input type="radio" name="pl-hands" value="both" checked><span>Both</span></label>
+      <section class="pl-card pl-card--practice" aria-labelledby="pl-h-practice">
+        <h3 class="pl-card__title" id="pl-h-practice">Practice</h3>
+        <div class="pl-card__body">
+          <div class="pl-row">
+            <button type="button" class="pl-btn pl-btn--loop" id="pl-loop-bar" aria-pressed="false" disabled>Repeat bar(s)</button>
+            <button type="button" class="pl-btn pl-btn--loop" id="pl-loop-line" aria-pressed="false" disabled>Repeat line(s)</button>
+            <!-- Same code path as Esc (cancelLoop): drops a pending tap and clears the active loop; the position stays -->
+            <button type="button" class="pl-btn" id="pl-loop-clear" disabled>&#10005; Clear loop</button>
+          </div>
+          <div class="pl-field pl-field--inline">
+            <label for="pl-loop-exit">Move on after</label>
+            <select id="pl-loop-exit" aria-label="Move on after this many clean passes">
+              <option value="0">off</option>
+              <option value="2">2 clean passes</option>
+              <option value="3" selected>3 clean passes</option>
+              <option value="5">5 clean passes</option>
+            </select>
+          </div>
+          <p class="pl-hint" id="pl-no-stress-hint" hidden>No stress: loops run until turned off</p>
+          <p class="pl-hint" id="pl-loop-hint">Tap two bars on the staff to set a loop (the first and last of the range; Esc or Clear loop cancels)</p>
         </div>
+        <div class="pl-card__foot">
+          <!-- Same as R: zero the wrong count, jump to the start (or the loop start while looping). Always shown. -->
+          <button type="button" class="pl-btn pl-btn--restart" id="pl-restart" disabled>&#8634; Start over</button>
+        </div>
+      </section>
+
+      <!-- Listen (player-listen.js + shared VoicingPlayer): the loop range, or the drawn line, both hands, at a percentage of the piece's tempo. Space toggles. -->
+      <section class="pl-card pl-card--listen" aria-labelledby="pl-h-listen">
+        <h3 class="pl-card__title" id="pl-h-listen">Listen</h3>
+        <div class="pl-listen-row">
+          <button type="button" class="pl-btn pl-btn--listen" id="pl-listen" aria-pressed="false" disabled>&#9654; Listen</button>
+          <div class="pl-tempo">
+            <div class="pl-tempo__top">
+              <label for="pl-tempo">Tempo</label>
+              <span class="pl-tempo__readout" id="pl-tempo-readout">100%</span>
+            </div>
+            <input type="range" id="pl-tempo" min="25" max="200" step="1" value="100" aria-label="Tempo, percent of the piece's tempo">
+          </div>
+        </div>
+        <!-- 2b lands here: metronome checkbox, click volume, count-in 0 / 1 / 2. Height reserved so the card doesn't jump. -->
+        <div class="pl-metro-row" id="pl-metro-row"><span>Metronome — coming next</span></div>
+      </section>
+
+      <div class="pl-stack">
+        <section class="pl-card pl-card--hands" aria-labelledby="pl-h-hands">
+          <h3 class="pl-card__title" id="pl-h-hands">Hands</h3>
+          <div class="pl-hands" role="radiogroup" aria-labelledby="pl-h-hands" id="pl-hands">
+            <label><input type="radio" name="pl-hands" value="lh"><span>LH</span></label>
+            <label><input type="radio" name="pl-hands" value="rh"><span>RH</span></label>
+            <label><input type="radio" name="pl-hands" value="both" checked><span>Both</span></label>
+          </div>
+        </section>
+        <section class="pl-card pl-card--mode" aria-labelledby="pl-h-mode">
+          <h3 class="pl-card__title" id="pl-h-mode">Mode</h3>
+          <label class="pl-check" title="Wrong notes don't block, aren't shown and aren't counted; the player just follows along"><input type="checkbox" id="pl-no-stress"> No stress</label>
+        </section>
       </div>
 
-      <div class="pl-control">
-        <span class="pl-control__label">Mode</span>
-        <label class="pl-check" title="Wrong notes don't block, aren't shown and aren't counted; the player just follows along"><input type="checkbox" id="pl-no-stress"> No stress</label>
-      </div>
+      <section class="pl-card pl-card--midi" aria-labelledby="pl-h-midi">
+        <h3 class="pl-card__title" id="pl-h-midi">MIDI</h3>
+        <div class="pl-card__body">
+          <div class="pl-field">
+            <label for="pl-device-select">Device</label>
+            <select id="pl-device-select" disabled><option value="">(none)</option></select>
+          </div>
+          <div class="pl-midi-status" id="pl-device-light" title="Not connected yet">
+            <span class="pl-dot" id="pl-device-dot" aria-hidden="true"></span>
+            <span id="pl-device-status" role="status">Not connected</span>
+          </div>
+          <!-- Mirrors the header speaker (site AudioToggle): one state, read from AudioToggle, changed through it -->
+          <button type="button" class="pl-btn pl-btn--mute" id="pl-mute" aria-pressed="false" title="Mute all sound on this page">Mute</button>
+        </div>
+        <div class="pl-card__foot">
+          <label class="pl-check"><input type="checkbox" id="pl-sound"> Sound for my notes</label>
+        </div>
+      </section>
 
-      <div class="pl-control">
-        <span class="pl-control__label">Sound</span>
-        <label class="pl-check"><input type="checkbox" id="pl-sound"> Sound for MIDI notes</label>
-      </div>
+      <!-- Piece: key, time, base tempo (norm.tempo, not the slider) with its marking (norm.tempoMarking, else derived in player.js) -->
+      <section class="pl-card pl-card--piece" aria-labelledby="pl-h-piece">
+        <h3 class="pl-card__title" id="pl-h-piece">Piece</h3>
+        <dl class="pl-info">
+          <dt>Key</dt><dd id="pl-info-key">–</dd>
+          <dt>Time</dt><dd id="pl-info-time">–</dd>
+          <dt>Tempo</dt><dd id="pl-info-tempo">–</dd>
+        </dl>
+      </section>
+
     </div>
 
   </div>
 
-  <!-- Staff: one line at a time (PlayerStaff, Verovio; lines from norm.lines); Prev / Next or ← / → page by line, Shift+← / → by bar.
-       In its own, wider column (.pl-column--staff). -->
-  <div class="pl-column pl-column--staff">
-    <section class="pl-panel" aria-label="Staff">
-      <p class="pl-panel__label">Staff</p>
-      <div class="pl-barnav">
-        <button type="button" id="pl-prev" aria-label="Previous line" disabled>&larr; Prev</button>
+  <!-- Staff: one line at a time (PlayerStaff, Verovio; lines from norm.lines); Prev / Next or ← / → page by line, Shift+← / → by bar. -->
+  <div class="pl-column">
+    <!-- Nav / status strip: line nav left, status (loop range, pass, clean x / y, wrong count) right -->
+    <div class="pl-strip">
+      <div class="pl-strip__nav">
+        <button type="button" class="pl-btn pl-btn--nav" id="pl-prev" aria-label="Previous line" disabled>&larr; Prev</button>
         <span class="pl-bar-label" id="pl-bar-label" aria-live="polite">Line – / – · Bar –</span>
-        <button type="button" id="pl-next" aria-label="Next line" disabled>Next &rarr;</button>
-        <span class="pl-barnav__hint">← / → line · Shift+← / → bar · R restarts</span>
-        <span class="pl-status-line" id="pl-status" aria-live="polite"></span>
-        <button type="button" id="pl-restart" class="pl-restart" hidden>Restart</button>
+        <button type="button" class="pl-btn pl-btn--nav" id="pl-next" aria-label="Next line" disabled>Next &rarr;</button>
       </div>
-      <div class="pl-loopnav">
-        <span class="pl-loopnav__label">Loop</span>
-        <button type="button" id="pl-loop-bar" aria-pressed="false" disabled>Repeat bar</button>
-        <button type="button" id="pl-loop-line" aria-pressed="false" disabled>Repeat line</button>
-        <label class="pl-loopnav__hint" for="pl-loop-exit">Move on after</label>
-        <select id="pl-loop-exit" aria-label="Move on after this many clean passes">
-          <option value="0">off</option>
-          <option value="2">2 clean passes</option>
-          <option value="3" selected>3 clean passes</option>
-          <option value="5">5 clean passes</option>
-        </select>
-        <span class="pl-loopnav__hint" id="pl-no-stress-hint" hidden>No stress: loops run until turned off</span>
-        <span class="pl-loopnav__hint" id="pl-loop-hint">Or tap a bar on the staff, then the last bar of the range (Esc cancels)</span>
-      </div>
-      <!-- Listen (player-listen.js + shared VoicingPlayer): the loop range, or the drawn line, both hands, at a percentage of the piece's tempo. Space toggles. -->
-      <div class="pl-listen">
-        <span class="pl-listen__label">Listen</span>
-        <button type="button" id="pl-listen" aria-pressed="false" disabled>&#9654; Listen</button>
-        <span class="pl-listen__tempo">
-          <label class="pl-listen__hint" for="pl-tempo">Tempo</label>
-          <input type="range" id="pl-tempo" min="25" max="200" step="1" value="100" aria-label="Tempo, percent of the piece's tempo">
-          <span class="pl-listen__readout" id="pl-tempo-readout">100%</span>
-        </span>
-        <span class="pl-listen__hint">Space plays the loop, or the drawn line</span>
-      </div>
+      <span class="pl-status-line" id="pl-status" aria-live="polite"></span>
+    </div>
+    <p class="pl-shortcuts" aria-label="Keyboard shortcuts">
+      <span><kbd>&larr;</kbd> / <kbd>&rarr;</kbd> line</span>
+      <span><kbd>Shift</kbd>+<kbd>&larr;</kbd> / <kbd>&rarr;</kbd> bar</span>
+      <span><kbd>R</kbd> start over</span>
+      <span><kbd>Space</kbd> listen</span>
+    </p>
+    <section class="pl-panel" aria-label="Staff">
       <!-- Trouble spots (player-trouble.js): filled by player.js at the end of a pass; "Loop these" starts a loop on that range -->
       <div class="pl-trouble" id="pl-trouble" hidden role="status" aria-live="polite"></div>
       <div class="pl-staff-host" id="pl-staff">Staff loads with the piece.</div>

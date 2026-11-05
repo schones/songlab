@@ -34,7 +34,8 @@
  * "Move on after" (LOOP_EXIT_KEY) is the follower's exitAfter. Setting a
  * loop jumps to its first bar. Prev / Next / Shift+arrows that land outside
  * the range, loading a piece, and a hands change with nothing for that hand
- * in the range turn it off. R restarts at the loop start while looping.
+ * in the range turn it off, as do Esc and "✕ Clear loop" (cancelLoop, which
+ * also drops a pending tap). R restarts at the loop start while looping.
  * The looped bars are tinted on the staff (PlayerStaff 'loop' / 'pending').
  * Pass counts are per hand: a hands change rebuilds the follower, so the
  * outgoing hand's { pass, cleanStreak } is kept in loopCounts (player-follow
@@ -124,15 +125,17 @@ const noteName = midi => `${NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
 
 const $ = id => document.getElementById(id);
 const els = {
-  title: $('pl-piece-title'), meta: $('pl-meta'), banner: $('pl-banner'),
+  title: $('pl-piece-title'), banner: $('pl-banner'),
+  infoKey: $('pl-info-key'), infoTime: $('pl-info-time'), infoTempo: $('pl-info-tempo'),   // Piece card
   select: $('pl-piece-select'),
-  device: $('pl-device-select'), deviceStatus: $('pl-device-status'),
+  device: $('pl-device-select'), deviceStatus: $('pl-device-status'), deviceDot: $('pl-device-dot'), deviceLight: $('pl-device-light'),
+  mute: $('pl-mute'),
   hands: $('pl-hands'),
   noStress: $('pl-no-stress'),
-  sound: $('pl-sound'),
+  sound: $('pl-sound'),           // "Sound for my notes": the echo of MIDI notes
   prev: $('pl-prev'), next: $('pl-next'), barLabel: $('pl-bar-label'),
   status: $('pl-status'), restart: $('pl-restart'),
-  loopBar: $('pl-loop-bar'), loopLine: $('pl-loop-line'), loopExit: $('pl-loop-exit'), noStressHint: $('pl-no-stress-hint'),
+  loopBar: $('pl-loop-bar'), loopLine: $('pl-loop-line'), loopClear: $('pl-loop-clear'), loopExit: $('pl-loop-exit'), noStressHint: $('pl-no-stress-hint'),
   listen: $('pl-listen'), tempo: $('pl-tempo'), tempoReadout: $('pl-tempo-readout'),
   trouble: $('pl-trouble'),
   staffHost: $('pl-staff'),
@@ -350,17 +353,17 @@ const barsText = (from, to) => (from === to ? `bar ${from}` : `bars ${from}–${
 
 function updateStatus() {
   const f = state.follower;
-  if (!state.norm || !f) { els.status.textContent = ''; els.restart.hidden = true; return; }
+  els.restart.disabled = !state.norm || !f;   // ↺ Start over is always shown; it needs a piece
+  els.loopClear.disabled = !state.norm || !f || (!state.loop && state.pendingBar == null);   // ✕ Clear loop: something to clear
+  if (!state.norm || !f) { els.status.textContent = ''; return; }
   if (state.pendingBar != null) {
     const pl = lineOf(state.pendingBar);
     const where = pl >= 0 && pl !== state.line ? ` (on line ${pl + 1})` : '';
     els.status.textContent = `Bar ${state.pendingBar} tapped${where} · tap the last bar of the range (or bar ${state.pendingBar} again) · Esc cancels`;
-    els.restart.hidden = true;
     return;
   }
   if (f.done()) {
     els.status.textContent = state.noStress ? 'Nice — you played it through!' : `Done! ${state.wrong} wrong note${state.wrong === 1 ? '' : 's'}`;
-    els.restart.hidden = false;
     return;
   }
   const cur = f.current();
@@ -372,7 +375,6 @@ function updateStatus() {
     where += ` · step ${cur.index + 1} / ${state.steps.length}`;
   }
   els.status.textContent = state.noStress ? where : `${where} · wrong: ${state.wrong}`;
-  els.restart.hidden = true;
 }
 
 /** A note attack from the MIDI device or an on-screen key. */
@@ -439,10 +441,17 @@ async function setupMidi() {
   input = createShellInput({ storage });
   input.on('noteOn', onMidiNoteOn);
   input.on('noteOff', onMidiNoteOff);
-  input.on('status', text => { els.deviceStatus.textContent = text; });
+  input.on('status', text => deviceLight(text));
   input.on('devices', refreshDeviceList);
-  try { await input.init(); } catch (err) { els.deviceStatus.textContent = `MIDI unavailable: ${err.message}`; }
+  try { await input.init(); } catch (err) { deviceLight(`MIDI unavailable: ${err.message}`); }
   refreshDeviceList();
+}
+/** Green dot + "Connected" while the input has an active device, else grey + "Not connected"; the input's own message ("Connected: RD-2000", "Remembered device … not found", …) is the tooltip. */
+function deviceLight(message) {
+  const on = !!(input && input.deviceName);
+  els.deviceDot.classList.toggle('pl-dot--on', on);
+  els.deviceStatus.textContent = on ? 'Connected' : 'Not connected';
+  if (message) els.deviceLight.title = message;
 }
 /** createShellInput remembers the device under its own key; this storage view keeps the player's choice under DEVICE_KEY. */
 function playerDeviceStorage() {
@@ -456,6 +465,7 @@ function playerDeviceStorage() {
 }
 function refreshDeviceList() {
   if (!input) return;
+  deviceLight();
   const sel = els.device;
   const list = input.listDevices();
   const current = input.deviceName || '';
@@ -471,7 +481,25 @@ function refreshDeviceList() {
 }
 els.device.addEventListener('change', e => { if (input && e.target.value) input.selectDevice(e.target.value); });
 
-// ── Sound for MIDI notes (off by default; remembered) ─────────────
+// ── Mute (MIDI card): the site AudioToggle's state, changed through its button ──
+const MUTE_ICON_ON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+const MUTE_ICON_OFF = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
+function syncMute() {
+  const m = muted();
+  els.mute.innerHTML = `${m ? MUTE_ICON_OFF : MUTE_ICON_ON}<span>${m ? 'Muted' : 'Mute'}</span>`;
+  els.mute.setAttribute('aria-pressed', String(m));
+  els.mute.setAttribute('aria-label', m ? 'Unmute sound' : 'Mute sound');
+  els.mute.title = m ? 'Sound off — click to unmute (same as the speaker in the header)' : 'Sound on — click to mute (same as the speaker in the header)';
+}
+els.mute.addEventListener('click', () => {
+  els.mute.blur();
+  const toggle = document.querySelector('.audio-toggle-btn');   // AudioToggle's own (hidden) button: flips its state, saves it, fires tonnetz:mute-changed
+  if (toggle) toggle.click(); else syncMute();
+});
+window.addEventListener('tonnetz:mute-changed', syncMute);
+if (window.AudioToggle) syncMute(); else window.addEventListener('DOMContentLoaded', syncMute);
+
+// ── Sound for my notes (the echo; off by default; remembered) ─────
 try { els.sound.checked = localStorage.getItem(SOUND_KEY) === '1'; } catch (_) { els.sound.checked = false; }
 els.sound.addEventListener('change', () => {
   try { localStorage.setItem(SOUND_KEY, els.sound.checked ? '1' : '0'); } catch (_) { /* storage unavailable */ }
@@ -716,6 +744,11 @@ function cancelPending() {
   staff.setBarTint('pending', []);
   updateStatus();
 }
+/** Esc and ✕ Clear loop: drop a pending first tap and clear the active loop; the position stays where it is. */
+function cancelLoop() {
+  cancelPending();
+  if (state.loop) clearLoop();   // toggles off, staff tint cleared, status without "Looping" (syncLoop)
+}
 staff.onBarTap = onBarTap;
 /** A pending tap survives paging (Prev / Next here; the arrow keys never cancel), so a range can span lines; any other click cancels it. */
 const keepsPending = t => t instanceof Node && (els.staffHost.contains(t) || els.prev.contains(t) || els.next.contains(t));
@@ -734,6 +767,7 @@ els.loopLine.addEventListener('click', () => {
   if (els.loopLine.getAttribute('aria-pressed') === 'true') clearLoop();
   else if (line) setLoop(line.from, line.to);
 });
+els.loopClear.addEventListener('click', () => { els.loopClear.blur(); cancelLoop(); });
 els.loopExit.addEventListener('change', () => {
   try { localStorage.setItem(LOOP_EXIT_KEY, els.loopExit.value); } catch (_) { /* storage unavailable */ }
   if (state.loop && state.follower) { state.follower.setLoop(state.loop.from, state.loop.to, { exitAfter: loopExitAfter() }); syncLoop(); }   // same range: passes kept
@@ -752,7 +786,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'ArrowRight') { move(1); e.preventDefault(); }
   else if (e.key === 'r' || e.key === 'R') { restart(); e.preventDefault(); }
   else if (e.key === ' ' || e.key === 'Spacebar') { if (state.listen.active) stopListen(); else listen(); e.preventDefault(); }   // preventDefault: a focused button must not click as well
-  else if (e.key === 'Escape' && state.pendingBar != null) { cancelPending(); e.preventDefault(); }
+  else if (e.key === 'Escape' && (state.pendingBar != null || state.loop)) { cancelLoop(); e.preventDefault(); }
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -1004,15 +1038,39 @@ function banner(text, isError = false) {
   els.banner.classList.toggle('pl-banner--error', isError);
 }
 
+/**
+ * Italian tempo markings by quarter-note bpm, for the Piece card when the
+ * norm has no `tempoMarking` of its own: [upper bound (exclusive), name].
+ * Tune here.
+ */
+const TEMPO_MARKINGS = [
+  [60, 'Largo'],
+  [66, 'Larghetto'],
+  [76, 'Adagio'],
+  [91, 'Andantino'],
+  [108, 'Andante'],
+  [120, 'Moderato'],
+  [130, 'Allegretto'],
+  [168, 'Allegro'],
+  [Infinity, 'Presto'],
+];
+function tempoMarking(bpm) {
+  if (!Number.isFinite(bpm)) return '';
+  const hit = TEMPO_MARKINGS.find(([max]) => bpm < max);
+  return hit ? hit[1] : '';
+}
+
+/** Page heading (h1) + the Piece card: key, time, base tempo (norm.tempo, not the slider) with its marking. */
 function showHeader(name, norm) {
   els.title.textContent = (typeof norm.title === 'string' && norm.title.trim()) ? norm.title : name;
-  const parts = [];
-  if (norm.key)  parts.push(norm.key);
-  if (norm.time) parts.push(norm.time);
-  if (norm.tempo) parts.push(`${norm.tempo} bpm`);
-  parts.push(`${Array.isArray(norm.bars) ? norm.bars.length : 0} bars`);
-  els.meta.textContent = '';
-  for (const p of parts) { const s = document.createElement('span'); s.textContent = p; els.meta.appendChild(s); }
+  els.infoKey.textContent = norm.key || '–';
+  els.infoTime.textContent = norm.time || '–';
+  els.infoTempo.textContent = '';
+  if (norm.tempo) {
+    const marking = (typeof norm.tempoMarking === 'string' && norm.tempoMarking.trim()) ? norm.tempoMarking.trim() : tempoMarking(Number(norm.tempo));
+    els.infoTempo.append(`${norm.tempo} bpm`);
+    if (marking) { const m = document.createElement('span'); m.className = 'pl-info__marking'; m.textContent = ` · ${marking}`; els.infoTempo.appendChild(m); }
+  } else els.infoTempo.textContent = '–';
 }
 
 function unload() {
@@ -1027,7 +1085,7 @@ async function load(name) {
   stopListen();
   banner('');
   els.title.textContent = '…';
-  els.meta.textContent = '';
+  els.infoKey.textContent = els.infoTime.textContent = els.infoTempo.textContent = '–';
   try {
     const res = await fetch(`/player/data/${encodeURIComponent(name)}`, { headers: { Accept: 'application/json' } });
     if (!res.ok) {
