@@ -99,8 +99,15 @@ Piece card with a derived Italian tempo marking) and 2b metronome +
 count-in (`metronome.js`: click on the Listen card's bottom row with a
 volume slider and a 0 / 1 / 2-bar count-in, on Tone's context clock, not
 the Transport, anchored to Listen's start so the downbeat and the first
-note share one audio time). Both checked in Chrome by ear and mouse; the
-RD-2000 check is next. Detail below under "What's Working".
+note share one audio time). 2026-11-12 (`244dd33`): the RD-2000 check
+passed (Hands, No stress, MIDI card, Sound for my notes, playing with
+the metronome); it turned up and fixed MIDI hot-plug and a device
+appearing after a load with zero inputs (root cause in the shared
+`midi-input.js` init; Cycle of Shells benefits too) and the audio wake
+(any gesture or the first MIDI note); and the rack became collapsible
+behind a 58 px summary strip, auto-collapsing on the first note or
+Listen ("Hide controls while playing", default on). Detail below under
+"What's Working".
 
 ### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
 Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
@@ -146,9 +153,10 @@ Full version: [Claude doc](https://claude.ai/artifact/DHHd1R3qux19CPWyX7fPaA) ·
 - **Thread A — kids' practice track (active until 2026-12-14 freeze):**
   player loop (1a loops, 1b trouble spots + per-hand counts, 1c No
   stress), 2a Listen + tempo slider (+ 2a.1 fixes) — done 2026-11-03 —
-  and 2a.2 control rack + 2b metronome + count-in — done 2026-11-05 →
-  RD-2000 check of the rack + metronome → play-along mode with the
-  metronome → RD-2000 recording
+  and 2a.2 control rack + 2b metronome + count-in — done 2026-11-05 —
+  and the RD-2000 check of the rack + metronome (+ hot-plug / audio-wake
+  fixes, collapsible rack) — done 2026-11-12 → play-along mode with the
+  metronome, including Listen / play past the current line → RD-2000 recording
   session (Carol lines 3–4, Run Rudolph Run, Feel Good Inc., Linus and
   Lucy) → learner picker → practice log (JSON on the mini, written by
   Flask; `practiceEvent` funnel + `state.practice.playedMs` already in
@@ -180,13 +188,16 @@ trouble thresholds tuning from the `console.table` rows), then 2a Listen
 that check (echo on its own sampler at Tone.immediate(), purple playing
 colour, pending tap kept across paging, slider 25–200 %, Listen plays the
 drawn line). 2026-11-05: 2a.2 control rack (`456bb8e`) and 2b
-metronome + count-in (`metronome.js`, working tree), both checked in
-Chrome by ear and mouse. Next, in order: RD-2000 check of the rack +
-metronome (Hands, No stress, MIDI card, playing with the click); then
-play-along mode with the metronome; then the RD-2000 recording session,
-warm-up screen and practice logging (`createResultLog` with key
-`songlab_results_player`, hanging off `practiceEvent` in `player.js`).
-Current state block below.
+metronome + count-in (`metronome.js`), both checked in Chrome by ear
+and mouse. 2026-11-12 (`244dd33`): the RD-2000 check passed (Hands, No
+stress, MIDI card, Sound for my notes, playing with the click), with
+fixes for MIDI hot-plug and a device appearing after a load with zero
+inputs, audio wake on any gesture / first MIDI note, and the collapsible
+rack with its summary strip. Next, in order: play-along mode with the
+metronome, including Listen / play past the current line; then the
+RD-2000 recording session, warm-up screen and practice logging
+(`createResultLog` with key `songlab_results_player`, hanging off
+`practiceEvent` in `player.js`). Current state block below.
 
 **Voicing Explorer analysis arc (2026-10-14, branch `voicing-explorer`)**
 was the active workstream before that. Motivated by a voiced practice score of
@@ -899,11 +910,12 @@ headless Chrome; not yet merged to dev):**
   MIDI hot-plug, site-wide device default, sharp labels on held notes,
   ii_V_I walkthrough steps without concept_specifics.
 
-### Follow-along player — current state (updated 2026-11-05)
+### Follow-along player — current state (updated 2026-11-12)
 
-**Landed and verified on dev (Node self-tests; Milestone 1 checked in
-Chrome with the RD-2000; the loop chunk 1a checked in Chrome, 1b / 1c
-from console snippets only):**
+**Landed and verified on dev (Node self-tests; Milestone 1, Hands, No
+stress, the MIDI card and the metronome checked in Chrome with the
+RD-2000 on 2026-11-12; the loop chunk 1a checked in Chrome, 1b from
+console snippets only):**
 - `/player` (`app.py` routes `/player`, `/player/pieces`,
   `/player/data/<name>`; `templates/player.html`): piece picker (private
   pieces from `static/private/pieces/*.norm.json`, public from
@@ -1063,7 +1075,50 @@ from console snippets only):**
   sync with the notes, live toggles, remembered settings, cancel during
   the count-in). By design: the tempo slider applies on the next Listen
   (notes and click are fixed at start) and Listen plays the loop range or
-  the current line once.
+  the current line once. Checked on the RD-2000 2026-11-12 (play-along
+  feel with the click).
+- Collapsible rack + summary strip (2026-11-12, `244dd33`; `player.html`,
+  `player.js`): the rack sits in `.pl-rack-shell` (grid rows 0fr ↔ 1fr +
+  opacity, 150 ms, `inert` + visibility when closed, no transition under
+  prefers-reduced-motion) above the summary strip, 58 px on one row:
+  ← Prev | Line n / m · Bar b | Next → | settings summary ("100% ·
+  metronome off · count-in 1 · both hands [· No stress] [· loop bars
+  2–3] · ● RD-2000" / "no MIDI"; click opens the rack) | ⚙ Controls
+  (`aria-expanded`) | ▶ Listen / ■ Stop | ↺ Start over | ✕ Clear loop
+  (shown only while a loop or a first tap is set) | status. The three
+  live buttons live in the strip (same ids), so the Listen card is tempo
+  + the metronome row and Practice is the repeat toggles, Move on after
+  and the hints at 13 px; cards padded tighter. Auto-collapse: the first
+  MIDI note or Listen start after the rack was opened closes it, once per
+  opening, never while focus or a pointer drag is inside it; "Hide
+  controls while playing" in the Mode card (default on,
+  `songlab_player_rack_auto`); open / closed remembered
+  (`songlab_player_rack_open`), on load closed when auto is on, else as
+  remembered. Debug: `__player.setRackOpen`, `setRackAuto`, `rack`.
+- MIDI hot-plug + a device appearing after a load with zero inputs
+  (2026-11-12, `244dd33`; `static/shared/midi-input.js`,
+  `static/games/cycle-of-shells-input.js`, `player.js`): `MIDIInput`
+  resolves the attachment on `init()` and on every MIDIAccess
+  `statechange` — the preferred device (by id) if present, else the
+  current one if still present, else the first non-DAW port, else none —
+  with the handler on the picked port only, and emits
+  `onDevicesChanged(cb)` once per real change; `MIDIInput.available` says
+  access was granted (init's return is "connected", false with no input
+  yet — the root cause: the wrapper took it for "no Web MIDI" and never
+  subscribed). The wrapper's one `sync(reason)` (load / hot-plug / manual
+  choice) lets the remembered name win, releases what a vanished or
+  switched port held, and emits `status` + `devices`; the player's one
+  `syncDevice()` rebuilds the select, light, tooltip and strip summary.
+  Unplugging the active device with another port present falls back to
+  it ("Remembered device X not found; using Y"). Self-test 29/29. Cycle
+  of Shells gets the same hot-plug through the shared wrapper.
+- Audio wake (2026-11-12; `player.js` `startAudio`): loads Tone first,
+  then `Tone.start()` on every pointerdown / keydown (capture), from the
+  Sound checkbox, the on-screen keys, Listen, and from a MIDI note
+  arriving while the context is suspended (MIDI is not a user activation
+  for Chrome); 400 ms race on a pending start; when refused, the MIDI
+  card shows "Click anywhere to turn on sound." until the context runs
+  (its `statechange` is watched). Pianos preload on the first run.
 - `static/player/player.js`: page glue over `createShellInput` (its
   injectable storage mapped to the player's own key), `VoicingKeyboard`
   (range from the piece ± 3 keys, snapped to white keys; own state
@@ -1071,7 +1126,8 @@ from console snippets only):**
   `vk-key--hit`'s white ring is invisible on white keys), echo as in
   Cycle of Shells but on the page's own sampler (2a.1); on-screen clicks = attack + release and
   always sound; "Sound for MIDI notes" off by default (the RD-2000
-  sounds itself); Tone.start on the first click / key press. Fixed
+  sounds itself); audio wake on any gesture or the first MIDI note (see
+  above). Fixed
   2026-11-03: a module-level `history` shadowed `window.history`
   (`load()` threw at `replaceState`); `PlayerStaff._measureBox` threw
   NotFoundError restoring adjacent marker + tint rects.
@@ -1091,18 +1147,15 @@ from console snippets only):**
   from it.
 
 **In progress:**
-- Loop chunk 1b / 1c await an RD-2000 check (the `_measureBox` fix and
-  No stress have only been exercised from console snippets, see
-  SESSION_LOG 2026-11-03) and trouble-threshold tuning from real
-  `console.table` rows.
-- 2a.2 + 2b await an RD-2000 check: Hands, No stress, the MIDI card
-  (device select, connected light, Sound for my notes), playing with the
-  metronome.
+- Loop chunk 1b (trouble spots) awaits an RD-2000 pass with real
+  `console.table` rows for the threshold tuning (the `_measureBox` fix
+  has only been exercised from console snippets, see SESSION_LOG
+  2026-11-03). 1c No stress was checked on the RD-2000 2026-11-12.
 
 **Open / deferred:**
-- Next, in order: RD-2000 check of the rack + metronome; then play-along
-  mode with the metronome (`metronome.js` is built to be driven by it the
-  way Listen drives it); then the RD-2000 recording session, warm-up
+- Next, in order: play-along mode with the metronome (`metronome.js` is
+  built to be driven by it the way Listen drives it), including Listen /
+  play past the current line; then the RD-2000 recording session, warm-up
   screen in the song's key, practice logging (`createResultLog` with key
   `songlab_results_player`, per the game-engine spec envelope, off the
   `practiceEvent` funnel).

@@ -3,6 +3,119 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-11-12 — RD-2000 check passes; MIDI hot-plug + late-device fix; audio wake; collapsible rack
+
+Guided-practice track, on `dev`. The RD-2000 check carried from
+2026-11-05, two fixes it turned up, and the rack giving the staff the
+screen. All committed as `244dd33`.
+
+### Tested (RD-2000)
+- Hands, No stress, the MIDI card (device select, connected light),
+  Sound for my notes, playing along with the metronome (feel): all pass.
+  Closes the check list from 2026-11-05; 1c No stress is now checked on
+  the instrument too.
+
+### Landed
+- **MIDI hot-plug** (`static/shared/midi-input.js`,
+  `static/games/cycle-of-shells-input.js`, `player.js`): `MIDIInput`
+  handles MIDIAccess `statechange` and exposes `onDevicesChanged(cb)`,
+  fired once per real change (set of connected inputs or the active
+  port), not per raw event. The shell wrapper subscribes once from
+  `init()`, releases every sounding midi when the active port changes or
+  goes away, re-selects the remembered device by name when it returns,
+  and emits `status` + `devices`; the player's light, select and strip
+  summary follow. Unplug → grey, replug → green, with the handler on one
+  port only. Retires the RADAR thread "No MIDI hot-plug event"
+  (2026-10-22). Cycle of Shells benefits too: it already listened to
+  `status` / `devices`.
+- **Device appearing after a load with zero inputs** (same files): a
+  hard reload with the RD-2000 unplugged, then plugging it in, judged
+  notes but left "(no MIDI inputs)" and a grey light. Fix: on every
+  `statechange` the shared module resolves the attachment from the live
+  inputs — the preferred device (by id) if present, else the current one
+  if still present, else the first non-DAW port, else none — moving the
+  handler to the picked port only; `init()` runs the same resolution and
+  now sets `MIDIInput.available` (access granted) apart from its
+  "connected" return. The wrapper subscribes to hot-plug whenever access
+  was granted, and one `sync(reason)` serves load, hot-plug and a manual
+  choice; the player's one `syncDevice()` rebuilds the select, light,
+  tooltip and summary from `input.deviceName` / `listDevices()`. Self-test
+  29/29 (23 + 6: zero inputs at load, device plugged in later, notes
+  heard, handler on one port after five plug cycles).
+- **Audio wake on any gesture / first MIDI note** (`player.js`
+  `startAudio`): Chrome starts the AudioContext suspended and only lets
+  it run after a user activation, and MIDI input is not one. `startAudio`
+  now loads Tone first (the old one-shot flag skipped the start before
+  Tone was there), runs on every pointerdown / keydown (capture), from
+  the Sound checkbox, the on-screen keys, Listen, and from a MIDI note
+  arriving while suspended; a 400 ms race against a pending
+  `Tone.start()`; when Chrome refuses (no activation yet) the MIDI card
+  shows "Click anywhere to turn on sound." until the context runs (the
+  context's own `statechange` is watched, so a gesture our listener
+  misses still clears it). The pianos preload on the first run.
+- **Collapsible rack + summary strip** (`player.html`, `player.js`): the
+  five-card rack sits in a `.pl-rack-shell` (grid rows 0fr ↔ 1fr +
+  opacity, 150 ms, `inert` + visibility when closed, none under
+  prefers-reduced-motion). The nav / status strip became the summary
+  strip, 58 px on one row: ← Prev | Line n / m · Bar b | Next → |
+  settings summary ("100% · metronome off · count-in 1 · both hands [·
+  No stress] [· loop bars 2–3] · ● RD-2000" / "no MIDI"; clicking it
+  opens the rack) | ⚙ Controls (`aria-expanded`) | ▶ Listen / ■ Stop |
+  ↺ Start over | ✕ Clear loop (only while a loop or a first tap is set)
+  | status. The three live buttons moved from the rack into the strip
+  (same ids; the Listen card is now tempo + the metronome row, Practice
+  the repeat toggles, Move on after and the two hints at 13 px). Cards
+  padded tighter. Auto-collapse: the first MIDI note or Listen start
+  after the rack was opened closes it — once per opening, never while
+  focus or a pointer drag is inside it; "Hide controls while playing"
+  checkbox in the Mode card (default on). Open / closed
+  (`songlab_player_rack_open`) and the checkbox
+  (`songlab_player_rack_auto`) remembered; on load closed when auto is
+  on, else as remembered. Debug: `__player.setRackOpen`, `setRackAuto`,
+  `rack`.
+
+### Diagnosed / decided
+- **Root cause of the late-device bug** was in the shared module, not
+  the page: `MIDIInput.init()` returns "connected", so with no inputs at
+  load it resolved false, and the wrapper read that as "no Web MIDI at
+  all" and returned before subscribing to hot-plug. The shared module
+  still attached the port itself on `statechange`, so notes flowed with
+  no event to the page. Hence the `available` flag.
+- **Unplugging the active device with another port present now falls
+  back to that port** ("Remembered device X not found; using Y"), per the
+  selection order above; before, it went to "no device" until the
+  remembered one returned. The remembered device still reclaims the
+  selection when it comes back.
+- **Auto-collapse listens to MIDI notes and Listen only**, not on-screen
+  key clicks: those are mouse work next to the rack.
+- **Live buttons moved, not duplicated**: two Listen buttons on screen
+  while the rack is open read wrong; the rack is settings, the strip is
+  action.
+
+### Setup for next session
+- `dev` clean at `244dd33`. Self-tests: `cycle-of-shells-input.js`
+  29/29, `metronome.js` 26/26, `player-listen.js` 19/19.
+- **Next:** play-along mode with the metronome, including Listen / play
+  past the current line (the page turns with the Transport today; the
+  follower and the click need the same across lines).
+
+### Flagged for later
+- First MIDI note after a load lags slightly: the audio wake runs on it
+  (Tone load + `Tone.start`), so the echo / judging of that one note is
+  late. Could pre-warm on the first gesture of any kind (the pointerdown
+  / keydown hook already fires; the lag is when the first gesture *is*
+  the note). → RADAR.
+- The collapsed-strip layout and the 150 ms animation were built
+  without a browser pass from Claude Code; Dustin's RD-2000 session saw
+  the auto-collapse fire on the first note. Keep an eye on wrapping
+  under ~1100 px and on any flash of the open rack at load.
+
+### Out of scope / deferred
+- Scoping the game's MIDI choice away from the site-wide default
+  (RADAR 2026-10-22) stays open; this session only changed when and how
+  the port is picked, not where the choice is stored.
+
+
 ## 2026-11-05 — follow-along player 2a.2 control rack; 2b metronome + count-in
 
 Guided-practice track, on `dev`. The rack was the "light version, mockup

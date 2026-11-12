@@ -50,12 +50,13 @@ out of awareness.
   focus model.
   See: `static/shared/voicing-keyboard.js`; `static/games/cycle-of-shells.js` `onKeyClick`.
 
-- **[2026-10-22] No MIDI hot-plug event.** `MIDIInput` handles
-  statechange internally but exposes no hook, so the game's device
-  picker re-reads `listDevices()` when the settings panel opens; a port
-  plugged in after load is only auto-attached when nothing is attached.
-  Adding an event is a shared edit to midi-input.js.
-  See: `static/shared/midi-input.js` `_handleStateChange`; `static/games/cycle-of-shells-input.js`.
+- **[2026-11-12] First MIDI note after a load lags slightly.** The audio
+  wake (`startAudio` in `player.js`: Tone load + `Tone.start()`) runs on
+  that note when it is the page's first gesture, so its echo and judging
+  land late. Could pre-warm on the first gesture of any kind — the
+  pointerdown / keydown hook already fires; the lag is when the first
+  gesture *is* the note. Not a correctness issue.
+  See: `static/player/player.js` `startAudio`; SESSION_LOG 2026-11-12.
 
 - **[2026-10-22] Choosing a MIDI device in the game changes the
   site-wide default.** `MIDIInput.selectDevice` persists the id under
@@ -368,6 +369,14 @@ out of awareness.
 ## Retired
 (items move here when resolved, for short-term reference, then get
 cleared periodically.)
+
+- **[2026-10-22] No MIDI hot-plug event** — resolved 2026-11-12
+  (`244dd33`): `MIDIInput.onDevicesChanged(cb)` fires once per real
+  change; the attachment is resolved on every statechange (preferred →
+  current → first → none); `MIDIInput.available` apart from "connected"
+  so a page that loaded with no inputs still subscribes. The player and
+  Cycle of Shells follow it through `cycle-of-shells-input.js`.
+  See SESSION_LOG 2026-11-12.
 
 - **[2026-10-22] ii_V_I walkthrough: Dm7 and G7 steps carry no
   concept_specifics** — resolved 2026-10-27: `concept_specifics:
