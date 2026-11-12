@@ -62,6 +62,7 @@
   .pl-check:has(input:disabled) { opacity: 0.5; cursor: default; }
   .pl-hint { margin: 0; font-size: 0.9rem; color: var(--text-muted); }
   .pl-hint[hidden] { display: none; }
+  .pl-audio-hint { color: var(--accent-blue); }
 
   /* Buttons: real <button>s, ≥44px tall; variants per card */
   .pl-btn {
@@ -70,16 +71,17 @@
     border-radius: 10px; cursor: pointer; border: 1px solid var(--pl-border); background: #FFFFFF; color: var(--text-primary);
   }
   .pl-btn:disabled { opacity: 0.4; cursor: default; }
+  .pl-btn[hidden] { display: none; }
   .pl-btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
   .pl-btn:hover:not(:disabled) { border-color: var(--accent-blue); color: var(--accent-blue); }
   /* Practice: Repeat bar / Repeat line toggles (aria-pressed), gold when on */
   .pl-btn--loop:hover:not(:disabled) { border-color: var(--pl-loop); color: var(--pl-loop); }
   .pl-btn--loop[aria-pressed="true"], .pl-btn--loop[aria-pressed="true"]:hover { background: var(--pl-loop); border-color: var(--pl-loop); color: #FFFFFF; }
-  /* Practice: ↺ Start over, green outline */
-  .pl-btn--restart { border-color: var(--accent-green); color: var(--accent-green); width: 100%; }
+  /* Strip: ↺ Start over, green outline */
+  .pl-btn--restart { border-color: var(--accent-green); color: var(--accent-green); }
   .pl-btn--restart:hover:not(:disabled) { background: var(--accent-green); border-color: var(--accent-green); color: #FFFFFF; }
-  /* Listen: big ▶ Listen (blue), ■ Stop while playing */
-  .pl-btn--listen { background: var(--accent-blue); border-color: var(--accent-blue); color: #FFFFFF; font-size: 1.15rem; min-height: 52px; padding: 8px 22px; min-width: 9em; }
+  /* Strip: ▶ Listen (blue), ■ Stop while playing */
+  .pl-btn--listen { background: var(--accent-blue); border-color: var(--accent-blue); color: #FFFFFF; padding: 8px 18px; min-width: 7.5em; }
   .pl-btn--listen:hover:not(:disabled) { background: #24507A; border-color: #24507A; color: #FFFFFF; }
   .pl-btn--listen[aria-pressed="true"], .pl-btn--listen[aria-pressed="true"]:hover { background: var(--pl-playing); border-color: var(--pl-playing); color: #FFFFFF; }
   /* MIDI: mute, mirrors the header speaker */
@@ -90,26 +92,35 @@
   .pl-btn--nav { padding: 8px 14px; }
 
   /* ── Rack of module cards above the staff ────────────────── */
+  /* Collapsible shell (player.js setRackOpen): grid rows 0fr ↔ 1fr + opacity, ≤150ms; inert + visibility keep a
+     closed rack out of the tab order. --settled (open, after the animation) lets focus rings past the clip. */
+  .pl-rack-shell { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows 150ms ease, opacity 150ms ease, visibility 0s linear 150ms; }
+  .pl-rack-shell[data-open="true"] { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition-delay: 0s, 0s, 0s; }
+  .pl-rack-shell__inner { min-height: 0; overflow: hidden; }
+  .pl-rack-shell--settled .pl-rack-shell__inner { overflow: visible; }
+  .pl-rack-shell--instant, .pl-rack-shell--instant * { transition: none !important; }
+  @media (prefers-reduced-motion: reduce) { .pl-rack-shell { transition: none; } }
   .pl-rack {
-    display: grid; gap: 0.75rem; margin-bottom: 0.75rem; align-items: stretch;
+    display: grid; gap: 0.6rem; margin-bottom: 0.6rem; align-items: stretch;
     grid-template-columns: minmax(15rem, 5fr) minmax(18rem, 6fr) minmax(9rem, 3fr) minmax(13rem, 4fr) minmax(11rem, 3fr);
   }
   .pl-card {
-    display: flex; flex-direction: column; gap: 0.6rem; min-width: 0;
-    background: #FFFFFF; border: 1px solid var(--pl-border); border-radius: 14px; padding: 0.75rem 1rem 0.9rem;
+    display: flex; flex-direction: column; gap: 0.5rem; min-width: 0;
+    background: #FFFFFF; border: 1px solid var(--pl-border); border-radius: 14px; padding: 0.55rem 0.85rem 0.7rem;
   }
+  .pl-card--practice .pl-hint { font-size: 13px; line-height: 1.35; }
   .pl-card__title {
     margin: 0 0 0.15rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--pl-border);
     font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted);
   }
-  .pl-card__body { display: flex; flex-direction: column; gap: 0.6rem; flex: 1 1 auto; }
+  .pl-card__body { display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 auto; }
   .pl-card__foot { margin-top: auto; }
   .pl-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
   .pl-row > .pl-btn { flex: 1 1 auto; }   /* three buttons wrap rather than shrink: a button's min-width is its content */
-  .pl-stack { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+  .pl-stack { display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
   .pl-stack > .pl-card { flex: 1 1 auto; }
 
-  /* Listen card: button + tempo on one row, then the metronome row (2b) under a dashed divider */
+  /* Listen card: the tempo slider, then the metronome row (2b) under a dashed divider (the ▶ Listen button lives in the strip) */
   .pl-listen-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
   .pl-tempo { display: flex; flex-direction: column; gap: 0.2rem; flex: 1 1 10em; min-width: 10em; }
   .pl-tempo__top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
@@ -118,7 +129,7 @@
   .pl-tempo input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent-blue); min-height: 28px; }
   .pl-tempo input[type="range"]:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 4px; border-radius: 4px; }
   .pl-metro-row {
-    margin-top: auto; padding-top: 0.6rem; border-top: 1px dashed var(--pl-border);
+    margin-top: auto; padding-top: 0.5rem; border-top: 1px dashed var(--pl-border);
     min-height: 44px; display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 1rem;
   }
   .pl-metro-row .pl-check { flex: none; }
@@ -161,14 +172,28 @@
   .pl-info dd { margin: 0; font-size: 1rem; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; align-self: baseline; }
   .pl-info dd .pl-info__marking { font-weight: 400; color: var(--text-secondary); font-style: italic; }
 
-  /* ── Nav / status strip between the rack and the staff ───── */
+  /* ── Summary strip between the rack and the staff: nav · settings summary + ⚙ Controls · live buttons · status ──
+     One row of 44px controls: 6px padding + 1px border each side = 58px tall; wraps to more rows when narrow. */
   .pl-strip {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem;
-    background: #FFFFFF; border: 1px solid var(--pl-border); border-radius: 14px; padding: 0.5rem 0.75rem; margin-bottom: 0.5rem;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem;
+    background: #FFFFFF; border: 1px solid var(--pl-border); border-radius: 14px; padding: 6px 10px; margin-bottom: 0.5rem;
   }
-  .pl-strip__nav { display: flex; align-items: center; gap: 0.5rem; }
-  .pl-bar-label { font-weight: 700; min-width: 11em; text-align: center; font-variant-numeric: tabular-nums; }
+  .pl-strip__nav, .pl-strip__live, .pl-strip__settings { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+  .pl-strip__settings { flex: 1 1 auto; min-width: 0; }
+  .pl-bar-label { font-weight: 700; min-width: 9.5em; text-align: center; font-variant-numeric: tabular-nums; }
   .pl-status-line { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-secondary); text-align: right; }
+  /* Settings summary: a flat button of "100% · metronome off · count-in 1 · both hands · ● RD-2000"; click opens the rack */
+  .pl-summary {
+    display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.5rem; flex: 1 1 auto; min-width: 0; min-height: 44px;
+    padding: 4px 8px; font: inherit; font-size: 0.95rem; line-height: 1.3; text-align: left; color: var(--text-secondary);
+    background: transparent; border: 1px solid transparent; border-radius: 10px; cursor: pointer;
+  }
+  .pl-summary:hover { border-color: var(--pl-border); color: var(--text-primary); }
+  .pl-summary:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+  .pl-summary span + span::before { content: '·'; color: var(--text-muted); margin-right: 0.5rem; }
+  .pl-summary__midi { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
+  .pl-btn--controls { padding: 8px 12px; white-space: nowrap; }
+  .pl-btn--controls[aria-expanded="true"] { background: #EFECE5; color: var(--text-secondary); }
 
   /* Shortcut hints under the strip, body size, <kbd> styled */
   .pl-shortcuts { margin: 0 0 0.75rem; font-size: 1rem; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; align-items: center; }
@@ -187,6 +212,7 @@
   @media (max-width: 600px) {
     .pl-rack { grid-template-columns: 1fr; }
     .pl-stack { flex-direction: column; }
+    .pl-strip__settings { flex-basis: 100%; }
     .pl-status-line { margin-left: 0; flex: 1 1 100%; text-align: left; }
   }
 
@@ -241,7 +267,11 @@
 
     <div class="pl-banner" id="pl-banner" hidden role="status"></div>
 
-    <!-- Control rack: Practice · Listen · Hands / Mode · MIDI · Piece. Ids are what player.js wires; the layout is this template's. -->
+    <!-- Control rack: Practice · Listen · Hands / Mode · MIDI · Piece. Ids are what player.js wires; the layout is this template's.
+         Collapsible (player.js setRackOpen): closed by default, opened from the strip's ⚙ Controls / summary; the live buttons
+         (▶ Listen, ↺ Start over, ✕ Clear loop) live in the strip below so they stay reachable while it is closed. -->
+    <div class="pl-rack-shell" id="pl-rack" data-open="false" inert>
+    <div class="pl-rack-shell__inner">
     <div class="pl-rack">
 
       <section class="pl-card pl-card--practice" aria-labelledby="pl-h-practice">
@@ -250,8 +280,6 @@
           <div class="pl-row">
             <button type="button" class="pl-btn pl-btn--loop" id="pl-loop-bar" aria-pressed="false" disabled>Repeat bar(s)</button>
             <button type="button" class="pl-btn pl-btn--loop" id="pl-loop-line" aria-pressed="false" disabled>Repeat line(s)</button>
-            <!-- Same code path as Esc (cancelLoop): drops a pending tap and clears the active loop; the position stays -->
-            <button type="button" class="pl-btn" id="pl-loop-clear" disabled>&#10005; Clear loop</button>
           </div>
           <div class="pl-field pl-field--inline">
             <label for="pl-loop-exit">Move on after</label>
@@ -265,17 +293,12 @@
           <p class="pl-hint" id="pl-no-stress-hint" hidden>No stress: loops run until turned off</p>
           <p class="pl-hint" id="pl-loop-hint">Tap two bars on the staff to set a loop (the first and last of the range; Esc or Clear loop cancels)</p>
         </div>
-        <div class="pl-card__foot">
-          <!-- Same as R: zero the wrong count, jump to the start (or the loop start while looping). Always shown. -->
-          <button type="button" class="pl-btn pl-btn--restart" id="pl-restart" disabled>&#8634; Start over</button>
-        </div>
       </section>
 
       <!-- Listen (player-listen.js + shared VoicingPlayer): the loop range, or the drawn line, both hands, at a percentage of the piece's tempo. Space toggles. -->
       <section class="pl-card pl-card--listen" aria-labelledby="pl-h-listen">
         <h3 class="pl-card__title" id="pl-h-listen">Listen</h3>
         <div class="pl-listen-row">
-          <button type="button" class="pl-btn pl-btn--listen" id="pl-listen" aria-pressed="false" disabled>&#9654; Listen</button>
           <div class="pl-tempo">
             <div class="pl-tempo__top">
               <label for="pl-tempo">Tempo</label>
@@ -314,6 +337,8 @@
         <section class="pl-card pl-card--mode" aria-labelledby="pl-h-mode">
           <h3 class="pl-card__title" id="pl-h-mode">Mode</h3>
           <label class="pl-check" title="Wrong notes don't block, aren't shown and aren't counted; the player just follows along"><input type="checkbox" id="pl-no-stress"> No stress</label>
+          <!-- Auto-collapse (player.js autoCollapse): the rack closes on the first MIDI note or Listen start after it was opened -->
+          <label class="pl-check" title="Close the controls on the first note played or when Listen starts; off: they only open and close with ⚙ Controls"><input type="checkbox" id="pl-rack-auto" checked> Hide controls while playing</label>
         </section>
       </div>
 
@@ -333,6 +358,8 @@
         </div>
         <div class="pl-card__foot">
           <label class="pl-check"><input type="checkbox" id="pl-sound"> Sound for my notes</label>
+          <!-- A MIDI note arrived with the AudioContext suspended and Chrome refused to resume it (no user activation yet); hidden once audio runs. See player.js startAudio -->
+          <p class="pl-hint pl-audio-hint" id="pl-audio-hint" role="status" hidden>Click anywhere to turn on sound.</p>
         </div>
       </section>
 
@@ -347,17 +374,35 @@
       </section>
 
     </div>
+    </div>
+    </div>
 
   </div>
 
   <!-- Staff: one line at a time (PlayerStaff, Verovio; lines from norm.lines); Prev / Next or ← / → page by line, Shift+← / → by bar. -->
   <div class="pl-column">
-    <!-- Nav / status strip: line nav left, status (loop range, pass, clean x / y, wrong count) right -->
+    <!-- Summary strip (always visible): line nav · settings summary + ⚙ Controls (open / close the rack) · live buttons · status (loop range, pass, clean x / y, wrong count) right -->
     <div class="pl-strip">
       <div class="pl-strip__nav">
         <button type="button" class="pl-btn pl-btn--nav" id="pl-prev" aria-label="Previous line" disabled>&larr; Prev</button>
         <span class="pl-bar-label" id="pl-bar-label" aria-live="polite">Line – / – · Bar –</span>
         <button type="button" class="pl-btn pl-btn--nav" id="pl-next" aria-label="Next line" disabled>Next &rarr;</button>
+      </div>
+      <div class="pl-strip__settings">
+        <!-- Settings summary (player.js syncSummary): tempo · metronome · count-in · hands · No stress · loop · MIDI; click opens the rack -->
+        <button type="button" class="pl-summary" id="pl-summary" aria-controls="pl-rack" title="Show the controls">
+          <span id="pl-summary-text"></span>
+          <span class="pl-summary__midi"><span class="pl-dot" id="pl-summary-dot" aria-hidden="true"></span><span id="pl-summary-device">no MIDI</span></span>
+        </button>
+        <button type="button" class="pl-btn pl-btn--controls" id="pl-rack-toggle" aria-controls="pl-rack" aria-expanded="false">&#9881; Controls</button>
+      </div>
+      <div class="pl-strip__live">
+        <!-- Listen (player-listen.js + shared VoicingPlayer): the loop range, or the drawn line, both hands, at the slider tempo. Space toggles. -->
+        <button type="button" class="pl-btn pl-btn--listen" id="pl-listen" aria-pressed="false" disabled>&#9654; Listen</button>
+        <!-- Same as R: zero the wrong count, jump to the start (or the loop start while looping). Always shown. -->
+        <button type="button" class="pl-btn pl-btn--restart" id="pl-restart" disabled>&#8634; Start over</button>
+        <!-- Same code path as Esc (cancelLoop): drops a pending tap and clears the active loop; the position stays. Shown only while there is one (updateStatus). -->
+        <button type="button" class="pl-btn" id="pl-loop-clear" disabled hidden>&#10005; Clear loop</button>
       </div>
       <span class="pl-status-line" id="pl-status" aria-live="polite"></span>
     </div>

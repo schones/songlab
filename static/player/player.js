@@ -132,6 +132,9 @@ const METRO_KEY = 'songlab_player_metro_on';          // Metronome checkbox (cli
 const METRO_VOLUME_KEY = 'songlab_player_metro_volume'; // click volume 0–100; default 70
 const COUNT_IN_KEY = 'songlab_player_count_in';       // count-in bars 0 / 1 / 2 before Listen's first note; default 1
 const COUNT_IN_DEFAULT = 1, COUNT_IN_MAX = 2;
+const RACK_OPEN_KEY = 'songlab_player_rack_open';     // control rack open ('1') / closed ('0'); read only when auto-collapse is off
+const RACK_AUTO_KEY = 'songlab_player_rack_auto';     // "Hide controls while playing" checkbox; on by default ('0' = off)
+const RACK_MS = 150;                                   // the rack's open / close animation (player.html .pl-rack-shell)
 const TURN_LEAD = 0.15;                              // seconds before a line's first bar that Listen turns the page (VoicingPlayer plays 80 ms after the schedule time, so the sound follows the turn by ~230 ms)
 const ECHO_VELOCITY = 0.7;                           // as cycle-of-shells.js
 const CLICK_SECONDS = 0.6;                           // on-screen key: attack + release
@@ -154,12 +157,15 @@ const els = {
   hands: $('pl-hands'),
   noStress: $('pl-no-stress'),
   sound: $('pl-sound'),           // "Sound for my notes": the echo of MIDI notes
+  audioHint: $('pl-audio-hint'),  // "Click anywhere to turn on sound." (MIDI card; see startAudio)
   prev: $('pl-prev'), next: $('pl-next'), barLabel: $('pl-bar-label'),
   status: $('pl-status'), restart: $('pl-restart'),
   loopBar: $('pl-loop-bar'), loopLine: $('pl-loop-line'), loopClear: $('pl-loop-clear'), loopExit: $('pl-loop-exit'), noStressHint: $('pl-no-stress-hint'),
   listen: $('pl-listen'), tempo: $('pl-tempo'), tempoReadout: $('pl-tempo-readout'),
   metro: $('pl-metro'), metroVolume: $('pl-metro-volume'), countIn: $('pl-count-in'),   // Listen card, bottom row (2b)
   trouble: $('pl-trouble'),
+  rackShell: $('pl-rack'), rackToggle: $('pl-rack-toggle'), rackAuto: $('pl-rack-auto'),   // collapsible rack + ⚙ Controls (strip) + "Hide controls while playing" (Mode card)
+  summary: $('pl-summary'), summaryText: $('pl-summary-text'), summaryDot: $('pl-summary-dot'), summaryDevice: $('pl-summary-device'),   // strip settings summary
   staffHost: $('pl-staff'),
   keyboardHost: $('pl-keyboard'),
 };
@@ -180,9 +186,10 @@ const state = {
   tempoPct: TEMPO_DEFAULT,   // Listen tempo, percent of the piece's tempo (TEMPO_KEY)
   listen: { active: false, token: 0, range: null, schedule: null, sounding: new Set(), click: null },   // Listen under way; see the header. click: { origin, bpm, pattern, bars } the click's anchor
   metro: { on: false, volume: METRO_VOLUME_DEFAULT, countIn: COUNT_IN_DEFAULT },   // Metronome row (METRO_KEY, METRO_VOLUME_KEY, COUNT_IN_KEY)
+  rack: { open: false, auto: true, armed: false, pointer: false },   // control rack: open; auto-collapse on; armed = opened since the last auto-collapse; pointer = a drag inside it is under way (RACK_OPEN_KEY, RACK_AUTO_KEY)
   held: new Set(),        // midis down on the MIDI device (de-duplicated by the input)
   echoing: new Set(),     // midis sounding on the sampler for MIDI echo
-  audioStarted: false,
+  audioStarted: false,    // the context has run at least once (the pianos are preloading)
 };
 const staff = new PlayerStaff('pl-staff');
 const loopCounts = createLoopCounts();     // per-hand { pass, cleanStreak } for the active loop range
@@ -234,23 +241,67 @@ async function ensureSampler() {
 /** Live notes sound now, not lookAhead (100 ms) later; scheduled playback (Listen) keeps its lead. */
 const immediate = () => (window.Tone ? window.Tone.immediate() : undefined);
 
-/** Tone.start() must run inside a user gesture: the first click or key press on the page. */
-async function startAudio() {
+const audioRunning = () => !!(window.Tone && window.Tone.context && window.Tone.context.state === 'running');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const WAKE_TIMEOUT_MS = 400;   // Tone.start() with no user activation stays pending: give up and say so
+
+/**
+ * Wake the AudioContext. Chrome starts it suspended and only lets it run
+ * after the page has had a user activation (a click or key press; sticky,
+ * so a later resume() outside the handler also works), and MIDI input is
+ * not one. Called on every pointerdown / keydown (capture), from the
+ * "Sound for my notes" checkbox, the on-screen keys and Listen, and from
+ * a MIDI note arriving while the context is suspended. Tone.js loads
+ * lazily, so this loads it first rather than skipping the start (the
+ * old one-shot flag did that, which left the context suspended until
+ * mute/unmute or Listen woke it). Resolves to whether audio is running;
+ * shared promise while a wake is under way. Not a user gesture and Chrome
+ * refuses: the MIDI card shows "Click anywhere to turn on sound." until
+ * the context runs (hideAudioHint, also from the context's own statechange).
+ */
+let _waking = null;
+function startAudio({ fromMidi = false } = {}) {
+  if (audioRunning()) { onAudioRunning(); return Promise.resolve(true); }
+  if (_waking) return _waking;
+  _waking = loadTone()
+    .then(Tone => { watchAudioState(Tone); return Promise.race([Tone.start().then(() => true), sleep(WAKE_TIMEOUT_MS).then(() => false)]); })
+    .then(() => audioRunning())
+    .catch(err => { console.warn('[player] Tone.start failed:', err); return false; })
+    .then(ok => {
+      _waking = null;
+      if (ok) onAudioRunning();
+      else if (fromMidi) showAudioHint();
+      return ok;
+    });
+  return _waking;
+}
+/** First time the context runs: preload the pianos. Every time: drop the hint. */
+function onAudioRunning() {
+  hideAudioHint();
   if (state.audioStarted) return;
   state.audioStarted = true;
-  try { if (window.Tone) await window.Tone.start(); } catch (err) { console.warn('[player] Tone.start failed:', err); }
   ensureSampler();                   // preload the echo piano; not awaited
   loadSampler().catch(() => {});     // and Listen's (VoicingPlayer loads it on play; the samples are shared by the browser cache)
 }
-document.addEventListener('pointerdown', startAudio, { capture: true });
-document.addEventListener('keydown', startAudio, { capture: true });
+/** A pending Tone.start() (no activation yet) resolves on the next gesture anywhere, even one our own listener misses: follow the context's state. */
+let _watching = false;
+function watchAudioState(Tone) {
+  if (_watching || !Tone.context || typeof Tone.context.on !== 'function') return;
+  _watching = true;
+  Tone.context.on('statechange', () => { if (audioRunning()) onAudioRunning(); });
+}
+function showAudioHint() { if (els.audioHint && !audioRunning()) els.audioHint.hidden = false; }
+function hideAudioHint() { if (els.audioHint) els.audioHint.hidden = true; }
+document.addEventListener('pointerdown', () => startAudio(), { capture: true });
+document.addEventListener('keydown', () => startAudio(), { capture: true });
 
 // MIDI echo, as cycle-of-shells.js echoOn / echoOff: only while the key is still down.
 function echoOn(midi) {
-  if (!state.audioStarted || muted() || !midiSound()) return;
-  ensureSampler().then(s => {
-    if (s && state.held.has(midi) && !state.echoing.has(midi)) { state.echoing.add(midi); s.triggerAttack(noteName(midi), immediate(), ECHO_VELOCITY); }
-  });
+  if (muted() || !midiSound()) return;
+  const play = s => { if (s && state.held.has(midi) && !state.echoing.has(midi)) { state.echoing.add(midi); s.triggerAttack(noteName(midi), immediate(), ECHO_VELOCITY); } };
+  if (audioRunning()) { ensureSampler().then(play); return; }
+  if (els.audioHint && !els.audioHint.hidden) return;   // Chrome already refused once: the next click wakes it (no console warning per key)
+  startAudio({ fromMidi: true }).then(ok => { if (ok) ensureSampler().then(play); });   // still held when the context runs: it sounds then
 }
 function echoOff(midi) {
   if (!state.echoing.has(midi)) return;
@@ -378,6 +429,7 @@ function updateStatus() {
   const f = state.follower;
   els.restart.disabled = !state.norm || !f;   // ↺ Start over is always shown; it needs a piece
   els.loopClear.disabled = !state.norm || !f || (!state.loop && state.pendingBar == null);   // ✕ Clear loop: something to clear
+  els.loopClear.hidden = els.loopClear.disabled;   // in the strip only while a loop (or a first tap) is set
   if (!state.norm || !f) { els.status.textContent = ''; return; }
   if (state.pendingBar != null) {
     const pl = lineOf(state.pendingBar);
@@ -439,6 +491,7 @@ function judge(midi) {
 // ════════════════════════════════════════════════════════════════════
 
 function onMidiNoteOn(midi) {
+  autoCollapse();   // the first note after the rack was opened closes it (never mid-drag inside it)
   state.held.add(midi);
   setKey(midi, 'held', true);
   echoOn(midi);
@@ -458,23 +511,46 @@ function onKeyClick(midi) {
   if (state.follower) state.follower.noteOff(midi);
 }
 
-/** Device <select> + status, as cycle-of-shells.js setupMidi / refreshDeviceList. */
+/**
+ * Device <select> + connected light + strip summary, all from the input's
+ * one selection (input.deviceName / listDevices) in syncDevice. Hot-plug:
+ * createShellInput resolves the selection on every MIDIAccess statechange
+ * (also when the page loaded with no input) and emits 'status' + 'devices';
+ * both land in syncDevice, as do load and a manual choice in the select.
+ * Subscribed once; init is not called again, so handlers never double.
+ */
+let midiMessage = '';   // the input's last status ("Connected: RD-2000", "Remembered device … not found", …): the light's tooltip
 async function setupMidi() {
   const storage = playerDeviceStorage();
   input = createShellInput({ storage });
   input.on('noteOn', onMidiNoteOn);
   input.on('noteOff', onMidiNoteOff);
-  input.on('status', text => deviceLight(text));
-  input.on('devices', refreshDeviceList);
-  try { await input.init(); } catch (err) { deviceLight(`MIDI unavailable: ${err.message}`); }
-  refreshDeviceList();
+  input.on('status', text => { midiMessage = text; syncDevice(); });
+  input.on('devices', () => syncDevice());
+  try { await input.init(); } catch (err) { midiMessage = `MIDI unavailable: ${err.message}`; }
+  syncDevice();
 }
-/** Green dot + "Connected" while the input has an active device, else grey + "Not connected"; the input's own message ("Connected: RD-2000", "Remembered device … not found", …) is the tooltip. */
-function deviceLight(message) {
-  const on = !!(input && input.deviceName);
+/** Everything that shows the MIDI selection: the Device select rebuilt from the live list, the light, its tooltip, the strip summary. */
+function syncDevice() {
+  const name = input ? input.deviceName : null;
+  const on = !!name;
   els.deviceDot.classList.toggle('pl-dot--on', on);
   els.deviceStatus.textContent = on ? 'Connected' : 'Not connected';
-  if (message) els.deviceLight.title = message;
+  els.deviceLight.title = midiMessage || 'Not connected yet';
+  const sel = els.device;
+  const list = input ? input.listDevices() : [];
+  sel.textContent = '';
+  if (!list.length) { const o = document.createElement('option'); o.value = ''; o.textContent = '(no MIDI inputs)'; sel.appendChild(o); sel.disabled = true; }
+  else {
+    sel.disabled = false;
+    for (const d of list) {
+      const o = document.createElement('option');
+      o.value = d.name; o.textContent = d.name;
+      if (d.name === name) o.selected = true;
+      sel.appendChild(o);
+    }
+  }
+  syncSummary();
 }
 /** createShellInput remembers the device under its own key; this storage view keeps the player's choice under DEVICE_KEY. */
 function playerDeviceStorage() {
@@ -486,23 +562,10 @@ function playerDeviceStorage() {
     removeItem: () => { try { ls && ls.removeItem(DEVICE_KEY); } catch (_) { /* storage unavailable */ } },
   };
 }
-function refreshDeviceList() {
-  if (!input) return;
-  deviceLight();
-  const sel = els.device;
-  const list = input.listDevices();
-  const current = input.deviceName || '';
-  sel.textContent = '';
-  if (!list.length) { const o = document.createElement('option'); o.value = ''; o.textContent = '(no MIDI inputs)'; sel.appendChild(o); sel.disabled = true; return; }
-  sel.disabled = false;
-  for (const d of list) {
-    const o = document.createElement('option');
-    o.value = d.name; o.textContent = d.name;
-    if (d.name === current) o.selected = true;
-    sel.appendChild(o);
-  }
-}
-els.device.addEventListener('change', e => { if (input && e.target.value) input.selectDevice(e.target.value); });
+els.device.addEventListener('change', e => {
+  if (input && e.target.value) input.selectDevice(e.target.value);   // emits status + devices → syncDevice
+  syncDevice();   // and once more here: a name that is gone snaps the select back to what is attached
+});
 
 // ── Mute (MIDI card): the site AudioToggle's state, changed through its button ──
 const MUTE_ICON_ON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
@@ -526,7 +589,7 @@ if (window.AudioToggle) syncMute(); else window.addEventListener('DOMContentLoad
 try { els.sound.checked = localStorage.getItem(SOUND_KEY) === '1'; } catch (_) { els.sound.checked = false; }
 els.sound.addEventListener('change', () => {
   try { localStorage.setItem(SOUND_KEY, els.sound.checked ? '1' : '0'); } catch (_) { /* storage unavailable */ }
-  if (els.sound.checked) ensureSampler(); else echoAllOff();
+  if (els.sound.checked) { startAudio(); ensureSampler(); } else echoAllOff();   // the change is a gesture: wake the context here too (pointerdown already did, unless it was keyboard-toggled through a label)
   els.sound.blur();
 });
 
@@ -535,6 +598,7 @@ els.hands.addEventListener('change', e => {
   if (!(e.target instanceof HTMLInputElement) || !e.target.checked) return;
   state.hands = e.target.value === 'lh' || e.target.value === 'rh' ? e.target.value : 'both';
   e.target.blur();   // so ← / → / R go back to the page, not the radio group
+  syncSummary();
   if (!state.norm) return;
   stopListen();
   rebuildFollower(state.bar);
@@ -713,6 +777,7 @@ function syncLoop() {
   els.loopLine.setAttribute('aria-pressed', String(!!(L && line && L.from === line.from && L.to === line.to)));
   staff.setBarTint('loop', L ? barNumbers().filter(b => b >= L.from && b <= L.to) : []);
   updateStatus();
+  syncSummary();
 }
 
 /**
@@ -859,6 +924,7 @@ function setTempoPct(pct, { save = true } = {}) {
   els.tempo.value = String(state.tempoPct);
   els.tempoReadout.textContent = state.norm ? tempoLabel(state.tempoPct, pieceBpm(state.norm).bpm) : `${state.tempoPct}%`;
   if (save) { try { localStorage.setItem(TEMPO_KEY, String(state.tempoPct)); } catch (_) { /* storage unavailable */ } }
+  syncSummary();
   return state.tempoPct;
 }
 try { setTempoPct(localStorage.getItem(TEMPO_KEY) ?? TEMPO_DEFAULT, { save: false }); } catch (_) { setTempoPct(TEMPO_DEFAULT, { save: false }); }
@@ -900,6 +966,7 @@ async function listen() {
   cancelPending();
   const token = ++L.token;
   L.active = true; L.range = range; L.schedule = schedule; L.sounding = new Set(); L.click = null; playingKeys.clear();
+  autoCollapse();   // Listen starting closes an opened rack, as the first MIDI note does
   if (assumed) banner(`No tempo in this piece: playing at ${Math.round(bpm)} bpm (${state.tempoPct}% of an assumed ${DEFAULT_BPM}).`);
   // The follower's paint goes; held keys stay. paintStates() brings it back in finishListen.
   staff.clearStates(); staff.setDimmed([]); staff.setBarMarker(null); clearKeys(['expected', 'correct', 'wrong']);
@@ -995,6 +1062,7 @@ function setMetronome(on, { save = true } = {}) {
   state.metro.on = !!on;
   els.metro.checked = state.metro.on;
   if (save) saveMetro(METRO_KEY, state.metro.on ? '1' : '0');
+  syncSummary();
   const c = state.listen.active ? state.listen.click : null;
   if (state.metro.on && c) metronome.start(c.origin, c.bpm, c.pattern, { bars: c.bars });
   else if (!state.metro.on) metronome.stop({ countIn: false });
@@ -1012,6 +1080,7 @@ function setCountIn(bars, { save = true } = {}) {
   state.metro.countIn = Number.isInteger(n) && n >= 0 && n <= COUNT_IN_MAX ? n : COUNT_IN_DEFAULT;
   for (const b of els.countIn.querySelectorAll('[data-count-in]')) b.setAttribute('aria-pressed', String(Number(b.dataset.countIn) === state.metro.countIn));
   if (save) saveMetro(COUNT_IN_KEY, state.metro.countIn);
+  syncSummary();
 }
 setMetronome(readMetro(METRO_KEY) === '1', { save: false });
 setMetroVolume(readMetro(METRO_VOLUME_KEY) ?? METRO_VOLUME_DEFAULT, { save: false });
@@ -1024,6 +1093,87 @@ els.countIn.addEventListener('click', e => {
   if (!b) return;
   setCountIn(b.dataset.countIn); b.blur();
 });
+
+// ════════════════════════════════════════════════════════════════════
+// CONTROL RACK (collapsible) + SUMMARY STRIP
+// ════════════════════════════════════════════════════════════════════
+//
+// The five-card rack (#pl-rack, player.html .pl-rack-shell) opens from the
+// strip's ⚙ Controls or by clicking the settings summary, and closes from
+// ⚙ Controls or by itself: with "Hide controls while playing" on (default),
+// the first MIDI note or Listen start after it was opened closes it — once
+// per opening (state.rack.armed), and never while focus or a pointer drag is
+// inside it. Open / closed and the checkbox are remembered; on load the rack
+// is closed when auto-collapse is on, else as remembered.
+
+const readRack = key => { try { return localStorage.getItem(key); } catch (_) { return null; } };
+const saveRack = (key, value) => { try { localStorage.setItem(key, value); } catch (_) { /* storage unavailable */ } };
+let rackSettle = 0;   // timer: .pl-rack-shell--settled after the open animation (focus rings past the clip)
+
+/** Open or close the rack; animate: false applies the state with no transition (page load). Opening arms the auto-collapse. */
+function setRackOpen(open, { save = true, animate = true } = {}) {
+  const want = !!open;
+  const shell = els.rackShell;
+  state.rack.open = want;
+  if (want) state.rack.armed = true;
+  else if (shell.contains(document.activeElement)) els.rackToggle.focus();   // never leave focus in an inert rack
+  clearTimeout(rackSettle);
+  shell.classList.remove('pl-rack-shell--settled');
+  if (!animate) shell.classList.add('pl-rack-shell--instant');
+  shell.dataset.open = String(want);
+  if (want) shell.removeAttribute('inert'); else shell.setAttribute('inert', '');
+  if (!animate) { void shell.offsetHeight; shell.classList.remove('pl-rack-shell--instant'); }   // flush the new state before transitions come back
+  if (want) rackSettle = setTimeout(() => shell.classList.add('pl-rack-shell--settled'), animate ? RACK_MS + 20 : 0);
+  els.rackToggle.setAttribute('aria-expanded', String(want));
+  els.summary.title = want ? 'Controls are open' : 'Show the controls';
+  if (save) saveRack(RACK_OPEN_KEY, want ? '1' : '0');
+  return want;
+}
+/** Focus or a pointer drag inside the rack: a slider mid-drag, an open select. */
+function rackBusy() {
+  return state.rack.pointer || (document.activeElement instanceof Node && els.rackShell.contains(document.activeElement));
+}
+/** First MIDI note / Listen start after the rack was opened: close it, once, unless busy (then the next one tries again). */
+function autoCollapse() {
+  const R = state.rack;
+  if (!R.auto || !R.open || !R.armed || rackBusy()) return;
+  R.armed = false;
+  setRackOpen(false);
+}
+function setRackAuto(on, { save = true } = {}) {
+  state.rack.auto = !!on;
+  els.rackAuto.checked = state.rack.auto;
+  if (save) saveRack(RACK_AUTO_KEY, state.rack.auto ? '1' : '0');
+  return state.rack.auto;
+}
+els.rackToggle.addEventListener('click', () => { setRackOpen(!state.rack.open); els.rackToggle.blur(); });
+els.summary.addEventListener('click', () => { setRackOpen(true); els.summary.blur(); });
+els.rackAuto.addEventListener('change', () => { setRackAuto(els.rackAuto.checked); els.rackAuto.blur(); });
+els.rackShell.addEventListener('pointerdown', () => { state.rack.pointer = true; });
+for (const ev of ['pointerup', 'pointercancel']) document.addEventListener(ev, () => { state.rack.pointer = false; });
+
+/** The strip's settings summary: "100% · metronome off · count-in 1 · both hands [· No stress] [· loop bars 2–3]" + MIDI dot and device. */
+function syncSummary() {
+  const parts = [
+    `${state.tempoPct}%`,
+    `metronome ${state.metro.on ? 'on' : 'off'}`,
+    `count-in ${state.metro.countIn}`,
+    state.hands === 'both' ? 'both hands' : state.hands.toUpperCase(),
+  ];
+  if (state.noStress) parts.push('No stress');
+  const L = state.loop;
+  if (L) parts.push(`loop ${barsText(L.from, L.to)}`);
+  const box = els.summaryText;
+  box.textContent = '';
+  for (const t of parts) { const sp = document.createElement('span'); sp.textContent = t; box.appendChild(sp); }
+  const name = input ? input.deviceName : '';
+  els.summaryDot.classList.toggle('pl-dot--on', !!name);
+  els.summaryDevice.textContent = name || 'no MIDI';
+}
+
+setRackAuto(readRack(RACK_AUTO_KEY) !== '0', { save: false });
+setRackOpen(state.rack.auto ? false : readRack(RACK_OPEN_KEY) !== '0', { save: false, animate: false });   // auto on: closed; off: as remembered (open at first)
+syncSummary();
 
 // ════════════════════════════════════════════════════════════════════
 // TROUBLE SPOTS
@@ -1256,6 +1406,7 @@ window.__player = {
   setLoop, clearLoop, setNoStress,
   listen, stopListen, get tempo() { return state.tempoPct; }, set tempo(v) { setTempoPct(v); }, listenPlayer,
   metronome, setMetronome, setMetroVolume, setCountIn, get metro() { return state.metro; },
+  setRackOpen, setRackAuto, get rack() { return state.rack; },
   get trouble() { return state.trouble; }, get practice() { return state.practice; }, loopCounts, passHistory, get recorder() { return recorder; }, thresholds: THRESHOLDS,
   get keyboard() { return keyboard; }, get input() { return input; }, get follower() { return state.follower; }, get steps() { return state.steps; },
   noteOn: onMidiNoteOn, noteOff: onMidiNoteOff,

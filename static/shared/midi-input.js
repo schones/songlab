@@ -9,9 +9,25 @@
  * module to receive live MIDI without touching the Web MIDI API.
  *
  * Consumed by:
- *   - spectrum-view.js        → Harmonic Resonance FFT panel
- *   - (future) keyboard-view  → live note highlighting
- *   - (future) explorer.js    → MIDI-driven chord detection
+ *   - games/cycle-of-shells-input.js → Cycle of Shells and the Player (device list, remembered device by name)
+ *   - shared/input-provider.js       → the 'midi' modality
+ *   - templates/explorer.html, cantor.html, harmonograph.html → direct subscribers
+ *
+ * Hot-plug: MIDIAccess "statechange" is handled here. On every event
+ * (connect or disconnect) the attachment is resolved again from the
+ * live inputs (_resolve): the preferred device (by id, STORAGE_KEY) if
+ * present, else the current one if still present, else the first non-DAW
+ * port, else none (isConnected / activeDevice clear). init() runs the
+ * same resolution, so a page that loaded with no inputs picks up the
+ * first device plugged in later; `available` says whether MIDI access was
+ * granted at all (init's return value is "connected", which is false then).
+ * Ports Chrome keeps in the map as "disconnected" are not listed. Pages
+ * that show a device list or a connected light subscribe with
+ * onDevicesChanged(cb); it fires once per real change (the set of
+ * connected inputs or the active device), not per raw event. The handler
+ * goes on the selected port's onmidimessage property only, and the old
+ * port's is cleared on every switch, so repeated plug / unplug never
+ * doubles it.
  *
  * Depends on:
  *   - Web MIDI API (navigator.requestMIDIAccess)
@@ -43,7 +59,9 @@ const _listeners = {
   noteOff: new Set(),
   cc: new Set(),
   pitchBend: new Set(),
+  devices: new Set(),   // onDevicesChanged: hot-plug (see _handleStateChange)
 };
+let _devicesSignature = '';   // connected ids + active id at the last devices event
 
 // ════════════════════════════════════════════════════════════════════
 // MESSAGE PARSING
@@ -129,38 +147,53 @@ function _attach(input) {
 
 function _listInputs() {
   if (!_midiAccess) return [];
-  return Array.from(_midiAccess.inputs.values());
+  // Chrome keeps an unplugged port in the map with state "disconnected": not a device to list or attach.
+  return Array.from(_midiAccess.inputs.values()).filter((i) => i.state !== 'disconnected');
 }
 
+/**
+ * Pick the input to be attached from the live list, in this order: the
+ * preferred device (by id) if present, else the current one if still
+ * present, else the first input, else none. Attaches it when it differs
+ * from what is attached (by object: Chrome may hand a fresh port for the
+ * same id after a replug, and the handler must sit on the live one).
+ * Called from init and from every statechange.
+ */
+function _resolve() {
+  const inputs = _listInputs();
+  const byId = (id) => (id ? inputs.find((i) => i.id === id) || null : null);
+  // Multi-port devices (Launchkey MK4 etc.) enumerate as separate
+  // "MIDI Out" and "DAW Out" ports. Prefer the keys/pads port; the
+  // DAW port sends transport/mixer messages we don't want here.
+  const first = inputs.find((i) => !/\bDAW\b/i.test(i.name)) || inputs[0] || null;
+  const pick = byId(_readPreferredId()) || byId(_currentInput && _currentInput.id) || first;
+  if (pick === _currentInput) return;   // same live port (or nothing, still nothing)
+  _attach(pick);                         // null detaches
+}
+
+/** Tell onDevicesChanged subscribers when the connected inputs or the active device changed since the last time. */
+function _emitDevicesIfChanged() {
+  const signature = `${_listInputs().map((i) => i.id).sort().join('\u0001')}|${_currentInput ? _currentInput.id : ''}`;
+  if (signature === _devicesSignature) return;
+  _devicesSignature = signature;
+  const detail = { devices: MIDIInput.getDevices(), activeDevice: MIDIInput.activeDevice };
+  _listeners.devices.forEach((cb) => {
+    try { cb(detail); } catch (e) { console.error(e); }
+  });
+}
+
+/**
+ * MIDIAccess statechange: fires per port, for plug/unplug and for
+ * connection (open/closed) changes, often several times per plug.
+ * Connect or disconnect alike, the attachment is resolved again from
+ * the live inputs; _resolve and the emit are idempotent, so the
+ * repeats are harmless.
+ */
 function _handleStateChange(event) {
-  const port = event.port;
-  if (port.type !== 'input') return;
-
-  if (port.state === 'disconnected') {
-    if (_currentInput && port.id === _currentInput.id) {
-      _detachCurrent();
-    }
-    return;
-  }
-
-  if (port.state === 'connected') {
-    // If nothing connected yet, try to restore the preferred device
-    // or auto-connect to the first available input.
-    if (!_currentInput) {
-      const preferred = _readPreferredId();
-      const inputs = _listInputs();
-      const match = preferred ? inputs.find((i) => i.id === preferred) : null;
-      if (match) {
-        _attach(match);
-      } else if (inputs.length >= 1) {
-        // Multi-port devices (Launchkey MK4 etc.) enumerate as separate
-        // "MIDI Out" and "DAW Out" ports. Prefer the keys/pads port; the
-        // DAW port sends transport/mixer messages we don't want here.
-        const keysPort = inputs.find((i) => !/\bDAW\b/i.test(i.name)) || inputs[0];
-        _attach(keysPort);
-      }
-    }
-  }
+  const port = event && event.port;
+  if (!port || port.type !== 'input') return;
+  _resolve();
+  _emitDevicesIfChanged();
 }
 
 function _readPreferredId() {
@@ -178,12 +211,14 @@ function _readPreferredId() {
 const MIDIInput = {
   activeNotes: new Set(),
   isConnected: false,
+  available: false,   // MIDI access granted (init succeeded); false before init and when the API is missing or refused
   activeDevice: null,
 
   async init() {
     if (typeof navigator === 'undefined' || !navigator.requestMIDIAccess) {
       console.warn('[MIDIInput] Web MIDI API not available in this browser.');
       this.isConnected = false;
+      this.available = false;
       return false;
     }
 
@@ -192,24 +227,16 @@ const MIDIInput = {
     } catch (err) {
       console.warn('[MIDIInput] requestMIDIAccess failed:', err);
       this.isConnected = false;
+      this.available = false;
       return false;
     }
 
+    this.available = true;
     _midiAccess.onstatechange = _handleStateChange;
 
-    const inputs = _listInputs();
-    const preferred = _readPreferredId();
-    const match = preferred ? inputs.find((i) => i.id === preferred) : null;
-
-    if (match) {
-      _attach(match);
-    } else if (inputs.length >= 1) {
-      // Multi-port devices (Launchkey MK4 etc.) enumerate as separate
-      // "MIDI Out" and "DAW Out" ports. Prefer the keys/pads port.
-      const keysPort = inputs.find((i) => !/\bDAW\b/i.test(i.name)) || inputs[0];
-      _attach(keysPort);
-    }
-    return this.isConnected;
+    _resolve();
+    _emitDevicesIfChanged();
+    return this.isConnected;   // false with access but no input yet: see `available`
   },
 
   getDevices() {
@@ -228,6 +255,7 @@ const MIDIInput = {
       return false;
     }
     _attach(input);
+    _emitDevicesIfChanged();
     return true;
   },
 
@@ -249,6 +277,16 @@ const MIDIInput = {
   onPitchBend(cb) {
     _listeners.pitchBend.add(cb);
     return () => _listeners.pitchBend.delete(cb);
+  },
+
+  /**
+   * Hot-plug: cb({ devices, activeDevice }) after a device is plugged in,
+   * unplugged, or the active device changes (including selectDevice).
+   * activeDevice is null when the active input went away. Returns unsubscribe.
+   */
+  onDevicesChanged(cb) {
+    _listeners.devices.add(cb);
+    return () => _listeners.devices.delete(cb);
   },
 };
 
