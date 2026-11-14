@@ -107,13 +107,16 @@ appearing after a load with zero inputs (root cause in the shared
 (any gesture or the first MIDI note); and the rack became collapsible
 behind a 58 px summary strip, auto-collapsing on the first note or
 Listen ("Hide controls while playing", default on). 2026-11-13 (player 3,
-uncommitted, Node-tested only — not yet checked in Chrome): a shared beat
-clock (`beat-clock.js`) now drives Listen, the metronome and the page
-turns, with live tempo; Listen repeats a loop or plays to the end of the
-piece; play-along mode ("♪ Play along" / P) with a guide volume, light
-green / grey feedback and a quiet timing log; sustain pedal for "Sound for
-my notes"; and `window.songlabPlayer` + an event bus, **the hook for the
-future scoring and the coach**. Detail below under "What's Working".
+`ea74c81`, tested on the RD-2000): a shared beat clock (`beat-clock.js`)
+now drives Listen, play-along, the metronome and the page turns, with
+live tempo; Listen repeats a loop or plays to the end of the piece;
+play-along mode ("♪ Play along" / P) with a soft guide (default 35),
+green / faint feedback and a quiet timing log; pause / resume on Space
+and P; sustain pedal (CC64) for "Sound for my notes"; and
+`window.songlabPlayer` + an event bus, **the hook for the future scoring
+and the coach**. The timing-drift question is closed: the clock mapping
+is right; the slide was the player rushing at 60 bpm. Detail below under
+"What's Working".
 
 ### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
 Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
@@ -150,6 +153,9 @@ torus math in two (audit §3).
   canvas (open).
 - **Harmonograph** — `/harmonograph` sandbox at Stage 2, frozen since
   April, unlinked from the nav by design.
+- **Cycle of Shells merge** — parked (2026-11-13) behind the kids' track.
+- **Pi noodle catcher** — parked until the Pi arrives (expected the week
+  of 2026-11-16).
 - **Chord-melody classifier** — `archive/chord-melody-research` branch, paused
   2026-05-13 in favour of the presentational Cantor. RADAR items point to
   docs that exist only on that branch.
@@ -161,13 +167,17 @@ Full version: [Claude doc](https://claude.ai/artifact/DHHd1R3qux19CPWyX7fPaA) ·
   stress), 2a Listen + tempo slider (+ 2a.1 fixes) — done 2026-11-03 —
   and 2a.2 control rack + 2b metronome + count-in — done 2026-11-05 —
   and the RD-2000 check of the rack + metronome (+ hot-plug / audio-wake
-  fixes, collapsible rack) — done 2026-11-12 → play-along mode with the
-  metronome, including Listen / play past the current line → RD-2000 recording
-  session (Carol lines 3–4, Run Rudolph Run, Feel Good Inc., Linus and
-  Lucy) → learner picker → practice log (JSON on the mini, written by
+  fixes, collapsible rack) — done 2026-11-12 — and player 3 (shared
+  beat clock, play-along with guide + timing log, Listen / play past the
+  current line, pause / resume, pedal, controller + event bus) — done
+  2026-11-13, RD-2000 tested (`ea74c81`) → **next:** kids' track content
+  (Carol for Edie; Feel Good Inc. / Run Rudolph Run for Weston; the
+  RD-2000 recording session also covers Carol lines 3–4 and Linus and
+  Lucy) → warm-up screen → practice log (JSON on the mini, written by
   Flask; `practiceEvent` funnel + `state.practice.playedMs` already in
-  `player.js`) → warm-up screen → Linus and Lucy rhythm drill → drill
-  reward.
+  `player.js`) → learner picker → Linus and Lucy rhythm drill → drill
+  reward. A timing coach now has its first real finding to build on
+  (rushing at 60 bpm, read off the play-along timing log).
 - **Thread B — jazz harmony (from 2026-12-14):** `norm_to_voicing.py` →
   I Got Rhythm public piece → voicing rush (timed Cycle of Shells) →
   `extensions` + `/learn` in the nav → `omitting-tones` → concept-map
@@ -199,11 +209,17 @@ and mouse. 2026-11-12 (`244dd33`): the RD-2000 check passed (Hands, No
 stress, MIDI card, Sound for my notes, playing with the click), with
 fixes for MIDI hot-plug and a device appearing after a load with zero
 inputs, audio wake on any gesture / first MIDI note, and the collapsible
-rack with its summary strip. Next, in order: play-along mode with the
-metronome, including Listen / play past the current line; then the
-RD-2000 recording session, warm-up screen and practice logging
-(`createResultLog` with key `songlab_results_player`, hanging off
-`practiceEvent` in `player.js`). Current state block below.
+rack with its summary strip. 2026-11-13 (`ea74c81`, tested on the
+RD-2000): player 3 — the shared beat clock under Listen and play-along
+(live tempo, loops repeat, play to the end), play-along with a soft
+guide, green / faint feedback and the quiet timing log, the event bus +
+`window.songlabPlayer` controller (the hook for scoring and the coach),
+sustain pedal, pause / resume on Space / P. Next, in order: kids' track
+content (Carol for Edie; Feel Good Inc. / Run Rudolph Run for Weston),
+the warm-up screen, and the practice log (`createResultLog` with key
+`songlab_results_player`, hanging off `practiceEvent` in `player.js`).
+Parked: the Cycle of Shells merge and the Pi noodle catcher (the Pi
+arrives the week of 2026-11-16). Current state block below.
 
 **Voicing Explorer analysis arc (2026-10-14, branch `voicing-explorer`)**
 was the active workstream before that. Motivated by a voiced practice score of
@@ -916,7 +932,7 @@ headless Chrome; not yet merged to dev):**
   MIDI hot-plug, site-wide device default, sharp labels on held notes,
   ii_V_I walkthrough steps without concept_specifics.
 
-### Follow-along player — current state (updated 2026-11-12)
+### Follow-along player — current state (updated 2026-11-13)
 
 **Landed and verified on dev (Node self-tests; Milestone 1, Hands, No
 stress, the MIDI card and the metronome checked in Chrome with the
@@ -1083,9 +1099,8 @@ console snippets only):**
   (notes and click are fixed at start) and Listen plays the loop range or
   the current line once. Checked on the RD-2000 2026-11-12 (play-along
   feel with the click).
-- Shared beat clock + play-along (player 3, 2026-11-13; **Node self-tests
-  and a stubbed-DOM smoke run only — the Chrome / RD-2000 check is still
-  to do**):
+- Shared beat clock + play-along (player 3, 2026-11-13, `ea74c81`; Node
+  self-tests, a stubbed-DOM smoke run, and **tested on the RD-2000**):
   - `static/player/beat-clock.js` (new, pure, 53/53): one clock in beats
     on Tone's AudioContext, lookahead scheduler (25 ms tick, 150 ms
     ahead), not `Tone.Transport`. `start({ fromBar, toBar, loop,
@@ -1130,9 +1145,8 @@ console snippets only):**
     audioTime, offsetMs }`. Scoring, progress and the coach should plug in
     here without touching the transports. (Not `MusicalEventStream`: that
     is Cantor's stream, with its own event model.)
-  - Round 2 (2026-11-13, same uncommitted batch; Node self-tests + a
-    stubbed-DOM smoke of the real `player.js`, 22/22 — **not yet checked
-    in Chrome**):
+  - Round 2 (2026-11-13, same commit; Node self-tests + a stubbed-DOM
+    smoke of the real `player.js`, 22/22; tested on the RD-2000):
     - Pause: Space, P and the two strip buttons pause in place ("❚❚ Pause"
       → "▶ Resume"; page and bar marker stay; the pass closes
       `complete: false`); resuming starts at the START of the paused bar
@@ -1144,18 +1158,16 @@ console snippets only):**
       `getLastPass()` = newest ended pass with a played note;
       `getPasses()` = last 10. Passes carry `run`, `startBar` and
       `timebase` (clock readings at open / close + `drift`).
-    - **Timing drift (≈ −15 ms/s in play-along) — OPEN.** Ruled out in
-      code: expected notes and clicks come off one clock line (identical
-      audio times, simulated at 60.68 bpm), and the key-time mapping reads
-      a fresh output timestamp per event (self-test: an on-click player
-      reads ≤ 0.1 ms for 32 s, even with the clocks 200 ppm apart). What
-      is left is the browser's `getOutputTimestamp()` line itself running
-      at a different rate from `currentTime`. Not changed yet; measure
-      first: play one pass, then
-      `songlabPlayer.getLastPass().timebase.drift` (or
-      `await __player.clockProbe(20)`): `stampMsPerS` ≈ −15 with
-      `currentMsPerS` ≈ 0 confirms it → fix is to map key times through
-      `currentTime − outputLatency` instead.
+    - **Timing drift (≈ −15 ms/s in play-along) — closed, not a bug.**
+      Expected notes and clicks come off one clock line (identical audio
+      times, simulated at 60.68 bpm); the key-time mapping reads a fresh
+      output timestamp per event (self-test: an on-click player reads
+      ≤ 0.1 ms for 32 s, even with the clocks 200 ppm apart); and measured
+      in the browser both clock rates are ≈ 0 (`stampMsPerS`,
+      `currentMsPerS` from `getLastPass().timebase.drift` /
+      `__player.clockProbe`). The slide was the player rushing at 60 bpm —
+      the first real finding for a future timing coach. The mapping is
+      unchanged; the diagnostics stay.
     - Tempo and metronome-volume sliders: 44 px targets.
   - Sustain pedal: CC64 from the selected input holds "Sound for my notes"
     after key release; pedal up releases notes whose keys are up; a

@@ -3,6 +3,66 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-11-13 — Player 3: shared beat clock, play-along, pause / resume; drift investigation closed
+
+Guided-practice track, on `dev`. Committed as `ea74c81`. All of it
+tested on the RD-2000.
+
+### Landed
+- **Shared beat clock** (`static/player/beat-clock.js`, new, 53/53): one
+  clock in beats on Tone's AudioContext with a lookahead scheduler. It
+  drives Listen, play-along, the metronome (`metronome.click`) and the
+  page turns, so the tempo slider is live and everything stays in phase.
+  Listen repeats a loop until stopped, or plays from the current bar to
+  the end of the piece. Listen is off `VoicingPlayer`
+  (`voicing-player.js` unchanged, still serving `/voicings`).
+- **Play-along** ("♪ Play along" / P; `player.js`): the score moves with
+  the clock and never waits; the whole piece plays underneath as a soft
+  guide (Guide volume, default 35, 0 = click only); a note hit within
+  250 ms flashes green, one not played stays faint for the rest of the
+  pass. No counts.
+- **Quiet timing log** (`static/player/player-playalong.js`, new, 35/35):
+  per pass, every expected note (hit / missed, `offsetMs` early negative)
+  and every played note; extras carry `extra: true`, `offsetMs: null`;
+  `getLastPass()` is the newest pass with a played note, `getPasses()`
+  the last 10. Each pass also carries `timebase` clock readings.
+- **Event bus + `window.songlabPlayer` controller** — the hook for
+  scoring and the coach: `listen`, `playAlong`, `stop`, `pause`,
+  `resume`, `setTempo`, `setLoop`, `clearLoop`, `on`, `getLastPass`,
+  `getPasses`; events `playalong:*`, `listen:*`, `pass:*`, `note:*`.
+- **Pause / resume**: Space, P and the strip buttons pause in place
+  ("▶ Resume"); resuming starts at the start of the paused bar with the
+  count-in first (`beat-clock` `start({ startBar })`). R and any
+  navigation end a paused transport.
+- **Sustain pedal** (CC64) for "Sound for my notes"; judging stays by
+  keys.
+- Tempo and metronome-volume sliders at 44 px targets.
+
+### Diagnosed / decided
+- **Drift investigation closed — not a bug.** Play-along offsets started
+  near the click (≈ −17 ms) and slid earlier ≈ −15 ms per second at 74 %
+  (60.68 bpm). Checked: expected notes and clicks are computed from the
+  same clock line (identical audio times in simulation); the key-time →
+  audio-time mapping is recomputed from a fresh output timestamp at
+  every event; and measured in the browser, the output-timestamp and
+  `currentTime` rates against `performance.now()` are both ≈ 0. The
+  slide was the player rushing at 60 bpm. Nothing in the mapping was
+  changed; the self-test (an on-click player reads ≈ 0 for a 30-second
+  pass) and the diagnostics (`timebase.drift`, `__player.clockProbe`)
+  stay.
+- This is the **first real finding for a future timing coach**: the log
+  shows a steady rush at slow tempo, readable straight off
+  `getLastPass()`.
+
+### Setup for next session
+- Next: kids' track content — Carol for Edie; Feel Good Inc. / Run
+  Rudolph Run for Weston — then the warm-up screen, then the practice
+  log.
+
+### Out of scope / deferred
+- Parked: the Cycle of Shells merge, and the Pi noodle catcher (the Pi
+  arrives next week, the week of 2026-11-16).
+
 ## 2026-11-12 — RD-2000 check passes; MIDI hot-plug + late-device fix; audio wake; collapsible rack
 
 Guided-practice track, on `dev`. The RD-2000 check carried from
