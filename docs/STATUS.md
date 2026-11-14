@@ -115,8 +115,13 @@ green / faint feedback and a quiet timing log; pause / resume on Space
 and P; sustain pedal (CC64) for "Sound for my notes"; and
 `window.songlabPlayer` + an event bus, **the hook for the future scoring
 and the coach**. The timing-drift question is closed: the clock mapping
-is right; the slide was the player rushing at 60 bpm. Detail below under
-"What's Working".
+is right; the slide was the player rushing at 60 bpm. Later the same day
+(`8298794`): **Feel / anchors** for rubato pieces (a FEEL row, anchor
+downbeats on the staff, `anchor: true` on note events) and **Song
+notes** (per-piece notes in a slide-in panel from the header, N); a
+count-in-0 timing-log fix; and a stubbed-DOM smoke test of the real
+`player.js` (`tests/player/smoke.mjs`). Detail below under "What's
+Working".
 
 ### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
 Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
@@ -214,7 +219,9 @@ RD-2000): player 3 — the shared beat clock under Listen and play-along
 (live tempo, loops repeat, play to the end), play-along with a soft
 guide, green / faint feedback and the quiet timing log, the event bus +
 `window.songlabPlayer` controller (the hook for scoring and the coach),
-sustain pedal, pause / resume on Space / P. Next, in order: kids' track
+sustain pedal, pause / resume on Space / P; then (`8298794`) Feel /
+anchors and Song notes for the pieces, the count-in-0 fix and the player
+smoke test. Next, in order: kids' track
 content (Carol for Edie; Feel Good Inc. / Run Rudolph Run for Weston),
 the warm-up screen, and the practice log (`createResultLog` with key
 `songlab_results_player`, hanging off `practiceEvent` in `player.js`).
@@ -1172,12 +1179,63 @@ console snippets only):**
   - Player smoke (`tests/player/`, 2026-11-13): the real `player.js`
     under Node with a stubbed DOM and a fake audio clock on real time —
     the page's own wiring, which the pure modules' self-tests cannot
-    reach. `node tests/player/smoke.mjs` (≈ 25 s; 6 scenarios, 48 checks:
-    pause / resume, the count-in-0 first downbeat, Song notes, feel +
-    anchors), or
-    one scenario by name. Uses a built-in fixture piece, not the private
+    reach. `node tests/player/smoke.mjs` (≈ 30 s; 7 scenarios, 56 checks:
+    pause / resume, the count-in-0 first downbeat, shortcuts yielding to
+    focused controls, Song notes, feel + anchors), or one scenario by
+    name. Uses a built-in fixture piece, not the private
     Carol. Not a substitute for the Chrome / RD-2000 check: nothing is
     drawn, nothing sounds.
+  - Count-in 0 fix (2026-11-13, `8298794`): `startTransport` reset the
+    timing log after `clock.start()`, and with no count-in the clock
+    registers the first downbeat's expectations inside `start()` — so
+    they were lost and a key on that downbeat was logged as an extra.
+    The reset now comes first (self-test in `player-playalong.js`, 39/39;
+    smoke scenario `first-downbeat`).
+  - Feel / anchors (2026-11-13, `8298794`; piece data, `player.js`,
+    `player-staff.js`; fields documented in `tools/pieces/README.md`;
+    hand-written into the norm — `midi_to_norm.py` has no flag and drops
+    them on a re-run). Information only: transport, clock, judging and
+    the timing log do not change.
+    - `feel`: `"strict"` | `"rubato"` → a FEEL row on the Piece card
+      ("Strict" / "Rubato"), shown only when set.
+    - `anchors`: `"downbeats"` (beat 1 of every bar: the barlines get a
+      subtle gold tint, no per-bar marks) or a list of bars (a small gold
+      tick, #B07A0A, above each one's downbeat); both titled "Anchor:
+      land this downbeat"; every mode (`staff.setAnchors`, kept across
+      renders).
+    - Events: `note:expected` / `note:played` / `note:missed` carry
+      `anchor: true` for a note at beat 1 of an anchor bar (`isAnchor`),
+      so a later timing analysis can weight them. Timing-log entries are
+      unchanged.
+    - Carol: `feel: "rubato"`, `anchors: "downbeats"`.
+    - **The staff drawing (tint, tick) is covered by stubs only in the
+      smoke — check by eye in Chrome.**
+  - Song notes (2026-11-13, `8298794`; `player.html`, `player.js`):
+    `songNotes` in the norm — an ordered array of `{ id, title, body }`
+    sections (body: blank-line paragraphs, `**bold**`, `*italic*`); a
+    legacy `feelNote` is read as the one section `feel`. A "Song notes"
+    button after the piece title (shown only when the piece has notes;
+    `aria-expanded`) and `N` toggle a panel that slides in from the right
+    over the page (fixed, ~420 px, full width under 600 px; the staff does
+    not reflow). Close, Esc and N close it; focus goes into the panel and
+    back to the button; a transport under way keeps running; open / closed
+    remembered per piece (`songlab_player_notes_open:<piece>`). Esc order:
+    the panel, then the loop. The Piece card's FEEL value links to the
+    `feel` section. Carol's Feel section: rubato, the heartbeat pulse,
+    Chopin, the ostinato / *Shchedryk* — **fact-check the Chopin line and
+    the history before sharing beyond family.** Placement / integration is
+    a first pass, to revisit. Debug: `__player.setNotesOpen`, `notes`,
+    `songNotesOf`, `anchors`, `isAnchor`.
+  - Shortcuts yield to focused controls (2026-11-13, uncommitted; found
+    the same day as "Space hijacks focused buttons"): Space / Enter on a
+    focused button or link are that control's own keys — the global
+    keydown handler returns without `preventDefault`, so Space presses
+    the button instead of toggling Listen. Every other shortcut (N, P, R,
+    Esc, arrows) still works from a focused control, and Space anywhere
+    else is unchanged. Smoke scenario `shortcuts`; **not yet checked in
+    Chrome**. Side effect to watch: after N / Esc closes Song notes the
+    focus is back on the Song notes button, so Space there reopens the
+    panel rather than starting Listen.
   - Sustain pedal: CC64 from the selected input holds "Sound for my notes"
     after key release; pedal up releases notes whose keys are up; a
     re-strike retriggers; a device change or disconnect releases

@@ -1028,6 +1028,10 @@ els.loopExit.addEventListener('change', () => {
   els.loopExit.blur();
 });
 
+/** Global shortcuts yield these keys to a focused control that uses them itself: Space / Enter press a button, Enter follows a link (Space is given up on a link too, so a focused control never starts Listen). */
+const ACTIVATION_KEYS = new Set([' ', 'Spacebar', 'Enter']);
+const ACTIVATABLE = 'button, a[href], summary, [role="button"], [role="link"]';
+
 els.prev.addEventListener('click', () => stepLine(-1));
 els.next.addEventListener('click', () => stepLine(1));
 els.restart.addEventListener('click', restart);
@@ -1035,11 +1039,12 @@ document.addEventListener('keydown', e => {
   if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
   const t = e.target;
   if (t instanceof Element && t.closest('input, select, textarea, [contenteditable]')) return;
+  if (ACTIVATION_KEYS.has(e.key) && t instanceof Element && t.closest(ACTIVATABLE)) return;   // Space / Enter on a focused button or link is that control's own key: it presses it, the shortcut yields (no preventDefault). Every other shortcut still works from there
   const move = e.shiftKey ? stepBar : stepLine;
   if (e.key === 'ArrowLeft') { move(-1); e.preventDefault(); }
   else if (e.key === 'ArrowRight') { move(1); e.preventDefault(); }
   else if (e.key === 'r' || e.key === 'R') { restart(); e.preventDefault(); }
-  else if (e.key === ' ' || e.key === 'Spacebar') { if (state.listen.active) pauseListen(); else if (state.listen.paused) resumeListen(); else listen(); e.preventDefault(); }   // pauses whatever plays (Listen or play-along), resumes what was paused, else starts Listen. preventDefault: a focused button must not click as well
+  else if (e.key === ' ' || e.key === 'Spacebar') { if (state.listen.active) pauseListen(); else if (state.listen.paused) resumeListen(); else listen(); e.preventDefault(); }   // pauses whatever plays (Listen or play-along), resumes what was paused, else starts Listen. preventDefault: the page must not scroll
   else if (e.key === 'p' || e.key === 'P') { toggleTransport('playalong'); e.preventDefault(); }
   else if ((e.key === 'n' || e.key === 'N') && state.notes.length) { setNotesOpen(!state.notesOpen, { focus: true }); e.preventDefault(); }   // Song notes; nothing playing is touched
   else if (e.key === 'Escape' && state.notesOpen) { setNotesOpen(false, { focus: true }); e.preventDefault(); }   // Song notes first; a second Esc reaches the loop

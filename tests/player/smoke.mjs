@@ -8,7 +8,7 @@
  * RD-2000 check: nothing is drawn and nothing sounds.
  *
  *   node tests/player/smoke.mjs            every scenario, each in its own process (≈ 25 s: the clock is real time)
- *   node tests/player/smoke.mjs pause      one scenario: pause | first-downbeat | notes | notes-legacy | feel-none | feel-bars
+ *   node tests/player/smoke.mjs pause      one scenario: pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars
  *
  * Add a scenario: a function in SCENARIOS that boots the harness, checks,
  * and ends with h.done().
@@ -107,6 +107,25 @@ const SCENARIOS = {
     const d6 = lp.expected.find(e => e.pitch === 86 && e.beat === 0);
     check('the key on that downbeat is a hit, a little late, not an extra', [d6.status, d6.offsetMs > 0 && d6.offsetMs < 150, lp.played.map(e => [e.pitch, e.matched, e.extra])], ['hit', true, [[86, true, false]]]);
     check('note:expected for the downbeat came through the bus as well', h.events.filter(e => e[0] === 'note:expected' && e[1].bar === 1 && e[1].beat === 0).length, 2);
+    h.done();
+  },
+
+  /** Global shortcuts yield Space / Enter to a focused button or link (the control's own keys); the other shortcuts, and Space anywhere else, still work. */
+  async shortcuts() {
+    const h = await boot({ norm: fixtureNorm(NOTES) });
+    const { P, C, L, key, check, sleep } = h;
+    P.setCountIn(0);
+    const button = h.focusOn('button'), link = h.focusOn('a'), input = h.focusOn('input'), div = h.focusOn('div');
+    check('Space on a focused button: the shortcut yields — no Listen, and no preventDefault, so the button gets its own click', [key(' ', { target: button }), L.active], [false, false]);
+    check('Enter on a button, Space and Enter on a link: likewise', [key('Enter', { target: button }), key(' ', { target: link }), key('Enter', { target: link }), L.active], [false, false, false, false]);
+    check('Space in an input is still ignored', [key(' ', { target: input }), L.active], [false, false]);
+    check('N with focus on a button still toggles Song notes; Esc there closes it', [key('n', { target: button }), P.state.notesOpen, key('Escape', { target: button }), P.state.notesOpen], [true, true, true, false]);
+    check('Space with focus on a plain element starts Listen (and is preventDefault-ed: no page scroll)', [key(' ', { target: div }), L.active, L.mode], [true, true, 'listen']);
+    await sleep(60);
+    check('Space on a focused button while Listen plays does not pause it; P from there still switches to play-along', [key(' ', { target: button }), C.playing, C.paused, (key('p', { target: button }), L.mode)], [false, 'listen', null, 'playalong']);
+    await sleep(60);
+    check('Space with no focused control pauses it', [key(' '), C.paused && C.paused.mode], [true, 'playalong']);
+    check('R and the arrows work from a focused button too', [key('r', { target: button }), C.paused, key('ArrowRight', { target: button }), P.state.line], [true, null, true, 1]);
     h.done();
   },
 

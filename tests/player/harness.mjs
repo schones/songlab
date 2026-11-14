@@ -8,7 +8,8 @@
  *   const h = await boot({ norm });   // norm: the piece the fake /player/data serves
  *   h.P / h.C / h.L      window.__player, window.songlabPlayer, state.listen
  *   h.el(id)             the stub element for an id (textContent, hidden, getAttribute, children, fire('click'))
- *   h.key(' ')           a document keydown
+ *   h.key(' ')           a document keydown; h.key(' ', { target: h.focusOn('button') }) with focus on a control (→ whether it was preventDefault-ed)
+ *   h.focusOn(tag)       a stand-in focused element of that tag (answers closest() for selectors naming the tag)
  *   h.events             every bus event as [type, detail]
  *   h.sounds             ['click', t] / ['on', note, t] / ['releaseAll'] from the fake audio
  *   h.now()              the fake AudioContext's currentTime (real seconds since boot)
@@ -122,7 +123,10 @@ async function boot({ norm = fixtureNorm() } = {}) {
   return {
     P, C, L: P.state.listen, norm, events, sounds, now, sleep, check, done,
     el: id => elsById[id],
-    key: (k, extra = {}) => (docListeners.keydown || []).forEach(f => f({ key: k, target: null, preventDefault() {}, ...extra })),
+    /** Dispatch a keydown to the document listeners; returns whether one of them called preventDefault. */
+    key: (k, extra = {}) => { const e = { key: k, target: null, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra }; (docListeners.keydown || []).forEach(f => f(e)); return e.defaultPrevented; },
+    /** An Element of `tag` to use as a key event's target: closest(selectors) matches when one of them names the tag (button, a[href], input, …). */
+    focusOn: tag => Object.assign(new globalThis.Element(), { tag, closest(selectors) { return selectors.split(',').map(s => s.trim()).some(s => s === tag || s.startsWith(`${tag}[`)) ? this : null; } }),
     /** Bus event types since the last call, note events left out. */
     types: () => events.splice(0).map(e => e[0]).filter(t => !t.startsWith('note:')),
     focused: () => globalThis.__focused || null,

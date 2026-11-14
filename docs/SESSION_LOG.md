@@ -3,7 +3,7 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
-## 2026-11-13 — Player 3: shared beat clock, play-along, pause / resume; drift investigation closed
+## 2026-11-13 — Player 3: shared beat clock, play-along, pause / resume; drift investigation closed; Feel / anchors + Song notes
 
 Guided-practice track, on `dev`. Committed as `ea74c81`. All of it
 tested on the RD-2000.
@@ -38,6 +38,45 @@ tested on the RD-2000.
   keys.
 - Tempo and metronome-volume sliders at 44 px targets.
 
+Later the same day (`8298794`):
+- **Feel / anchors** (piece data + `player.js`, `player-staff.js`;
+  fields in `tools/pieces/README.md`): optional `feel` ("strict" /
+  "rubato") shown as a FEEL row on the Piece card, and `anchors` —
+  "downbeats" (beat 1 of every bar; barlines tinted gold) or a list of
+  bars (a gold tick above each one's downbeat). Carol is `feel:
+  "rubato"`, `anchors: "downbeats"`. `note:expected` / `note:played` /
+  `note:missed` events carry `anchor: true` for a note on an anchor
+  downbeat, for later timing analysis. Information only: no change to
+  transport, clock, judging or the timing log.
+- **Song notes** (`player.html`, `player.js`): per-piece `songNotes`
+  sections `{ id, title, body }` in a panel that slides in from the
+  right, opened from a "Song notes" button after the piece title or N;
+  Close, Esc and N close it; open / closed remembered per piece; a
+  transport under way keeps running. The FEEL value links to the "feel"
+  section. A legacy `feelNote` is still read as that one section.
+  Carol's Feel section covers rubato, the heartbeat pulse, Chopin, and
+  the ostinato / *Shchedryk* background.
+- **Fixed: count-in 0 lost the first downbeat's expectations.**
+  `timing.reset()` ran after `clock.start()` in `startTransport`; with
+  no count-in the clock registers the first downbeat's notes inside
+  `start()`, so the reset wiped them and a key on that downbeat was
+  logged as an extra. The reset now comes first; self-test added
+  (`player-playalong.js` 39/39).
+- **`tests/player/smoke.mjs`** (new): the real `player.js` under Node
+  with a stubbed DOM and a fake audio clock on real time —
+  `node tests/player/smoke.mjs`, ≈ 25 s, 6 scenarios (pause / resume,
+  the count-in-0 first downbeat, Song notes, feel + anchors). It found
+  the count-in-0 bug. Nothing is drawn and nothing sounds, so it does
+  not replace the Chrome / RD-2000 check.
+- **Fixed: Space hijacked focused buttons** (`player.js`, after
+  `8298794`). The page's global shortcuts took Space even when a button
+  or link had focus, so Space on a focused Close toggled Listen instead
+  of pressing it. Space / Enter on a focused button or link now belong
+  to that control (the handler returns without `preventDefault`); N, P,
+  R, Esc and the arrows still work from there, and Space anywhere else
+  is unchanged. Smoke scenario `shortcuts` added (7 scenarios now); not
+  yet checked in Chrome.
+
 ### Diagnosed / decided
 - **Drift investigation closed — not a bug.** Play-along offsets started
   near the click (≈ −17 ms) and slid earlier ≈ −15 ms per second at 74 %
@@ -59,9 +98,23 @@ tested on the RD-2000.
   Rudolph Run for Weston — then the warm-up screen, then the practice
   log.
 
+### Flagged for later
+- **Fact-check the Feel section before sharing beyond family**: the
+  Chopin line (left hand as conductor, right hand free) and the
+  *Shchedryk* / Leontovych history were written from memory, not
+  checked against sources.
+- **Song notes placement / integration — to revisit.** The header
+  button + slide-in panel is a first placement, not a settled one.
+- After N / Esc closes Song notes, focus is back on the Song notes
+  button, so the next Space reopens the panel rather than starting
+  Listen (a side effect of the shortcut fix above). Watch for it at the
+  piano; the simple change is to drop focus on a keyboard close.
+
 ### Out of scope / deferred
 - Parked: the Cycle of Shells merge, and the Pi noodle catcher (the Pi
   arrives next week, the week of 2026-11-16).
+- Idea parked: a **rubato explorer** — tempo map against the pulse,
+  anchor weighting in the timing analysis, a follow-me play-along.
 
 ## 2026-11-12 — RD-2000 check passes; MIDI hot-plug + late-device fix; audio wake; collapsible rack
 
