@@ -35,6 +35,12 @@
   .pl-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 0.5rem 1rem; margin: 0.5rem 0 0.75rem; }
   .pl-piece-title { font-size: 1.75rem; font-weight: 800; margin: 0; line-height: 1.2; }
   .pl-header__right { display: flex; align-items: flex-end; gap: 1rem; }
+  /* Title + the Song notes button right after it (shown only when the piece has songNotes) */
+  .pl-header__left { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; min-width: 0; }
+  .pl-btn--notes { display: inline-flex; align-items: center; gap: 0.45rem; padding: 8px 14px; white-space: nowrap; border-color: var(--pl-anchor); color: var(--pl-anchor); }
+  .pl-btn--notes svg { width: 20px; height: 20px; flex: none; }
+  .pl-btn--notes:hover:not(:disabled), .pl-btn--notes[aria-expanded="true"] { background: var(--pl-anchor); border-color: var(--pl-anchor); color: #FFFFFF; }
+  .pl-btn--notes[hidden] { display: none; }
   .pl-header__back { font-size: 0.9rem; color: var(--text-muted); text-decoration: none; padding-bottom: 12px; white-space: nowrap; }
   .pl-header__back:hover { color: var(--accent-blue); text-decoration: underline; }
 
@@ -175,6 +181,35 @@
   .pl-info dt { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; align-self: baseline; }
   .pl-info dd { margin: 0; font-size: 1rem; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; align-self: baseline; }
   .pl-info dd .pl-info__marking { font-weight: 400; color: var(--text-secondary); font-style: italic; }
+  .pl-info [hidden] { display: none; }
+  /* FEEL row */
+  .pl-info dt.pl-info__feel-label { align-self: center; }
+  /* The FEEL value: plain text; when Song notes has a "feel" section it is a link-styled button that opens it there (44px target) */
+  .pl-info__feel-link { min-height: 44px; padding: 0; border: 0; background: none; font: inherit; font-weight: 700; color: var(--text-primary); cursor: pointer; text-decoration: underline; text-decoration-color: var(--pl-anchor); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .pl-info__feel-link:hover { color: var(--pl-anchor); }
+  .pl-info__feel-link:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; border-radius: 4px; }
+
+  /* Song notes (norm.songNotes): a panel that slides in from the right over the page — fixed, so nothing reflows. ~420px; full width under 600px. */
+  .pl-page { --pl-anchor: #B07A0A; }
+  .pl-notes {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 200; width: min(420px, 100vw); box-sizing: border-box;
+    display: flex; flex-direction: column; background: #FFFFFF; color: var(--text-primary);
+    border-left: 4px solid var(--pl-anchor); box-shadow: -8px 0 24px rgba(0, 0, 0, 0.14);
+    transform: translateX(100%); visibility: hidden;
+    transition: transform 200ms ease-out, visibility 0s linear 200ms;
+  }
+  .pl-notes[data-open="true"] { transform: translateX(0); visibility: visible; transition: transform 200ms ease-out, visibility 0s; }
+  @media (max-width: 600px) { .pl-notes { width: 100vw; border-left-width: 0; } }
+  @media (prefers-reduced-motion: reduce) { .pl-notes, .pl-notes[data-open="true"] { transition: none; } }
+  .pl-notes__head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 12px 16px; border-bottom: 1px solid var(--pl-border); }
+  .pl-notes__title { margin: 0; font-size: 1.25rem; font-weight: 800; }
+  .pl-notes__close { flex: none; min-width: 44px; padding: 6px 12px; }
+  .pl-notes__body { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px 24px; font-size: 1rem; line-height: 1.55; color: var(--text-secondary); }
+  .pl-notes__body section + section { margin-top: 1.25rem; padding-top: 0.5rem; border-top: 1px solid var(--pl-border); }
+  .pl-notes__body h3 { margin: 0.9rem 0 0; font-size: 1.1rem; font-weight: 700; line-height: 1.3; color: var(--text-primary); scroll-margin-top: 8px; }
+  .pl-notes__body h3:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 4px; border-radius: 4px; }
+  .pl-notes__body p { margin: 0.6rem 0 0; }
+  .pl-notes__body strong { color: var(--text-primary); }
 
   /* ── Summary strip between the rack and the staff: nav · settings summary + ⚙ Controls · live buttons · status ──
      One row of 44px controls: 6px padding + 1px border each side = 58px tall; wraps to more rows when narrow. */
@@ -259,7 +294,14 @@
   <div class="pl-column">
 
     <header class="pl-header">
-      <h1 class="pl-piece-title" id="pl-piece-title">…</h1>
+      <div class="pl-header__left">
+        <h1 class="pl-piece-title" id="pl-piece-title">…</h1>
+        <!-- Song notes (norm.songNotes): shown only when the piece has some; opens the panel at the end of this page. N toggles. -->
+        <button type="button" class="pl-btn pl-btn--notes" id="pl-notes-btn" aria-expanded="false" aria-controls="pl-notes-panel" title="Song notes (N)" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5C10.3 5.2 7.6 4.5 4 4.5v13c3.6 0 6.3.7 8 2 1.7-1.3 4.4-2 8-2v-13c-3.6 0-6.3.7-8 2z"/><path d="M12 6.5v13"/></svg>
+          <span>Song notes</span>
+        </button>
+      </div>
       <div class="pl-header__right">
         <a href="/" class="pl-header__back">&larr; Back</a>
         <div class="pl-field pl-header__piece">
@@ -382,6 +424,9 @@
           <dt>Key</dt><dd id="pl-info-key">–</dd>
           <dt>Time</dt><dd id="pl-info-time">–</dd>
           <dt>Tempo</dt><dd id="pl-info-tempo">–</dd>
+          <!-- Feel (norm.feel: "Rubato" / "Strict"): shown only when the piece sets it. Plain text; player.js makes it a link to the "feel" section of Song notes when there is one -->
+          <dt class="pl-info__feel-label" id="pl-info-feel-label" hidden>Feel</dt>
+          <dd class="pl-info__feel" id="pl-info-feel-row" hidden><span id="pl-info-feel"></span></dd>
         </dl>
       </section>
 
@@ -426,6 +471,7 @@
       <span><kbd>R</kbd> start over</span>
       <span><kbd>Space</kbd> listen / pause / resume</span>
       <span><kbd>P</kbd> play along / pause</span>
+      <span id="pl-shortcut-notes" hidden><kbd>N</kbd> song notes</span>
     </p>
     <section class="pl-panel" aria-label="Staff">
       <!-- Trouble spots (player-trouble.js): filled by player.js at the end of a pass; "Loop these" starts a loop on that range -->
@@ -433,6 +479,16 @@
       <div class="pl-staff-host" id="pl-staff">Staff loads with the piece.</div>
     </section>
   </div>
+
+  <!-- Song notes panel (player.js setNotesOpen): slides in from the right OVER the page (fixed, so the staff does not reflow); one heading + body per
+       norm.songNotes section. Close, Esc and N close it; nothing playing is touched. Closed: off-screen, inert and visibility: hidden. -->
+  <aside class="pl-notes" id="pl-notes-panel" aria-labelledby="pl-notes-title" data-open="false" inert>
+    <div class="pl-notes__head">
+      <h2 class="pl-notes__title" id="pl-notes-title">Song notes</h2>
+      <button type="button" class="pl-btn pl-notes__close" id="pl-notes-close" aria-label="Close song notes">&#10005; Close</button>
+    </div>
+    <div class="pl-notes__body" id="pl-notes-body"></div>
+  </aside>
 
   <div class="pl-column">
     <!-- Keyboard: VoicingKeyboard, clickable; player.js adds pl-key--expected / --correct / --wrong / --held / --playing -->

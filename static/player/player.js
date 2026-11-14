@@ -137,6 +137,25 @@
  * through stopListen(), which ends a paused transport for good and puts
  * the practice page back, as it does for a playing one.
  *
+ * Feel + Song notes (norm.feel / anchors / songNotes; tools/pieces/
+ * README.md): piece information only — nothing here touches the
+ * transport, the clock, the judging or the timing log. The Piece card
+ * gets a FEEL row ("Rubato" / "Strict") when the piece sets one. Song
+ * notes are the piece's ordered sections { id, title, body } (songNotesOf;
+ * a legacy feelNote counts as the one section "feel"): a "Song notes"
+ * button after the title, shown only when there are some, and N, toggle a
+ * panel that slides in from the right over the page (setNotesOpen; fixed,
+ * so the staff does not reflow), one heading + body per section
+ * (renderRich: paragraphs, **bold**, *italic*). Close, Esc and N close it;
+ * focus goes into the panel on open and back to the button on close; a
+ * transport under way keeps running; open / closed is remembered per
+ * piece (NOTES_OPEN_KEY). The FEEL value links to the "feel" section when
+ * there is one. Anchors go to the staff (staff.setAnchors: gold ticks for
+ * a bar list, gold-tinted barlines for 'downbeats') in every mode, and
+ * note:expected / note:played / note:missed carry anchor: true for a note
+ * at beat 1 of an anchor bar (isAnchor), so a later timing analysis can
+ * weight them.
+ *
  * Events + controller (3): `bus` emits playalong:start / stop, listen:start
  * / stop, pass:start / end, note:expected / played / missed;
  * window.songlabPlayer (also this module's export) is the controller —
@@ -194,6 +213,8 @@ const RACK_AUTO_KEY = 'songlab_player_rack_auto';     // "Hide controls while pl
 const RACK_MS = 150;                                   // the rack's open / close animation (player.html .pl-rack-shell)
 const GUIDE_KEY = 'songlab_player_guide_volume';      // play-along "Guide volume" 0–100 (0 = click only); default 35
 const GUIDE_DEFAULT = 35;
+const NOTES_OPEN_KEY = 'songlab_player_notes_open';   // + ':<piece>' → '1' / '0': the Song notes panel open or closed, per piece; closed by default
+const FEEL_LABELS = { rubato: 'Rubato', strict: 'Strict' };
 const GUIDE_VELOCITY = { rh: 0.8, lh: 0.75 };        // Listen / guide note velocities (VoicingPlayer's melody / bass)
 const HIT_WINDOW_S = HIT_WINDOW_MS / 1000;           // play-along: a played note pairs with an expected one within this (player-playalong.js)
 const SETTLE_S = 0.1;                                // extra wait before a note is called missed (covers the output latency between the two clocks)
@@ -214,6 +235,8 @@ const $ = id => document.getElementById(id);
 const els = {
   title: $('pl-piece-title'), banner: $('pl-banner'),
   infoKey: $('pl-info-key'), infoTime: $('pl-info-time'), infoTempo: $('pl-info-tempo'),   // Piece card
+  infoFeelLabel: $('pl-info-feel-label'), infoFeelRow: $('pl-info-feel-row'), infoFeel: $('pl-info-feel'),   // Piece card: FEEL row
+  notesBtn: $('pl-notes-btn'), notesPanel: $('pl-notes-panel'), notesBody: $('pl-notes-body'), notesClose: $('pl-notes-close'), notesHint: $('pl-shortcut-notes'),   // Song notes: header button, slide-in panel, the N hint
   select: $('pl-piece-select'),
   device: $('pl-device-select'), deviceStatus: $('pl-device-status'), deviceDot: $('pl-device-dot'), deviceLight: $('pl-device-light'),
   mute: $('pl-mute'),
@@ -257,6 +280,10 @@ const state = {
   sustained: new Set(),   // midis still sounding on the echo sampler with the key up: held by the pedal
   pedal: false,           // sustain pedal (CC64 ≥ 64) down
   audioStarted: false,    // the context has run at least once (the pianos are preloading)
+  anchors: null,          // norm.anchors, normalised: null | 'downbeats' | Set of bar numbers (anchorsOf)
+  notes: [],              // the piece's Song notes: [{ id, title, body }] (songNotesOf)
+  noteHeadings: new Map(), // section id → its heading in the panel
+  notesOpen: false,       // the Song notes panel is showing
 };
 const staff = new PlayerStaff('pl-staff');
 const loopCounts = createLoopCounts();     // per-hand { pass, cleanStreak } for the active loop range
@@ -289,7 +316,8 @@ const timing = createTimingLog();
  * 'listen:start' / 'listen:stop', 'pass:start' / 'pass:end' (with the loop
  * range; pass:end carries the pass's timing log), 'note:expected',
  * 'note:played', 'note:missed' — notes as { pitch, hand, bar, beat,
- * audioTime, offsetMs, pass }. on('*', (detail, type) => …) hears all.
+ * audioTime, offsetMs, pass, anchor } (anchor: the note is at beat 1 of
+ * one of the piece's anchor bars, norm.anchors). on('*', (detail, type) => …) hears all.
  */
 const bus = (() => {
   const map = new Map();
@@ -1013,6 +1041,8 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'r' || e.key === 'R') { restart(); e.preventDefault(); }
   else if (e.key === ' ' || e.key === 'Spacebar') { if (state.listen.active) pauseListen(); else if (state.listen.paused) resumeListen(); else listen(); e.preventDefault(); }   // pauses whatever plays (Listen or play-along), resumes what was paused, else starts Listen. preventDefault: a focused button must not click as well
   else if (e.key === 'p' || e.key === 'P') { toggleTransport('playalong'); e.preventDefault(); }
+  else if ((e.key === 'n' || e.key === 'N') && state.notes.length) { setNotesOpen(!state.notesOpen, { focus: true }); e.preventDefault(); }   // Song notes; nothing playing is touched
+  else if (e.key === 'Escape' && state.notesOpen) { setNotesOpen(false, { focus: true }); e.preventDefault(); }   // Song notes first; a second Esc reaches the loop
   else if (e.key === 'Escape' && (state.pendingBar != null || state.loop)) { cancelLoop(); e.preventDefault(); }
 });
 
@@ -1227,13 +1257,13 @@ async function startTransport(mode, opts = {}) {
   const bpm = base * state.tempoPct / 100;   // read after the awaits: the slider may have moved
   clock.configure({ bars: barNumbers(), meter: pattern });
   clock.setTempo(bpm);
+  if (mode === 'playalong') timing.reset();   // BEFORE clock.start: with no count-in the first downbeat is inside the lookahead, so start() dispatches its notes — and registers their expectations — at once; a reset after it would drop them
   const started = clock.start({ fromBar: range.from, toBar: range.to, startBar: L.startBar, loop: range.loop, countInBars: state.metro.countIn, items: transportItems(schedule) });
   if (!started) { finishListen(); return false; }
   L.started = true;
   if (assumed) banner(`No tempo in this piece: playing at ${Math.round(bpm)} bpm (${state.tempoPct}% of an assumed ${DEFAULT_BPM}).`);
   const detail = { from: range.from, to: range.to, loop: range.loop, startBar: started.start, resumed: !!resume, hands: state.hands, tempoPct: state.tempoPct, bpm, countInBars: state.metro.countIn, audioTime: started.barOneTime };
   if (mode === 'playalong') {
-    timing.reset();
     bus.emit('playalong:start', detail);
     openPass(1, started.barOneTime);
   } else bus.emit('listen:start', detail);
@@ -1354,7 +1384,7 @@ clock.on('item', pos => {
   }
   if (L.mode !== 'playalong' || !isMine(note)) return;
   const r = timing.expect({ pitch: note.midi, hand: note.hand, bar: note.bar, beat: note.onset, audioTime: pos.audioTime, ref: note }, pos.pass);
-  bus.emit('note:expected', { pitch: note.midi, hand: note.hand, bar: note.bar, beat: note.onset, audioTime: pos.audioTime, offsetMs: null, pass: pos.pass });
+  bus.emit('note:expected', { pitch: note.midi, hand: note.hand, bar: note.bar, beat: note.onset, audioTime: pos.audioTime, offsetMs: null, pass: pos.pass, anchor: isAnchor(note.bar, note.onset) });
   if (r.hit) onHit(r.entry, r.hit);   // already played, a little early
   clock.at(pos.audioTime + HIT_WINDOW_S + SETTLE_S, sweepTiming);
 });
@@ -1482,7 +1512,7 @@ function closeAllPasses(at, complete) {
 }
 /** A note of yours that was played: green flash; the event carries the actual time and the offset. */
 function onHit(expected, played) {
-  bus.emit('note:played', { pitch: played.pitch, hand: expected.hand, bar: expected.bar, beat: expected.beat, audioTime: played.audioTime, expectedAt: expected.audioTime, offsetMs: expected.offsetMs, matched: true, extra: false, pass: expected.pass });
+  bus.emit('note:played', { pitch: played.pitch, hand: expected.hand, bar: expected.bar, beat: expected.beat, audioTime: played.audioTime, expectedAt: expected.audioTime, offsetMs: expected.offsetMs, matched: true, extra: false, pass: expected.pass, anchor: isAnchor(expected.bar, expected.beat) });
   flashNote(expected.ref);
 }
 /** Notes whose window has passed: expected ones are missed (grey for the rest of their pass), played ones that paired with nothing are extras (logged, never shown). */
@@ -1490,11 +1520,11 @@ function reportSettled(missed, extras) {
   const L = state.listen;
   let grey = false;
   for (const e of missed) {
-    bus.emit('note:missed', { pitch: e.pitch, hand: e.hand, bar: e.bar, beat: e.beat, audioTime: e.audioTime, offsetMs: null, pass: e.pass });
+    bus.emit('note:missed', { pitch: e.pitch, hand: e.hand, bar: e.bar, beat: e.beat, audioTime: e.audioTime, offsetMs: null, pass: e.pass, anchor: isAnchor(e.bar, e.beat) });
     if (L.active && e.pass === L.pass && e.ref) { L.missed.add(e.ref); grey = true; }
   }
   if (grey) applyMissed();
-  for (const e of extras) bus.emit('note:played', { pitch: e.pitch, hand: null, bar: e.bar, beat: e.beat, audioTime: e.audioTime, expectedAt: null, offsetMs: null, matched: false, extra: true, pass: e.pass });
+  for (const e of extras) bus.emit('note:played', { pitch: e.pitch, hand: null, bar: e.bar, beat: e.beat, audioTime: e.audioTime, expectedAt: null, offsetMs: null, matched: false, extra: true, pass: e.pass, anchor: false });   // an extra is nobody's anchor
 }
 function sweepTiming() {
   const r = timing.sweep(audioTimeOf(performance.now()));
@@ -1754,8 +1784,123 @@ function showHeader(name, norm) {
   } else els.infoTempo.textContent = '–';
 }
 
+// ── Feel + Song notes: the Piece card's FEEL row, the anchors, the Song notes panel (information only; see the header) ──
+
+/** norm.anchors → null | 'downbeats' | Set of the listed bar numbers that are in the piece. */
+function anchorsOf(norm) {
+  const a = norm && norm.anchors;
+  if (a === 'downbeats') return 'downbeats';
+  if (!Array.isArray(a)) return null;
+  const bars = new Set((Array.isArray(norm.bars) ? norm.bars : []).map(b => b.bar));
+  const set = new Set(a.filter(b => typeof b === 'number' && bars.has(b)));
+  return set.size ? set : null;
+}
+/** Whether a note at `beat` (quarters into the bar) of `bar` is on an anchor downbeat. */
+function isAnchor(bar, beat) {
+  const a = state.anchors;
+  if (!a || bar == null || !(Math.abs(beat) < 1e-6)) return false;
+  return a === 'downbeats' || a.has(bar);
+}
+/** Markdown-ish text into `host` as DOM nodes (never innerHTML): blank-line paragraphs, **bold**, *italic*. */
+function renderRich(host, text) {
+  for (const para of String(text || '').split(/\n\s*\n/)) {
+    const line = para.replace(/\s*\n\s*/g, ' ').trim();
+    if (!line) continue;
+    const p = document.createElement('p');
+    for (const part of line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/)) {
+      if (!part) continue;
+      const bold = /^\*\*[^*]+\*\*$/.test(part), italic = !bold && /^\*[^*]+\*$/.test(part);
+      if (!bold && !italic) { p.append(part); continue; }
+      const el = document.createElement(bold ? 'strong' : 'em');
+      el.textContent = part.slice(bold ? 2 : 1, bold ? -2 : -1);
+      p.appendChild(el);
+    }
+    host.appendChild(p);
+  }
+}
+/**
+ * The piece's Song notes as [{ id, title, body }], in order: norm.songNotes
+ * (sections with no body are skipped; an id is slugged, made unique, and
+ * invented when missing), else a legacy norm.feelNote { title, body } as
+ * the one section "feel". [] when the piece has none.
+ */
+function songNotesOf(norm) {
+  const text = v => (typeof v === 'string' ? v.trim() : '');
+  let list = norm && Array.isArray(norm.songNotes) ? norm.songNotes : null;
+  if (!list) { const legacy = norm && norm.feelNote; list = legacy && typeof legacy === 'object' ? [{ id: 'feel', ...legacy }] : []; }
+  const seen = new Set(), out = [];
+  for (const s of list) {
+    if (!s || typeof s !== 'object' || !text(s.body)) continue;
+    let id = text(s.id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `note-${out.length + 1}`;
+    while (seen.has(id)) id += '-2';
+    seen.add(id);
+    out.push({ id, title: text(s.title) || (id === 'feel' ? 'Feel' : 'Notes'), body: s.body });
+  }
+  return out;
+}
+const noteHeadingId = id => `pl-note-${id}`;
+/**
+ * Open / close the Song notes panel (only a piece with notes opens);
+ * remembered per piece. The panel lies over the page: nothing playing is
+ * touched. focus: on open, into the panel — the heading of `section` when
+ * given (also scrolled to), else Close; on close, back to the button.
+ */
+function setNotesOpen(open, { save = true, focus = false, section = null } = {}) {
+  const on = !!open && state.notes.length > 0;
+  state.notesOpen = on;
+  els.notesPanel.dataset.open = String(on);
+  els.notesPanel.inert = !on;
+  els.notesBtn.setAttribute('aria-expanded', String(on));
+  if (save && state.piece) { try { localStorage.setItem(`${NOTES_OPEN_KEY}:${state.piece}`, on ? '1' : '0'); } catch (_) { /* storage unavailable */ } }
+  if (on && section) {
+    const h = state.noteHeadings.get(section);
+    if (h) { h.scrollIntoView({ block: 'start' }); if (focus) { h.focus(); return on; } }
+  }
+  if (focus) (on ? els.notesClose : els.notesBtn).focus();
+  return on;
+}
+/** A piece loaded (or none): the FEEL row, the staff's anchors, the Song notes button, the panel's sections, and the panel as this piece left it. */
+function showNotes(name, norm) {
+  const label = norm && typeof norm.feel === 'string' ? FEEL_LABELS[norm.feel.trim().toLowerCase()] : null;
+  state.notes = songNotesOf(norm);
+  state.anchors = anchorsOf(norm);
+  staff.setAnchors(state.anchors === 'downbeats' ? 'downbeats' : state.anchors ? [...state.anchors] : null);
+
+  els.notesBtn.hidden = els.notesHint.hidden = !state.notes.length;
+  els.notesBody.textContent = '';
+  state.noteHeadings = new Map();
+  for (const note of state.notes) {
+    const sec = document.createElement('section');
+    const h = document.createElement('h3');
+    h.id = noteHeadingId(note.id); h.tabIndex = -1; h.textContent = note.title;
+    sec.setAttribute('aria-labelledby', h.id);
+    sec.appendChild(h);
+    renderRich(sec, note.body);
+    els.notesBody.appendChild(sec);
+    state.noteHeadings.set(note.id, h);
+  }
+
+  // FEEL row: plain text, or — when Song notes has a "feel" section — the same text as a link to it.
+  els.infoFeelLabel.hidden = els.infoFeelRow.hidden = !label;
+  els.infoFeel.textContent = '';
+  if (label && state.noteHeadings.has('feel')) {
+    const link = document.createElement('button');
+    link.type = 'button'; link.className = 'pl-info__feel-link'; link.textContent = label;
+    link.title = 'Open the Feel section of Song notes';
+    link.addEventListener('click', () => setNotesOpen(true, { focus: true, section: 'feel' }));
+    els.infoFeel.appendChild(link);
+  } else if (label) els.infoFeel.textContent = label;
+
+  let was = null;
+  try { was = name ? localStorage.getItem(`${NOTES_OPEN_KEY}:${name}`) : null; } catch (_) { /* storage unavailable */ }
+  setNotesOpen(was === '1', { save: false });
+}
+els.notesBtn.addEventListener('click', () => setNotesOpen(!state.notesOpen, { focus: true }));
+els.notesClose.addEventListener('click', () => setNotesOpen(false, { focus: true }));
+
 function unload() {
   stopListen();
+  showNotes(null, null);
   state.norm = null; state.bar = null; state.steps = []; state.follower = null; state.wrong = 0;
   state.lines = []; state.lineWarnings = []; state.line = -1;
   cancelPending(); clearTrouble(); recorder.cancel();
@@ -1778,6 +1923,7 @@ async function load(name) {
     const norm = await res.json();
     state.piece = name; state.norm = norm; state.wrong = 0;
     showHeader(name, norm);
+    showNotes(name, norm);
     const bars = barNumbers();
     if (bars.length) {
       const lr = lineRanges(norm);
@@ -1898,6 +2044,7 @@ export { songlabPlayer };
 window.__player = {
   state, load, pieces: () => state.pieces, staff, showLine, stepLine, stepBar, restart,
   setLoop, clearLoop, setNoStress,
+  setNotesOpen, songNotesOf, isAnchor, get notes() { return state.notes; }, get anchors() { return state.anchors; },
   listen, playAlong, stopListen, pauseListen, resumeListen, clockSample, clockDrift, clockProbe, get tempo() { return state.tempoPct; }, set tempo(v) { setTempoPct(v); }, clock, timing, bus, setGuideVolume, controller: songlabPlayer,
   metronome, setMetronome, setMetroVolume, setCountIn, get metro() { return state.metro; },
   setRackOpen, setRackAuto, get rack() { return state.rack; },

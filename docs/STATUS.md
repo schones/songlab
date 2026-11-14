@@ -1169,6 +1169,15 @@ console snippets only):**
       the first real finding for a future timing coach. The mapping is
       unchanged; the diagnostics stay.
     - Tempo and metronome-volume sliders: 44 px targets.
+  - Player smoke (`tests/player/`, 2026-11-13): the real `player.js`
+    under Node with a stubbed DOM and a fake audio clock on real time —
+    the page's own wiring, which the pure modules' self-tests cannot
+    reach. `node tests/player/smoke.mjs` (≈ 25 s; 6 scenarios, 48 checks:
+    pause / resume, the count-in-0 first downbeat, Song notes, feel +
+    anchors), or
+    one scenario by name. Uses a built-in fixture piece, not the private
+    Carol. Not a substitute for the Chrome / RD-2000 check: nothing is
+    drawn, nothing sounds.
   - Sustain pedal: CC64 from the selected input holds "Sound for my notes"
     after key release; pedal up releases notes whose keys are up; a
     re-strike retriggers; a device change or disconnect releases

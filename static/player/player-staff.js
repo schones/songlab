@@ -17,6 +17,8 @@
  *   staff.setDimmed(ids);                        // the other hand, drawn faint (pl-note--dim); [] clears
  *   staff.setBarMarker(6);                       // faint tint behind bar 6's measure; null clears
  *   staff.setBarTint('loop', [6, 7]);            // 'loop' | 'pending' | 'trouble' tint behind those bars ([] clears); kept across renders
+ *   staff.setAnchors([1, 5, 9]);                 // anchor downbeats (norm.anchors): a small gold tick above beat 1 of those bars; 'downbeats': every
+ *                                                //   barline tinted gold instead (no per-bar marks); null clears. Kept across renders. Display only.
  *   staff.onBarTap = bar => …;                   // a click / tap on a drawn measure (null to ignore); cursor: pointer while set
  *   staff.barAt(clientX, clientY)                // the bar under a point (g.measure#pl-m<bar>, else bounding rects), or null
  *   staff.hits                                   // { id → { midi, bar, staff, hand, onset, at, tieStop } }
@@ -57,10 +59,12 @@ const TRANSITION_MS = 250;            // slide-and-fade on a line change
 const TRANSITION_FALLBACK_MS = 400;   // overlay removal when transitionend never fires
 const SLIDE = '30%';                  // translateY distance for the out / in SVGs
 const MARKER_PAD = 0.12;              // marker / tint rects extend above / below the line's extent by this fraction of its height
+const ANCHOR_TITLE = 'Anchor: land this downbeat';
+const ANCHOR_TICK = 0.06;             // anchor tick length, as a fraction of the line's (padded) extent: it sits in the padding above the highest content
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const CSS = /* css */ `
-.pl-staff-wrap { position: relative; width: 100%; min-height: 200px; --pl-bar-marker: rgba(45, 95, 138, 0.10); --pl-bar-loop: rgba(214, 150, 20, 0.16); --pl-bar-pending: rgba(214, 150, 20, 0.08); --pl-bar-pending-stroke: rgba(176, 120, 10, 0.7); --pl-bar-trouble: rgba(185, 52, 31, 0.11); }
+.pl-staff-wrap { position: relative; width: 100%; min-height: 200px; --pl-bar-marker: rgba(45, 95, 138, 0.10); --pl-bar-loop: rgba(214, 150, 20, 0.16); --pl-bar-pending: rgba(214, 150, 20, 0.08); --pl-bar-pending-stroke: rgba(176, 120, 10, 0.7); --pl-bar-trouble: rgba(185, 52, 31, 0.11); --pl-anchor: #B07A0A; }
 [data-theme="dark"] .pl-staff-wrap { --pl-bar-marker: rgba(58, 139, 201, 0.22); --pl-bar-loop: rgba(240, 180, 50, 0.22); --pl-bar-pending: rgba(240, 180, 50, 0.10); --pl-bar-pending-stroke: rgba(240, 180, 50, 0.8); --pl-bar-trouble: rgba(230, 90, 60, 0.20); }
 .pl-staff-wrap[data-tappable="1"] g.measure { cursor: pointer; }
 /* The host clips the slide-and-fade; its height is locked by script during a line change. */
@@ -79,6 +83,9 @@ const CSS = /* css */ `
 .pl-staff-svg rect.pl-bar-loop         { fill: var(--pl-bar-loop); stroke: none; }
 .pl-staff-svg rect.pl-bar-pending      { fill: var(--pl-bar-pending); stroke: var(--pl-bar-pending-stroke); stroke-width: 6; stroke-dasharray: 24 14; }
 .pl-staff-svg rect.pl-bar-trouble      { fill: var(--pl-bar-trouble); stroke: none; }
+/* Anchors (norm.anchors). A bar list: a small gold tick above each anchor bar's downbeat. 'downbeats': the barlines carry a very subtle gold tint instead. */
+.pl-staff-svg line.pl-anchor-tick { stroke: var(--pl-anchor); stroke-width: 16; stroke-linecap: round; pointer-events: stroke; }
+.pl-staff-wrap[data-anchors="downbeats"] .pl-staff-svg g.barLine path { stroke: color-mix(in srgb, var(--pl-anchor) 45%, currentColor); }
 .pl-staff-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; color: var(--text-muted, #4E4A43); pointer-events: none; }
 .pl-staff-wrap[data-state="ready"] .pl-staff-status { display: none; }
 .pl-staff-wrap[data-state="loading"] .pl-staff-svg, .pl-staff-wrap[data-state="error"] .pl-staff-svg { opacity: 0.3; }
@@ -113,6 +120,7 @@ class PlayerStaff {
     this._markerBar = null;
     this._extent = null;        // { y, height } shared by every marker / tint rect: the union of the drawn measures' y-ranges, padded; per render
     this._tints = { loop: [], pending: [], trouble: [] };   // tint → bars; re-applied after every render
+    this._anchors = null;       // null | 'downbeats' | [bar]; re-applied after every render
     this._onBarTap = null;
 
     if (!document.getElementById('pl-staff-styles')) {
@@ -177,6 +185,7 @@ class PlayerStaff {
     this._setState('ready', '');
     this._extent = this._lineExtent();
     for (const t of TINTS) this._drawTint(t);
+    this._drawAnchors();
     return { hits: this.hits, warnings: built.warnings };
   }
 
@@ -253,6 +262,58 @@ class PlayerStaff {
       drawn.push(bar);
     }
     return drawn;
+  }
+
+  /**
+   * Anchor downbeats (norm.anchors), display only. A list of bars: a small
+   * gold tick above beat 1 of each one that is on the drawn line. 'downbeats'
+   * (beat 1 of every bar): no per-bar marks — the barlines get a very subtle
+   * gold tint. Both carry the title "Anchor: land this downbeat". null (or
+   * anything else) clears. Remembered and redrawn after every render.
+   */
+  setAnchors(anchors) {
+    this._anchors = anchors === 'downbeats' ? 'downbeats' : (Array.isArray(anchors) && anchors.length ? [...new Set(anchors.filter(b => typeof b === 'number'))] : null);
+    this._drawAnchors();
+  }
+
+  _drawAnchors() {
+    const a = this._anchors;
+    this._wrap.dataset.anchors = a === 'downbeats' ? 'downbeats' : (a ? 'bars' : 'none');
+    if (!this._svg) return;
+    for (const el of this._svg.querySelectorAll('line.pl-anchor-tick, title.pl-anchor-title')) el.remove();
+    const titled = el => { const t = document.createElementNS(SVG_NS, 'title'); t.setAttribute('class', 'pl-anchor-title'); t.textContent = ANCHOR_TITLE; el.appendChild(t); };
+    if (a === 'downbeats') { for (const g of this._svg.querySelectorAll('g.barLine')) titled(g); return; }
+    if (!a) return;
+    const extent = this._extent || (this._extent = this._lineExtent());
+    if (!extent) return;
+    for (const bar of a) {
+      const measure = this._measureOf(bar);
+      if (!measure || !this._svg.contains(measure) || !measure.parentNode) continue;   // not on the drawn line
+      const x = this._downbeatX(bar, measure);
+      if (x == null) continue;
+      const tick = document.createElementNS(SVG_NS, 'line');
+      tick.setAttribute('class', 'pl-anchor-tick');
+      tick.setAttribute('x1', String(x)); tick.setAttribute('x2', String(x));
+      tick.setAttribute('y1', String(extent.y)); tick.setAttribute('y2', String(extent.y + extent.height * ANCHOR_TICK));
+      titled(tick);
+      measure.parentNode.appendChild(tick);   // beside the measure (same coordinates), not inside it: the measure's bbox, which the tints are sized from, stays its own
+    }
+  }
+
+  /** The x of `bar`'s downbeat: the centre of its leftmost drawn note at onset 0, else the measure's left edge. */
+  _downbeatX(bar, measure) {
+    let x = null;
+    for (const h of Object.values(this.hits)) {
+      if (h.bar !== bar || h.onset !== 0) continue;
+      const el = this._find(h.id);
+      const head = el && (el.querySelector('.notehead') || el);   // the notehead, not the accidental in front of it
+      let box = null;
+      try { box = head && head.getBBox(); } catch (_) { box = null; }
+      if (box && box.width > 0) { const c = box.x + box.width / 2; if (x == null || c < x) x = c; }
+    }
+    if (x != null) return x;
+    const box = this._measureBox(measure);
+    return box ? box.x : null;
   }
 
   /** The bar under a client point: the measure's id (pl-m<bar>) when the hit lands on one, else the measure whose bounding rect holds the point. */

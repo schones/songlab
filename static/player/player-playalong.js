@@ -35,7 +35,9 @@
  *                             a loop pass sat out — is skipped), or null
  *     passes()                the last KEEP_PASSES (10) closed passes, oldest first, played in or not
  *     current()               the open pass with the highest number, or null
- *     reset()                 forget the open passes (a new run); the closed ones stay
+ *     reset()                 forget the open passes (a new run); the closed ones stay.
+ *                             Call it BEFORE the clock starts: a start with no count-in
+ *                             registers the first downbeat's expectations at once.
  *
  *   audioTimeFromStamp(perfMs, { contextTime, performanceTime }) → seconds
  *       the audio-clock time of a performance.now() instant, from an AudioContext
@@ -340,6 +342,38 @@ async function selfTest() {
     const cached = simulate(perfMs => audioTimeFromStamp(perfMs, first));   // the mapping taken once at the start
     const slide = cached.pass.expected[cached.pass.expected.length - 1].offsetMs - cached.pass.expected[0].offsetMs;
     assert('control — a mapping cached at the start does slide (−0.2 ms a second at 200 ppm: about −6 ms by the end), so this test would see it', slide < -5 && slide > -8, true);
+  }
+
+  // ── a count-in-0 start: the first downbeat's expectations are registered by start() itself ──
+  // The beat clock dispatches everything inside its lookahead as soon as it starts, and with no count-in
+  // that includes the first downbeat. player.js startTransport therefore resets the log BEFORE clock.start
+  // and opens pass 1 after it (it needs the start time): the downbeat's notes must survive that order.
+  {
+    const { createBeatClock } = await import('./beat-clock.js');
+    const run = ({ countInBars, resetAfterStart = false }) => {
+      const audio = { t: 2, ready: () => true, now() { return this.t; } };
+      const timer = { fn: null, set(fn) { this.fn = fn; return 1; }, clear() { this.fn = null; } };
+      const clock = createBeatClock({ audio, timer });
+      clock.configure({ bars: [1, 2], meter: '3/4' });
+      clock.setTempo(120);
+      const log = createTimingLog();
+      log.open(1, { startedAt: 0 }); log.expect(N(50, 0.5), 1);   // left over from an earlier run
+      clock.on('item', p => log.expect({ pitch: p.item.pitch, hand: p.item.hand, bar: p.bar, beat: p.beat, audioTime: p.audioTime }, p.pass));
+      if (!resetAfterStart) log.reset();
+      const started = clock.start({ fromBar: 1, toBar: 2, countInBars, items: [{ q: 0, pitch: 67, hand: 'lh' }, { q: 0, pitch: 86, hand: 'rh' }, { q: 0.5, pitch: 70, hand: 'lh' }] });
+      if (resetAfterStart) log.reset();
+      const pass = log.open(1, { startedAt: started.barOneTime });
+      clock.stop();
+      return { log, pass, started };
+    };
+    const zero = run({ countInBars: 0 });
+    assert('count-in 0: right after start() the pass holds the first downbeat\'s two expectations (and nothing of the old run), pending at the downbeat\'s time', [zero.pass.expected.map(e => [e.pitch, e.hand, e.bar, e.beat, e.status]), zero.pass.expected.every(e => e.audioTime === zero.started.barOneTime), zero.pass.startedAt === zero.started.barOneTime], [[[67, 'lh', 1, 0, 'pending'], [86, 'rh', 1, 0, 'pending']], true, true]);
+    const hit = zero.log.played(86, zero.started.barOneTime + 0.03);
+    assert('…so a key on that downbeat is a hit (+30 ms), not an extra', [hit.hit && hit.hit.pitch, hit.entry.matched, hit.entry.offsetMs, hit.entry.extra], [86, true, 30, false]);
+    const one = run({ countInBars: 1 });
+    assert('count-in 1: the downbeat is a bar away, nothing is registered yet', one.pass.expected.length, 0);
+    const late = run({ countInBars: 0, resetAfterStart: true });
+    assert('control — resetting after start() (the old order) loses them: that key would be an extra', [late.pass.expected.length, late.log.played(86, late.started.barOneTime + 0.03).hit], [0, null]);
   }
 
   const passed = results.filter(Boolean).length;
