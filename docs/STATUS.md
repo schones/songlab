@@ -1,6 +1,6 @@
 # SongLab Project Status
 
-**Last updated:** 2026-11-05
+**Last updated:** 2026-11-13
 **Branch:** `dev` — all active work. Cycle of Shells merged 2026-10-27;
 Voicing Explorer Sessions 1–6.5 merged `df0e2fc`; Learn Phase 0 + Phase 1
 topics merged via `learn-topics`; Cantor v1; MIDI multi-port fix `57afaa9`.
@@ -106,8 +106,14 @@ appearing after a load with zero inputs (root cause in the shared
 `midi-input.js` init; Cycle of Shells benefits too) and the audio wake
 (any gesture or the first MIDI note); and the rack became collapsible
 behind a 58 px summary strip, auto-collapsing on the first note or
-Listen ("Hide controls while playing", default on). Detail below under
-"What's Working".
+Listen ("Hide controls while playing", default on). 2026-11-13 (player 3,
+uncommitted, Node-tested only — not yet checked in Chrome): a shared beat
+clock (`beat-clock.js`) now drives Listen, the metronome and the page
+turns, with live tempo; Listen repeats a loop or plays to the end of the
+piece; play-along mode ("♪ Play along" / P) with a guide volume, light
+green / grey feedback and a quiet timing log; sustain pedal for "Sound for
+my notes"; and `window.songlabPlayer` + an event bus, **the hook for the
+future scoring and the coach**. Detail below under "What's Working".
 
 ### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
 Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
@@ -1077,6 +1083,84 @@ console snippets only):**
   (notes and click are fixed at start) and Listen plays the loop range or
   the current line once. Checked on the RD-2000 2026-11-12 (play-along
   feel with the click).
+- Shared beat clock + play-along (player 3, 2026-11-13; **Node self-tests
+  and a stubbed-DOM smoke run only — the Chrome / RD-2000 check is still
+  to do**):
+  - `static/player/beat-clock.js` (new, pure, 53/53): one clock in beats
+    on Tone's AudioContext, lookahead scheduler (25 ms tick, 150 ms
+    ahead), not `Tone.Transport`. `start({ fromBar, toBar, loop,
+    countInBars, items })`, `stop()`, `setTempo()` (live: re-anchors at
+    the scheduling horizon, so everything stays in phase and nothing is
+    re-timed; heard ≤ 150 ms later), `seek(bar)`, `positionAt()`. Events
+    `beat`, `bar`, `countInStart` / `End`, `loopWrap`, `item`, `ended`,
+    each `{ bar, beat, audioTime, pass }` (`beat` = quarters into the bar),
+    delivered twice: `on()` ahead of time for scheduling sound, `onDue()`
+    on time for painting.
+  - `metronome.js` (30/30): new `click(audioTime, { accent, countIn })`;
+    the clock's `beat` listener calls it (count-in always, the rest while
+    the checkbox is on). Its own `start` / `countIn` scheduler is kept but
+    the player no longer uses it.
+  - Listen moved off `VoicingPlayer` (voicing-player.js is unchanged and
+    still serves `/voicings`; the player imports only `loadTone` and the
+    sample URLs). Notes are clock items by quarter position
+    (`listenSchedule` at 60 bpm), sounded on the page's own guide
+    sampler. New behaviour: live tempo; with a loop it repeats until
+    stopped (count-in on the first pass only); with none it plays from
+    the current bar to the end of the piece, turning pages; the bar
+    marker follows the clock.
+  - Play-along: "♪ Play along" / `P` in the strip, Space stops. Same range
+    and looping; the score moves with the clock and never waits; the whole
+    piece plays underneath at "Guide volume" (Listen card, 0–100, default
+    35, 0 = click only, `songlab_player_guide_volume`); Hands decides which
+    notes are yours. Feedback: a note hit within 250 ms flashes green, one
+    not played stays faint for the rest of that pass. No counts. Practice
+    mode is untouched.
+  - Timing log (`static/player/player-playalong.js`, new, pure, 35/35):
+    per pass, every expected note (`hit` / `missed`, `offsetMs` early
+    negative) and every played note (extras included), with bar / beat and
+    audio times. Key times are mapped onto the audio clock through the
+    context's output timestamp.
+  - **Hook for future scoring and the coach:** `window.songlabPlayer`
+    (also exported from `player.js`): `listen({ from, to, loop })`,
+    `playAlong({ from, to, loop })`, `stop()`, `setTempo(pct)`,
+    `setLoop(from, to)`, `clearLoop()`, `on(event, fn)`, `getLastPass()`.
+    Bus events: `playalong:start` / `stop`, `listen:start` / `stop`,
+    `pass:start` / `end` (loop range; `pass:end` carries the log),
+    `note:expected` / `played` / `missed` with `{ pitch, hand, bar, beat,
+    audioTime, offsetMs }`. Scoring, progress and the coach should plug in
+    here without touching the transports. (Not `MusicalEventStream`: that
+    is Cantor's stream, with its own event model.)
+  - Round 2 (2026-11-13, same uncommitted batch; Node self-tests + a
+    stubbed-DOM smoke of the real `player.js`, 22/22 — **not yet checked
+    in Chrome**):
+    - Pause: Space, P and the two strip buttons pause in place ("❚❚ Pause"
+      → "▶ Resume"; page and bar marker stay; the pass closes
+      `complete: false`); resuming starts at the START of the paused bar
+      with the count-in first (`beat-clock` `start({ startBar })`); a loop
+      keeps its range. Nothing is judged while paused. R / any navigation /
+      any state change end a paused transport (`stopListen`). Controller:
+      `pause()`, `resume()`, `paused`.
+    - Timing log: extras carry `extra: true`, `offsetMs: null`;
+      `getLastPass()` = newest ended pass with a played note;
+      `getPasses()` = last 10. Passes carry `run`, `startBar` and
+      `timebase` (clock readings at open / close + `drift`).
+    - **Timing drift (≈ −15 ms/s in play-along) — OPEN.** Ruled out in
+      code: expected notes and clicks come off one clock line (identical
+      audio times, simulated at 60.68 bpm), and the key-time mapping reads
+      a fresh output timestamp per event (self-test: an on-click player
+      reads ≤ 0.1 ms for 32 s, even with the clocks 200 ppm apart). What
+      is left is the browser's `getOutputTimestamp()` line itself running
+      at a different rate from `currentTime`. Not changed yet; measure
+      first: play one pass, then
+      `songlabPlayer.getLastPass().timebase.drift` (or
+      `await __player.clockProbe(20)`): `stampMsPerS` ≈ −15 with
+      `currentMsPerS` ≈ 0 confirms it → fix is to map key times through
+      `currentTime − outputLatency` instead.
+    - Tempo and metronome-volume sliders: 44 px targets.
+  - Sustain pedal: CC64 from the selected input holds "Sound for my notes"
+    after key release; pedal up releases notes whose keys are up; a
+    re-strike retriggers; a device change or disconnect releases
+    everything. Judging stays by keys only.
 - Collapsible rack + summary strip (2026-11-12, `244dd33`; `player.html`,
   `player.js`): the rack sits in `.pl-rack-shell` (grid rows 0fr ↔ 1fr +
   opacity, 150 ms, `inert` + visibility when closed, no transition under
@@ -1153,9 +1237,12 @@ console snippets only):**
   2026-11-03). 1c No stress was checked on the RD-2000 2026-11-12.
 
 **Open / deferred:**
-- Next, in order: play-along mode with the metronome (`metronome.js` is
-  built to be driven by it the way Listen drives it), including Listen /
-  play past the current line; then the RD-2000 recording session, warm-up
+- Player 3 (beat clock, play-along, pedal) needs its Chrome / RD-2000
+  check: timing offsets against the click, the guide level at 35, stop
+  cutting the guide cleanly, page turns at tempo.
+- Next, in order: scoring and the coach on `window.songlabPlayer` and its
+  events (see "Shared beat clock + play-along" above); the RD-2000
+  recording session, warm-up
   screen in the song's key, practice logging (`createResultLog` with key
   `songlab_results_player`, per the game-engine spec envelope, off the
   `practiceEvent` funnel).
@@ -1165,7 +1252,8 @@ console snippets only):**
   anticipation only looks at the next step in score order, not the loop
   start; a hands switch mid-pass forgives that pass's misses (`dirty` is
   not carried).
-- Out of scope so far: MIDI control of loops, timed play-along scoring.
+- Out of scope so far: MIDI control of loops, timed play-along scoring
+  (the timing log exists; nothing reads it yet).
 - Multi-bar view: the model already takes a bar range; the page shows one
   bar.
 - Staff splitting is not beat-aware (fine for 3/4; revisit for 4/4

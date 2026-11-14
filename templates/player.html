@@ -80,10 +80,14 @@
   /* Strip: ↺ Start over, green outline */
   .pl-btn--restart { border-color: var(--accent-green); color: var(--accent-green); }
   .pl-btn--restart:hover:not(:disabled) { background: var(--accent-green); border-color: var(--accent-green); color: #FFFFFF; }
-  /* Strip: ▶ Listen (blue), ■ Stop while playing */
+  /* Strip: ▶ Listen (blue), ❚❚ Pause while playing, ▶ Resume while paused */
   .pl-btn--listen { background: var(--accent-blue); border-color: var(--accent-blue); color: #FFFFFF; padding: 8px 18px; min-width: 7.5em; }
   .pl-btn--listen:hover:not(:disabled) { background: #24507A; border-color: #24507A; color: #FFFFFF; }
   .pl-btn--listen[aria-pressed="true"], .pl-btn--listen[aria-pressed="true"]:hover { background: var(--pl-playing); border-color: var(--pl-playing); color: #FFFFFF; }
+  /* Strip: ♪ Play along (blue outline next to the filled Listen), ❚❚ Pause while playing, ▶ Resume while paused */
+  .pl-btn--playalong { border-color: var(--accent-blue); color: var(--accent-blue); padding: 8px 18px; min-width: 8.5em; }
+  .pl-btn--playalong:hover:not(:disabled) { background: var(--accent-blue); border-color: var(--accent-blue); color: #FFFFFF; }
+  .pl-btn--playalong[aria-pressed="true"], .pl-btn--playalong[aria-pressed="true"]:hover { background: var(--pl-playing); border-color: var(--pl-playing); color: #FFFFFF; }
   /* MIDI: mute, mirrors the header speaker */
   .pl-btn--mute { width: 100%; }
   .pl-btn--mute[aria-pressed="true"] { background: #EFECE5; color: var(--text-secondary); }
@@ -126,7 +130,7 @@
   .pl-tempo__top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
   .pl-tempo__top label { font-size: 0.9rem; color: var(--text-secondary); }
   .pl-tempo__readout { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); white-space: nowrap; }
-  .pl-tempo input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent-blue); min-height: 28px; }
+  .pl-tempo input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent-blue); min-height: 44px; }   /* Tempo and Guide volume: full-height targets */
   .pl-tempo input[type="range"]:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 4px; border-radius: 4px; }
   .pl-metro-row {
     margin-top: auto; padding-top: 0.5rem; border-top: 1px dashed var(--pl-border);
@@ -135,7 +139,7 @@
   .pl-metro-row .pl-check { flex: none; }
   .pl-metro-vol { display: flex; align-items: center; gap: 0.5rem; flex: 1 1 7em; min-width: 7em; min-height: 44px; }
   .pl-metro-vol label { font-size: 0.9rem; color: var(--text-secondary); white-space: nowrap; }
-  .pl-metro-vol input[type="range"] { flex: 1 1 auto; width: 100%; min-width: 4em; margin: 0; accent-color: var(--accent-blue); min-height: 28px; }
+  .pl-metro-vol input[type="range"] { flex: 1 1 auto; width: 100%; min-width: 4em; margin: 0; accent-color: var(--accent-blue); min-height: 44px; }
   .pl-metro-vol input[type="range"]:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 4px; border-radius: 4px; }
   /* Count-in: segmented 0 / 1 / 2 (buttons with aria-pressed, styled as the Hands control) */
   .pl-seg { display: inline-flex; align-items: center; gap: 0.5rem; flex: none; }
@@ -295,7 +299,7 @@
         </div>
       </section>
 
-      <!-- Listen (player-listen.js + shared VoicingPlayer): the loop range, or the drawn line, both hands, at a percentage of the piece's tempo. Space toggles. -->
+      <!-- Listen + play-along (player.js on beat-clock.js): the loop repeating, or from the current bar to the end; tempo is live. Space / P. -->
       <section class="pl-card pl-card--listen" aria-labelledby="pl-h-listen">
         <h3 class="pl-card__title" id="pl-h-listen">Listen</h3>
         <div class="pl-listen-row">
@@ -306,17 +310,25 @@
             </div>
             <input type="range" id="pl-tempo" min="25" max="200" step="1" value="100" aria-label="Tempo, percent of the piece's tempo">
           </div>
+          <!-- Guide volume (play-along): how loud the piece plays underneath; 0 = click only. Remembered. -->
+          <div class="pl-tempo pl-guide" title="Play along: how loud the piece plays underneath you (0 = click only)">
+            <div class="pl-tempo__top">
+              <label for="pl-guide">Guide volume</label>
+              <span class="pl-tempo__readout" id="pl-guide-readout">35</span>
+            </div>
+            <input type="range" id="pl-guide" min="0" max="100" step="1" value="35" aria-label="Guide volume for play-along, 0 to 100; 0 is click only">
+          </div>
         </div>
-        <!-- Metronome (2b, metronome.js): click while Listen plays, its volume, and a count-in of 0 / 1 / 2 bars that clicks even with the metronome off. All remembered. -->
+        <!-- Metronome (2b, metronome.js, driven by the beat clock): click while Listen / play-along runs, its volume, and a count-in of 0 / 1 / 2 bars that clicks even with the metronome off. All remembered. -->
         <div class="pl-metro-row" id="pl-metro-row">
-          <label class="pl-check" title="A click on every beat while Listen plays (the downbeat accented)"><input type="checkbox" id="pl-metro"> Metronome</label>
+          <label class="pl-check" title="A click on every beat while Listen or play-along runs (the downbeat accented)"><input type="checkbox" id="pl-metro"> Metronome</label>
           <div class="pl-metro-vol">
             <label for="pl-metro-volume">Volume</label>
             <input type="range" id="pl-metro-volume" min="0" max="100" step="1" value="70" aria-label="Metronome volume">
           </div>
           <div class="pl-seg">
             <span class="pl-seg__label" id="pl-count-in-label">Count-in</span>
-            <div class="pl-seg__group" role="group" aria-labelledby="pl-count-in-label" id="pl-count-in" title="Bars of clicks before Listen starts, at the slider tempo">
+            <div class="pl-seg__group" role="group" aria-labelledby="pl-count-in-label" id="pl-count-in" title="Bars of clicks before Listen or play-along starts, at the slider tempo">
               <button type="button" class="pl-seg__btn" data-count-in="0" aria-pressed="false" aria-label="No count-in">0</button>
               <button type="button" class="pl-seg__btn" data-count-in="1" aria-pressed="true" aria-label="Count in one bar">1</button>
               <button type="button" class="pl-seg__btn" data-count-in="2" aria-pressed="false" aria-label="Count in two bars">2</button>
@@ -338,7 +350,7 @@
           <h3 class="pl-card__title" id="pl-h-mode">Mode</h3>
           <label class="pl-check" title="Wrong notes don't block, aren't shown and aren't counted; the player just follows along"><input type="checkbox" id="pl-no-stress"> No stress</label>
           <!-- Auto-collapse (player.js autoCollapse): the rack closes on the first MIDI note or Listen start after it was opened -->
-          <label class="pl-check" title="Close the controls on the first note played or when Listen starts; off: they only open and close with ⚙ Controls"><input type="checkbox" id="pl-rack-auto" checked> Hide controls while playing</label>
+          <label class="pl-check" title="Close the controls on the first note played or when Listen / Play along starts; off: they only open and close with ⚙ Controls"><input type="checkbox" id="pl-rack-auto" checked> Hide controls while playing</label>
         </section>
       </div>
 
@@ -397,8 +409,10 @@
         <button type="button" class="pl-btn pl-btn--controls" id="pl-rack-toggle" aria-controls="pl-rack" aria-expanded="false">&#9881; Controls</button>
       </div>
       <div class="pl-strip__live">
-        <!-- Listen (player-listen.js + shared VoicingPlayer): the loop range, or the drawn line, both hands, at the slider tempo. Space toggles. -->
-        <button type="button" class="pl-btn pl-btn--listen" id="pl-listen" aria-pressed="false" disabled>&#9654; Listen</button>
+        <!-- Listen: the loop repeating, or from the current bar to the end, both hands, at the slider tempo (live). The button and Space: start / pause in place / resume from the start of the paused bar. -->
+        <button type="button" class="pl-btn pl-btn--listen" id="pl-listen" aria-pressed="false" aria-label="Listen" title="Listen (Space)" disabled>&#9654; Listen</button>
+        <!-- Play-along: the same transport; the score moves with the clock, the guide plays underneath, your notes flash green. P and the button: start / pause / resume; Space pauses and resumes too. -->
+        <button type="button" class="pl-btn pl-btn--playalong" id="pl-playalong" aria-pressed="false" aria-label="Play along" title="Play along (P)" disabled>&#9834; Play along</button>
         <!-- Same as R: zero the wrong count, jump to the start (or the loop start while looping). Always shown. -->
         <button type="button" class="pl-btn pl-btn--restart" id="pl-restart" disabled>&#8634; Start over</button>
         <!-- Same code path as Esc (cancelLoop): drops a pending tap and clears the active loop; the position stays. Shown only while there is one (updateStatus). -->
@@ -410,7 +424,8 @@
       <span><kbd>&larr;</kbd> / <kbd>&rarr;</kbd> line</span>
       <span><kbd>Shift</kbd>+<kbd>&larr;</kbd> / <kbd>&rarr;</kbd> bar</span>
       <span><kbd>R</kbd> start over</span>
-      <span><kbd>Space</kbd> listen</span>
+      <span><kbd>Space</kbd> listen / pause / resume</span>
+      <span><kbd>P</kbd> play along / pause</span>
     </p>
     <section class="pl-panel" aria-label="Staff">
       <!-- Trouble spots (player-trouble.js): filled by player.js at the end of a pass; "Loop these" starts a loop on that range -->
@@ -420,7 +435,7 @@
   </div>
 
   <div class="pl-column">
-    <!-- Keyboard: VoicingKeyboard, clickable; player.js adds pl-key--expected / --correct / --wrong / --held -->
+    <!-- Keyboard: VoicingKeyboard, clickable; player.js adds pl-key--expected / --correct / --wrong / --held / --playing -->
     <section class="pl-panel" aria-label="Keyboard">
       <p class="pl-panel__label">Keyboard</p>
       <div class="pl-keyboard-host" id="pl-keyboard">Keyboard appears with the piece.</div>

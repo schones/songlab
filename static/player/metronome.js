@@ -4,8 +4,10 @@
  * Click track and count-in for the player (2b): a lookahead scheduler on
  * the Web Audio clock — Tone's AudioContext, the one Listen's sampler plays
  * on — that is independent of Tone.Transport (VoicingPlayer stops and
- * cancels the Transport on every play / stop) and of the player itself:
- * Listen drives it today, a play-along mode will drive it the same way. No
+ * cancels the Transport on every play / stop) and of the player itself.
+ * Since 3 the player does not use the scheduler below (start / countIn):
+ * its beat clock (beat-clock.js) owns the time and calls click() for each
+ * beat, so the click follows live tempo changes with everything else. No
  * DOM; the scheduler core is Node-runnable with the fake audio adapter the
  * self-test uses.
  *
@@ -35,7 +37,14 @@
  *         `bars` bars of clicks from `at` (default: right away), then nothing —
  *         start() the click at the returned time for the piece itself. A count-in
  *         clicks whether or not the click is on. Replaces a count-in under way.
- *     running            true while anything is scheduled
+ *     click(atAudioTime, { accent = false, countIn = false } = {})
+ *         ONE click at that audio time — how the shared beat clock (beat-clock.js)
+ *         drives the metronome since 3: the clock says when each beat happens, the
+ *         page calls click() from its 'beat' listener (count-in beats always, the
+ *         rest while the Metronome checkbox is on). Mute and volume apply as for a
+ *         run; a time already past is skipped. stop() cancels the ones not yet
+ *         sounded (stop({ countIn: false }) leaves the count-in's).
+ *     running            true while a start() / countIn() run is scheduled
  *
  *   Clock: setInterval every INTERVAL_MS, each tick scheduling the beats that
  *   fall within LOOKAHEAD of context.currentTime — the standard Web Audio
@@ -164,6 +173,7 @@ const realTimer = () => ({
  */
 function createMetronome({ audio = toneAudio(), timer = realTimer() } = {}) {
   const runs = [];      // { kind: 'click' | 'countIn', origin, bpm, pattern, total, k, nextTime, queued: [{ k, time, handle }] }
+  let shots = [];       // click(): [{ time, countIn, handle }] single clicks an outside clock asked for
   let timerId = null;
 
   const ensureTimer = () => { if (timerId == null) timerId = timer.set(tick, INTERVAL_MS); };
@@ -223,6 +233,18 @@ function createMetronome({ audio = toneAudio(), timer = realTimer() } = {}) {
     },
     stop({ countIn = true } = {}) {
       removeRuns(r => countIn || r.kind !== 'countIn');
+      const now = audio.ready() ? audio.now() : 0;
+      for (const s of shots) if ((countIn || !s.countIn) && s.time + CLICK_SECONDS > now) s.handle.cancel();
+      shots = shots.filter(s => !countIn && s.countIn && s.time + CLICK_SECONDS > now);
+    },
+    click(atAudioTime, { accent = false, countIn = false } = {}) {
+      if (!audio.ready() || !Number.isFinite(atAudioTime)) return false;
+      const now = audio.now();
+      shots = shots.filter(s => s.time + CLICK_SECONDS > now);
+      if (atAudioTime < now - EPS || audio.muted()) return false;   // already due, or muted: passes silently
+      const spec = accent ? CLICKS.accent : CLICKS.beat;
+      shots.push({ time: atAudioTime, countIn: !!countIn, handle: audio.click({ time: atAudioTime, freq: spec.freq, gain: spec.gain }) });
+      return true;
     },
     setTempo(bpm) {
       const b = bpmOf(bpm);
@@ -396,6 +418,21 @@ async function selfTest() {
     assert('120 → 30 bpm at t = 3.0: the queued 3.1 is cancelled, the next click is 2 s after 2.6', [cancelled, audio.sounding().slice(-2)], [[3.1], [2.6, 4.6]]);
     m.stop();
     assert('setVolume reaches the adapter, clamped to 0–100', [m.setVolume(150), audio.volume], [undefined, 100]);
+  }
+
+  // click(): single clicks for an outside clock (beat-clock.js)
+  {
+    const audio = fakeAudio(), timer = fakeTimer();
+    const m = createMetronome({ audio, timer });
+    audio.t = 1;
+    assert('click(): one click at the given time, accent or beat; a past time and a muted one are skipped', [m.click(1.1, { accent: true, countIn: true }), m.click(1.6, { countIn: true }), m.click(2.1), m.click(0.5), (audio.mutedFlag = true, m.click(2.6)), audio.played.map(e => [e.time, e.freq])], [true, true, true, false, false, [[1.1, 1600], [1.6, 1000], [2.1, 1000]]]);
+    audio.mutedFlag = false;
+    assert('click() starts no run and no timer', [m.running, timer.fn], [false, null]);
+    audio.t = 1.3;   // 1.1 has sounded
+    m.stop({ countIn: false });
+    assert('stop({ countIn: false }) cancels the plain click only', audio.cancelled, [2.1]);
+    m.stop();
+    assert('stop() cancels the count-in click still to come; the one already sounded is left alone', audio.cancelled, [2.1, 1.6]);
   }
 
   const passed = results.filter(Boolean).length;
