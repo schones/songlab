@@ -33,6 +33,16 @@
   .cos-why:hover { border-bottom-color: var(--accent-blue); }
   .cos-title-group { display: flex; align-items: baseline; gap: 0.25rem; flex-wrap: wrap; }
 
+  /* ── Tutorial (?lesson=N): the lesson line under the title, the step's instruction above the chord ──
+     .cos-page--lesson is set by the page module; [data-drill] parts belong to the lap, [data-lesson] parts to a lesson. */
+  .cos-lesson { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: 1.35rem; font-weight: 800; color: var(--text-secondary); }
+  .cos-lesson[hidden] { display: none; }
+  .cos-lesson__back { font-size: 1.15rem; font-weight: 700; color: var(--accent-blue); text-decoration: none; border-bottom: 2px solid var(--accent-soft); }
+  .cos-lesson__back:hover { border-bottom-color: var(--accent-blue); }
+  .cos-prompt { text-align: center; font-size: 1.7rem; font-weight: 700; line-height: 1.25; text-wrap: balance; color: var(--text-primary); margin: 0.25rem auto; }
+  .cos-page--lesson [data-drill] { display: none !important; }
+  .cos-page:not(.cos-page--lesson) [data-lesson] { display: none !important; }
+
   /* ── Lap summary ─────────────────────────────────────────── */
   .cos-summary {
     margin: 0.5rem auto 0;
@@ -190,7 +200,8 @@
   }
   .cos-cycle { width: 100%; height: auto; aspect-ratio: 1; display: block; }
   .cos-cycle__key { cursor: pointer; }
-  .cos-cycle__key:hover circle, .cos-cycle__key:focus-visible circle { stroke-width: 9; }
+  .cos-cycle__key:not(.cos-cycle__key--static):hover circle, .cos-cycle__key:focus-visible circle { stroke-width: 9; }
+  .cos-cycle__key--static { cursor: default; }   /* a lesson stays in one key: the cycle only shows where home is */
   .cos-cycle__key:focus { outline: none; }
   .cos-settings { margin-top: 1rem; }
 
@@ -243,6 +254,12 @@
       <a href="/" class="game-back-link">&larr; Back</a>
     </div>
 
+    <!-- Tutorial line (shown with ?lesson=N) -->
+    <div class="cos-lesson" id="cos-lesson" hidden>
+      <span id="cos-lesson-title"></span>
+      <a class="cos-lesson__back" id="cos-lesson-back" href="/games/cycle-of-shells">Back to drill</a>
+    </div>
+
     <!-- Start overlay (Tone.js needs a user gesture) -->
     <div id="start-overlay">
       <div class="cos-start-icon">&#9654;</div>
@@ -260,6 +277,9 @@
         <span class="cos-home" id="cos-home"></span>
         <span class="cos-progress" id="cos-progress"></span>
       </div>
+
+      <!-- Tutorial: the step's instruction -->
+      <div class="cos-prompt" id="cos-prompt" hidden></div>
 
       <!-- 2. Target -->
       <div class="cos-target">
@@ -285,17 +305,19 @@
 
       <!-- Lap summary (shown when a lap finishes) -->
       <section class="cos-summary" id="cos-summary" hidden aria-live="polite">
-        <h2 class="cos-summary__title">Lap complete</h2>
+        <h2 class="cos-summary__title" id="cos-summary-title">Lap complete</h2>
         <dl class="cos-summary__grid">
           <dt>Chords played</dt><dd id="sum-chords"></dd>
           <dt>First-try correct</dt><dd id="sum-first"></dd>
           <dt>Follow-up answers correct</dt><dd id="sum-followup"></dd>
-          <dt>Most misses</dt><dd id="sum-keys"></dd>
+          <dt data-drill>Most misses</dt><dd id="sum-keys" data-drill></dd>
           <dt>Common errors</dt><dd id="sum-errors"></dd>
         </dl>
         <div class="game-btn-row">
-          <button class="btn game-btn--primary" id="btn-another">&#8635; Another lap</button>
-          <button class="btn game-btn--secondary" id="btn-startfrom">Start from&hellip;</button>
+          <button class="btn game-btn--primary" id="btn-another" data-drill>&#8635; Another lap</button>
+          <button class="btn game-btn--secondary" id="btn-startfrom" data-drill>Start from&hellip;</button>
+          <button class="btn game-btn--primary" id="btn-lesson-next" data-lesson>Try it in F</button>
+          <button class="btn game-btn--secondary" id="btn-lesson-back" data-lesson>Back to drill</button>
         </div>
       </section>
     </div>
@@ -335,24 +357,28 @@
             <label for="set-pedal">Pedal submits</label>
             <span class="cos-settings__check"><input type="checkbox" id="set-pedal"> <span>Lock in a chord with the sustain pedal</span></span>
 
-            <label for="set-followup">Follow-up questions</label>
-            <span class="cos-settings__check"><input type="checkbox" id="set-followup"> <span>After each phrase, ask which note of the V7 moves and where it goes</span></span>
+            <label for="set-questions" data-drill>Voice-leading questions</label>
+            <select id="set-questions" data-drill>
+              <option value="both">Both changes: ii&rarr;V and V&rarr;I</option>
+              <option value="V-I">V&rarr;I only</option>
+              <option value="off">Off</option>
+            </select>
 
-            <label for="set-hints">Hints</label>
-            <select id="set-hints">
+            <label for="set-hints" data-drill>Hints</label>
+            <select id="set-hints" data-drill>
               <option value="guided">Guided: show the move on the keys</option>
               <option value="names">Names: the path line only</option>
               <option value="none">None</option>
             </select>
 
-            <label for="set-mode">Lap</label>
-            <select id="set-mode">
+            <label for="set-mode" data-drill>Lap</label>
+            <select id="set-mode" data-drill>
               <option value="both">Both forms per key</option>
               <option value="single">One phrase per key</option>
             </select>
 
-            <label for="set-key">Start key</label>
-            <select id="set-key"></select>
+            <label for="set-key" data-drill>Start key</label>
+            <select id="set-key" data-drill></select>
           </div>
         </details>
     </div>
@@ -369,6 +395,7 @@
     window.__cosParams = {
       key: params.get('key') || null,
       mode: params.get('mode') || null,
+      lesson: params.get('lesson') || null,   // tutorial: ?lesson=3
     };
   })();
 </script>

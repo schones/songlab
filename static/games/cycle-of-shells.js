@@ -9,7 +9,8 @@
  *
  * Depends on:
  *   - cycle-of-shells-core.js   → buildLap, describeMove, checkAnswer, createSubmitDetector, noteLabel, phraseRecipe, moveRule,
- *                                 followUp (two-part V7 → I question), checkFollowUp, chordEntry, followUpEntry, summarizeLap, CYCLE
+ *                                 followUp (two-part question, ii → V and V7 → I), checkFollowUp, chordEntry, followUpEntry, summarizeLap, CYCLE
+ *   - cycle-of-shells-lessons.js → buildLesson, stepUpHints, supplyBass, createHoldTracker, lessonTag (tutorial mode)
  *   - cycle-of-shells-log.js    → createResultLog (ResultDetail entries in localStorage)
  *   - cycle-of-shells-input.js  → createShellInput (MIDI)
  *   - cycle-of-shells-staff.js  → staffMEI, heldChord (the staff panel's MEI, pure)
@@ -35,15 +36,18 @@
  * rectangles through data-midi; held notes are drawn as rings on top.
  *
  * Settings (localStorage, prefix 'cycleOfShells.'): mode, startKey, hints,
- * pedalSubmit, echo (per device name), resume ({ index, mode, startKey });
- * the MIDI device name is kept by the input wrapper under
- * 'cycleOfShells.midiDevice'. A legacy hidePath value migrates to hints.
+ * pedalSubmit, questions, echo (per device name), resume ({ index, mode,
+ * startKey }); the MIDI device name is kept by the input wrapper under
+ * 'cycleOfShells.midiDevice'. A legacy hidePath value migrates to hints, a
+ * legacy followUp flag to questions (false → 'off', otherwise 'both').
  *
- * Follow-up question (setting 'followUp', default on): after each correct
- * I chord the page asks a two-part question about V7 → I (core followUp):
- * "Play the note in G7 that has to move." (the V7's 7th), then "Now play
- * where it goes." (the I's 3rd; the right note in another octave than the
- * half step below is accepted with a note), then the explanation line.
+ * Voice-leading questions (setting 'questions': 'both' (default) | 'V-I' |
+ * 'off'): after a correct V chord ('both') and a correct I chord ('both',
+ * 'V-I') the page asks a two-part question about the change just made
+ * (core followUp): "Play the note in G7 that has to move." (the 7th), then
+ * "Now play where it goes." (the next chord's 3rd; the right note in
+ * another octave than the half step below is accepted with a note), then
+ * the explanation line. Log entries carry the change as detail.transition.
  * The guide is hidden while the question is open; one played note answers
  * each part (a second submit detector with minNotes 1), two tries per part
  * (after two misses on part 1 the note is named and part 2 follows), Skip
@@ -64,12 +68,26 @@
  * cycle-of-shells-log.js; the entries of the current lap also feed the
  * lap summary (core summarizeLap) shown when the lap finishes.
  *
+ * Tutorial (?lesson=3): a lesson from cycle-of-shells-lessons.js replaces
+ * the lap. Its steps' targets are walked by the same loop; each step says
+ * what is played ('guides': two notes, the page shows and sounds the root
+ * and puts it under the answer for the checker), which chord the move comes
+ * from (step.prev, not lap[index - 1]), its hint level (turned up one level
+ * per two misses on that step, core-side stepUpHints), whether the common
+ * tone must be kept down through the move (MIDI only: asked for twice
+ * without counting a miss, then let through with a note) and whether the
+ * question is asked — the 'questions' setting does not apply. Nothing of a
+ * lesson is resumed or persisted; the lap's settings rows are hidden. The
+ * end panel offers "Try it in F" (the drill from F, guided, for this
+ * visit) and "Back to drill".
+ *
  * Hooks: `hooks.onAccepted(target, result, submission)` and
  * `hooks.onLapComplete(lap, summary)` are called when set; `getState()`
  * exposes the current target, counters and open question.
  */
 
 import { buildLap, describeMove, checkAnswer, createSubmitDetector, noteLabel, phraseRecipe, moveRule, followUp, checkFollowUp, chordEntry, followUpEntry, summarizeLap, CYCLE } from './cycle-of-shells-core.js';
+import { buildLesson, stepUpHints, supplyBass, createHoldTracker, lessonTag } from './cycle-of-shells-lessons.js';
 import { createResultLog } from './cycle-of-shells-log.js';
 import { createShellInput } from './cycle-of-shells-input.js';
 import { staffMEI, heldChord, COLORS as STAFF_COLORS } from './cycle-of-shells-staff.js';
@@ -97,6 +115,10 @@ const FORM_TEXT = { '3-below': '3rd below 7th', '7-below': '7th below 3rd' };
 const FORM_SHORT = { '3-below': '3rd below', '7-below': '7th below' };
 const PHRASES_PER_KEY = { both: 2, single: 1 };
 const HINT_LEVELS = ['guided', 'names', 'none'];
+const QUESTION_MODES = ['both', 'V-I', 'off'];   // voice-leading questions in the drill: at ii → V and V → I, at V → I only, never
+const HOLD_TRIES = 2;             // lesson 'hold' steps: right notes without the held common tone are sent back this often, then accepted
+const ROOT_SECONDS = 2.5;         // lesson 'guides' steps: how long the supplied root sounds
+const ROOT_RETRIGGER_MS = 1500;   // …and how soon a new attempt may sound it again
 /** Overlay colours: AA text contrast on the page background (#FCFBF8). */
 const GUIDE = { bass: '#7A5607', voicing: '#2D5F8A', ring: '#141210', halo: '#FCFBF8' };
 const GUIDE_FONT = 26;            // label font size in px, bold; colliding labels stagger up a row (GUIDE_ROW) rather than shrink
@@ -122,7 +144,12 @@ const STAFF_THROTTLE_MS = 100;    // held-note re-engravings at most ~10/s
 
 const $ = id => document.getElementById(id);
 
-const settings = { mode: 'both', startKey: 'C', hints: 'guided', pedalSubmit: false, followUp: true };
+const settings = { mode: 'both', startKey: 'C', hints: 'guided', pedalSubmit: false, questions: 'both' };
+let lesson = null;                // tutorial mode: the built lesson (cycle-of-shells-lessons.js); null in the drill
+let holdTracker = null;           // lesson 'hold' steps: follows the common tone through the move
+let holdMisses = 0;               // right notes played without the hold on this step
+let detectorMin = MIN_NOTES;      // minNotes of the current chord detector
+let rootSoundedAt = -Infinity;    // when the supplied root last sounded
 let lap = [];
 let index = 0;
 let misses = 0;
@@ -173,11 +200,23 @@ const store = {
 // ════════════════════════════════════════════════════════════════════
 
 const target = () => lap[index] || null;
+/** Tutorial: the current step, or null in the drill. */
+const step = () => (lesson ? lesson.steps[index] || null : null);
+/** The chord the current one moves from: the step's own in a lesson, the lap's previous target in the drill. */
+const prevTarget = () => (lesson ? (step() ? step().prev : null) : (index > 0 ? lap[index - 1] : null));
+/** The hint level in force: the setting in the drill; in a lesson the step's level, turned up by its misses. */
+const hintLevel = () => (step() ? stepUpHints(step().hints, misses) : settings.hints);
+/** Lesson step where the learner plays the two guide tones and the page supplies the root. */
+const guidesInput = () => !!(step() && step().input === 'guides');
+const logSettings = () => ({ ...settings, hints: hintLevel() });
+const logLesson = () => (step() ? lessonTag(step()) : null);
 /** Display spelling ("C♯4"). Never a sampler name: Tone cannot read ♯ — sampler calls use midiToNoteName. */
 const noteName = midi => { const p = parseNote(midi); return p.name + p.octave; };
 const pcName = name => name.replace(/-?\d+$/, '');
 const capitalize = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const pcOf = m => ((m % 12) + 12) % 12;
+/** Same pitch classes, whatever the octaves. */
+const samePcs = (a, b) => { const x = new Set(a.map(pcOf)), y = new Set(b.map(pcOf)); return x.size === y.size && [...x].every(pc => y.has(pc)); };
 
 /** Spell a midi against the current target's chord (B♭, not A♯); octave by the letter. */
 function spellForTarget(midi, t = target()) {
@@ -215,7 +254,7 @@ function muted() { return !!(window.AudioToggle && window.AudioToggle.isMuted())
 // ════════════════════════════════════════════════════════════════════
 
 function startLap({ resumeIndex = 0 } = {}) {
-  lap = buildLap({ mode: settings.mode, startKey: settings.startKey });
+  lap = lesson ? lesson.steps.map(s => s.target) : buildLap({ mode: settings.mode, startKey: settings.startKey });
   lapEntries = [];
   $('cos-summary').hidden = true;
   goTo(Math.min(Math.max(0, resumeIndex), lap.length - 1));
@@ -232,24 +271,39 @@ function goTo(i) {
   if (detector) detector.reset();
   targetShownAt = now();
   saveResume();
+  enterStep();
   render();
 }
 
-function saveResume() { store.set('resume', { index, mode: settings.mode, startKey: settings.startKey }); }
+function saveResume() { if (!lesson) store.set('resume', { index, mode: settings.mode, startKey: settings.startKey }); }
+
+/** A new target is up: the detector and hold tracker its step asks for, and the supplied root sounded. */
+function enterStep() {
+  const st = step();
+  holdMisses = 0;
+  holdTracker = st && st.hold && st.prev ? createHoldTracker(st.prev, st.target) : null;
+  if (detector && detectorMin !== (st ? st.minNotes : MIN_NOTES)) makeDetector();
+  rootSoundedAt = -Infinity;
+  soundRoot();
+}
 
 function advance() {
   misses = 0; showMe = false; staged.clear();
+  const from = target();
   index++;
   targetShownAt = now();
   if (index >= lap.length) {
     index = lap.length - 1;
     lapComplete = true;
-    store.set('resume', { index: 0, mode: settings.mode, startKey: settings.startKey });
+    holdTracker = null;
+    if (!lesson) store.set('resume', { index: 0, mode: settings.mode, startKey: settings.startKey });
     const summary = summarizeLap(lapEntries);
     renderSummary(summary);
     if (hooks.onLapComplete) hooks.onLapComplete(lap.slice(), summary);
   } else {
     saveResume();
+    enterStep();
+    if (prevTarget() !== from) prevAccepted = null;   // a lesson step that starts afresh: no common tone to coach
   }
   render();
 }
@@ -281,30 +335,69 @@ function jumpToKey(key) {
 function submit(midis, source) {
   const t = target();
   if (!t || lapComplete || question) return;
-  const sorted = [...new Set(midis)].sort((a, b) => a - b);
+  const st = step();
+  const playedNotes = [...new Set(midis)].sort((a, b) => a - b);
+  const heldThrough = holdTracker ? holdTracker.held() : false;
+  if (holdTracker) holdTracker.reset();
+  if (guidesInput() && playedNotes.length < 2) {
+    // One note is not an attempt at the two-note shape: say what is needed, no miss counted, not logged.
+    setFeedback(`${playedNotes.length ? 'Two notes here' : 'Nothing played'}: the 3rd and 7th of ${t.display}. The root, ${noteLabel(pcName(t.bass.name))}, is already there.`, 'info');
+    return;
+  }
+  // 'guides' steps: the page's root goes under the two played notes, so the core checks a shell.
+  const sorted = guidesInput() ? supplyBass(t, playedNotes) : playedNotes;
+  if (st && st.hold && st.prev && source !== 'check' && samePcs(playedNotes, st.prev.upper.map(u => u.midi))) {
+    // The starting shape let go before the move: the first half of the gesture, not a wrong answer.
+    const q = followUp(st.prev, t, DUAL);
+    setFeedback(`That is ${st.prev.display}'s shape. Play it again and keep ${noteLabel(q.stay.name)} down while ${noteLabel(q.move.name)} moves to ${noteLabel(q.land.name)}.`, 'info');
+    return;
+  }
   const result = checkAnswer(t, sorted, prevAccepted, DUAL);
   if (!result.correct && result.errors[0].code === 'TOO_FEW_NOTES' && source !== 'check') {
     // A lone tap or two notes from the keyboard is not an attempt at the shell: say what is needed, no miss counted, not logged.
     setFeedback(result.message, 'info');
     return;
   }
+  const prev = prevTarget();
+  // 'hold' steps (MIDI): the right notes without the common tone kept down are sent back, not counted as a miss and not logged.
+  const unheld = !!(result.correct && st && st.hold && prev && source !== 'check' && !heldThrough);
+  if (unheld && holdMisses < HOLD_TRIES) {
+    holdMisses++;
+    const q = followUp(prev, t, DUAL);
+    const stay = noteLabel(q.stay.name), move = noteLabel(q.move.name), land = noteLabel(q.land.name);
+    setFeedback(`Right notes. Now make it one move: play ${[stay, move].join(' and ')}, keep ${stay} down, and move ${move} to ${land}.`, 'info');
+    $('cos-coaching').textContent = '';
+    return;
+  }
   const attempt = misses + 1;
-  record(chordEntry({ target: t, result, played: sorted, attempt, source, device: input ? input.deviceName : null, showMeUsed: showMe, settings, duration: now() - targetShownAt }));
+  record(chordEntry({ target: t, result, played: sorted, attempt, source, device: input ? input.deviceName : null, showMeUsed: showMe, settings: logSettings(), duration: now() - targetShownAt, lesson: logLesson() }));
   if (result.correct) {
     // The core's message already is the coaching line when there is one; the second line carries any further coaching.
     setFeedback(result.message, 'success');
-    $('cos-coaching').textContent = result.coaching.slice(1).map(c => c.message).join(' ');
+    const notes = result.coaching.slice(1).map(c => c.message);
+    if (unheld) notes.push(`Next time, keep ${noteLabel(followUp(prev, t, DUAL).stay.name)} down through the change.`);
+    $('cos-coaching').textContent = notes.join(' ');
     prevAccepted = sorted.slice(1);
     if (hooks.onAccepted) hooks.onAccepted(t, result, { midis: sorted, source, attempt });
-    if (t.role === 'I' && settings.followUp && index > 0) openQuestion(lap[index - 1], t);
+    if (shouldAsk(t, prev)) openQuestion(prev, t);
     else advance();
     return;
   }
+  const before = hintLevel();
   misses++;
   setFeedback(result.message, 'miss');
-  $('cos-coaching').textContent = '';
+  $('cos-coaching').textContent = lesson && hintLevel() !== before ? 'More help is on for this chord.' : '';
   renderControls();
+  renderPath();
   renderKeyboard();
+}
+
+/** Is the voice-leading question asked after this accepted chord? A lesson step decides for itself; the drill reads the 'questions' setting. */
+function shouldAsk(t, prev) {
+  if (!prev) return false;
+  if (lesson) return !!(step() && step().ask);
+  if (prev.phrase !== t.phrase) return false;
+  return (t.role === 'V' && settings.questions === 'both') || (t.role === 'I' && settings.questions !== 'off');
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -335,7 +428,7 @@ function openLandPart(lead, movedMidi) {
   renderKeyboard();
 }
 
-const followUpLog = extra => record(followUpEntry({ prevTarget: question.prev, target: question.target, question: question.q, part: question.part, settings, duration: now() - question.openedAt, ...extra }));
+const followUpLog = extra => record(followUpEntry({ prevTarget: question.prev, target: question.target, question: question.q, part: question.part, settings: logSettings(), duration: now() - question.openedAt, lesson: logLesson(), ...extra }));
 
 /** One played note (or a staged click) answers the open part of the question. `source` is 'lift', 'pedal' or 'check'. */
 function answerQuestion(midis, source) {
@@ -393,7 +486,7 @@ const keyOrder = () => lap.filter(x => x.role === 'ii' && x.formSlot === 1).map(
 function positionText(t) {
   const order = keyOrder();
   const keyNo = order.indexOf(t.key) + 1;
-  const phrases = PHRASES_PER_KEY[settings.mode];
+  const phrases = lesson ? 1 : PHRASES_PER_KEY[settings.mode];
   return { keyNo, total: order.length, phrases, phraseText: phrases > 1 ? `phrase ${t.formSlot} of ${phrases}` : '' };
 }
 
@@ -402,22 +495,35 @@ function render() {
   if (!t) return;
   const pos = positionText(t);
   const chordNo = ['ii', 'V', 'I'].indexOf(t.role) + 1;
+  const st = step();
+  const show = st ? st.show : { symbol: true, role: true, form: true, home: true };
+  const visible = (id, on) => { $(id).style.visibility = on ? '' : 'hidden'; };
   $('cos-home').textContent = `Home: ${t.keyDisplay}`;
-  $('cos-progress').textContent = lapComplete
-    ? 'Lap complete'
-    : [`Key ${pos.keyNo} of ${pos.total}`, pos.phraseText, `chord ${chordNo} of 3`].filter(Boolean).join(' · ');
+  if (st) {
+    $('cos-progress').textContent = lapComplete
+      ? 'Lesson complete'
+      : [`Round ${st.round} of ${st.roundCount}: ${st.roundTitle}`, st.roundSteps > 1 ? `chord ${st.stepInRound} of ${st.roundSteps}` : ''].filter(Boolean).join(' · ');
+  } else {
+    $('cos-progress').textContent = lapComplete
+      ? 'Lap complete'
+      : [`Key ${pos.keyNo} of ${pos.total}`, pos.phraseText, `chord ${chordNo} of 3`].filter(Boolean).join(' · ');
+  }
   $('cos-symbol').textContent = t.display;
   $('cos-role').textContent = t.role;
   $('cos-form').textContent = FORM_TEXT[t.form];
+  visible('cos-home', show.home); visible('cos-symbol', show.symbol); visible('cos-role', show.role); visible('cos-form', show.form);
+  const prompt = $('cos-prompt');
+  prompt.hidden = !(st && !lapComplete && st.prompt);
+  prompt.textContent = st && !lapComplete ? st.prompt : '';
   renderPath();
   renderKeyboard();
   renderCycle();
   renderControls();
-  if (lapComplete) setFeedback('Lap complete — every key, every shell. Restart to go round again.', 'success');
+  if (lapComplete) setFeedback(lesson ? `Lesson ${lesson.id} complete. ${lesson.done}` : 'Lap complete — every key, every shell. Restart to go round again.', 'success');
 }
 
 function renderControls() {
-  $('btn-show').hidden = !(misses >= MISSES_BEFORE_SHOW_ME && !lapComplete && !question);
+  $('btn-show').hidden = !(misses >= MISSES_BEFORE_SHOW_ME && !lapComplete && !question && !lesson);   // a lesson turns its own hints up instead
   $('btn-skip').hidden = !question;
   $('btn-check').disabled = lapComplete;
   $('cos-pedal-hint').hidden = !settings.pedalSubmit;
@@ -429,30 +535,34 @@ function renderSummary(sum) {
   $('sum-first').textContent = sum.firstTryPct == null ? '—' : `${sum.firstTryPct}%`;
   const partPct = (label, p) => (p && p.answers ? `${label} ${p.pct}%` : null);
   const parts = [partPct('which note moves', sum.followUpParts.move), partPct('where it goes', sum.followUpParts.land)].filter(Boolean).join(' · ');
-  $('sum-followup').textContent = sum.followUpPct == null ? (sum.followUps ? '0%' : 'none asked') : `${sum.followUpPct}% of ${sum.followUps} answers${parts ? ` (${parts})` : ''}`;
+  const changes = [partPct('ii → V', sum.followUpTransitions['ii-V']), partPct('V → I', sum.followUpTransitions['V-I'])].filter(Boolean).join(' · ');
+  const split = [parts, changes].filter(Boolean).join('; ');
+  $('cos-summary-title').textContent = lesson ? `Lesson ${lesson.id} complete` : 'Lap complete';
+  $('sum-followup').textContent = sum.followUpPct == null ? (sum.followUps ? '0%' : 'none asked') : `${sum.followUpPct}% of ${sum.followUps} answers${split ? ` (${split})` : ''}`;
   $('sum-keys').textContent = sum.worstKeys.length ? sum.worstKeys.map(k => `${keyName(k.key)} (${k.misses})`).join(' · ') : 'none — clean lap';
   $('sum-errors').textContent = sum.topErrors.length ? sum.topErrors.map(e => `${e.label}: ${e.count}`).join(' · ') : 'none';
   $('cos-summary').hidden = false;
 }
 
-/** The move from the previous target to the current one, or null on a lap's first chord. */
+/** The move from the previous target to the current one, or null on a lap's first chord (and on a lesson step that starts afresh). */
 function currentMove() {
   const t = target();
-  if (!t || index === 0) return null;
-  const prev = lap[index - 1];
+  const prev = prevTarget();
+  if (!t || !prev) return null;
   return { prev, move: describeMove(prev.upper, t.upper, { form: FORM_SHORT[t.form] }) };
 }
 
 function renderPath() {
   const el = $('cos-path');
-  el.classList.toggle('cos-path--hidden', settings.hints === 'none');
+  const level = hintLevel();
+  el.classList.toggle('cos-path--hidden', level === 'none');
   el.innerHTML = '';
   const t = target();
   if (!t) return;
-  if (settings.hints === 'guided') {
+  if (level === 'guided') {
     // Recipe on a phrase's first chord, the voice-leading rule on the others (core text, dual labels).
     // A new key's first chord gets both: the recipe, then the seam rule beneath it.
-    const prev = index > 0 ? lap[index - 1] : null;
+    const prev = prevTarget();
     if (t.role === 'ii' || !prev) {
       const recipe = phraseRecipe(t, DUAL);
       el.textContent = recipe ? recipe.text : '';
@@ -486,15 +596,21 @@ function renderPath() {
   }
 }
 
+/** Lesson 'guides' step in play: the page shows (and sounds) the root. */
+const suppliedRoot = () => !!(guidesInput() && step().show.root && target() && !question && !lapComplete);
+
 /** Key fills: guided target (or Show me) with held notes as rings; otherwise held/staged notes by role. */
 function renderKeyboard() {
   if (!keyboard) return;
   const t = target();
   if (playing) return;   // setPlaying() owns the keys during Hear it
   const live = [...new Set([...held, ...staged])].sort((a, b) => a - b);
-  const guideOn = settings.hints === 'guided' && !lapComplete && !question;
+  const guideOn = hintLevel() === 'guided' && !lapComplete && !question;
   if ((guideOn || (showMe && !question)) && t) {
     keyboard.render({ bass: t.bass.name, voicing: t.upper.map(u => u.name) });
+  } else if (suppliedRoot()) {
+    // Lesson 'guides' step without the guide: the root the page supplies stays lit; everything played is right hand.
+    keyboard.render({ bass: t.bass.name, voicing: live.map(m => spellForTarget(m)) });
   } else {
     keyboard.render(live.length ? { bass: spellForTarget(live[0]), voicing: live.slice(1).map(m => spellForTarget(m)) } : {});
   }
@@ -538,7 +654,7 @@ function drawGuide() {
   svg.setAttribute('height', s.height);
   const t = target();
   const items = [];   // { kind: 'stay'|'move'|'tag', midi|from/to, label, color }
-  if (t && settings.hints === 'guided' && !lapComplete && !question) {
+  if (t && hintLevel() === 'guided' && !lapComplete && !question) {
     const cm = currentMove();
     if (!cm) {
       items.push({ kind: 'tag', midi: t.bass.midi, label: 'root', color: GUIDE.bass });
@@ -647,8 +763,11 @@ function renderCycle() {
     const ang = -Math.PI / 2 + (i * Math.PI * 2) / 12;
     const x = c + ring * Math.cos(ang), y = c + ring * Math.sin(ang);
     const current = key.key === t.key;
-    const done = !current && lastIndexOfKey(key.key) < index;
-    const g = svgEl('g', { class: `cos-cycle__key${current ? ' cos-cycle__key--current' : ''}${done ? ' cos-cycle__key--done' : ''}`, role: 'button', tabindex: 0, 'aria-label': `Go to ${label}${done ? ' (done)' : current ? ' (current)' : ''}` });
+    const last = lastIndexOfKey(key.key);
+    const done = !current && last >= 0 && last < index;   // a key outside the lap (a lesson stays in one key) is never done
+    const g = lesson
+      ? svgEl('g', { class: `cos-cycle__key cos-cycle__key--static${current ? ' cos-cycle__key--current' : ''}` })
+      : svgEl('g', { class: `cos-cycle__key${current ? ' cos-cycle__key--current' : ''}${done ? ' cos-cycle__key--done' : ''}`, role: 'button', tabindex: 0, 'aria-label': `Go to ${label}${done ? ' (done)' : current ? ' (current)' : ''}` });
     g.appendChild(svgEl('circle', { cx: x, cy: y, r, fill: current ? '#2D5F8A' : done ? '#E3F2DF' : '#FFFFFF', stroke: current ? '#2D5F8A' : done ? '#1E7B34' : '#8E877A', 'stroke-width': (done || current ? 2 : 1.25) * stroke }));
     g.appendChild(svgEl('text', { x, y: y + font * 0.36, 'text-anchor': 'middle', 'font-size': font, 'font-weight': 800, fill: current ? '#FFFFFF' : done ? '#155F27' : '#2B2824', 'font-family': 'inherit' }, label));
     if (current && pos.phrases > 1) {
@@ -656,8 +775,10 @@ function renderCycle() {
       g.appendChild(svgEl('text', { x: bx, y: by + badgeFont * 0.36, 'text-anchor': 'middle', 'font-size': badgeFont, 'font-weight': 800, fill: '#2D5F8A', 'font-family': 'inherit', class: 'cos-cycle__phrase' }, `${t.formSlot}/${pos.phrases}`));
     }
     const go = () => { if (key.key === t.key && index === lap.findIndex(x => x.key === key.key)) return; if (window.confirm(`Jump to ${label}? The current key is left where it is.`)) jumpToKey(key.key); };
-    g.addEventListener('click', go);
-    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    if (!lesson) {
+      g.addEventListener('click', go);
+      g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    }
     svg.appendChild(g);
   });
 }
@@ -685,14 +806,15 @@ function loadVerovio() {
 /** What the staff shows now: the targets (guided hints), else the notes being held. */
 function staffScene() {
   const t = target();
-  const guideOn = settings.hints === 'guided' && !lapComplete && !question;
+  const guideOn = hintLevel() === 'guided' && !lapComplete && !question;
   if (guideOn && t) {
-    const prev = index > 0 ? lap[index - 1] : null;
+    const prev = prevTarget();
     const chord = x => ({ bass: x.bass.name, voicing: x.upper.map(u => u.name) });
     const names = x => [x.bass.name, ...x.upper.map(u => u.name)].join(' ');
     return { slots: 2, chords: [prev ? { ...chord(prev), dim: true } : null, chord(t)], label: `${prev ? `${prev.display} (${names(prev)}), then ` : ''}${t.display}: ${names(t)}` };
   }
   const live = [...new Set([...held, ...staged])].sort((a, b) => a - b).map(m => spellForTarget(m));
+  if (suppliedRoot()) return { slots: 1, chords: [{ bass: t.bass.name, voicing: live }], label: `Root ${t.bass.name}${live.length ? `, held notes: ${live.join(' ')}` : ''}` };
   return { slots: 1, chords: [heldChord(live)], label: live.length ? `Held notes: ${live.join(' ')}` : 'Nothing held' };
 }
 
@@ -749,6 +871,14 @@ function echoOff(midi) {
   if (sampler) sampler.triggerRelease(midiToNoteName(midi));
 }
 
+/** Lesson 'guides' steps: sound the root the page supplies (when a step appears, and again under a new attempt). */
+function soundRoot() {
+  const t = target();
+  if (!audioStarted || !t || !suppliedRoot() || muted()) return;
+  rootSoundedAt = now();
+  ensureSampler().then(s => { if (s && target() === t && suppliedRoot()) s.triggerAttackRelease(midiToNoteName(t.bass.midi), ROOT_SECONDS, undefined, ECHO_VELOCITY); });
+}
+
 async function hearIt() {
   const t = target();
   if (!t || !player) return;
@@ -773,7 +903,8 @@ async function hearIt() {
 // ════════════════════════════════════════════════════════════════════
 
 function makeDetector() {
-  detector = createSubmitDetector({ minNotes: MIN_NOTES, settleMs: SETTLE_MS, pedalSubmit: settings.pedalSubmit });
+  detectorMin = step() ? step().minNotes : MIN_NOTES;   // two notes on a lesson's 'guides' steps
+  detector = createSubmitDetector({ minNotes: detectorMin, settleMs: SETTLE_MS, pedalSubmit: settings.pedalSubmit });
 }
 
 const activeDetector = () => (question ? fuDetector : detector);
@@ -782,14 +913,17 @@ function onSubmission(sub) {
   if (question) answerQuestion(sub.midis, sub.source); else submit(sub.midis, sub.source);
 }
 function onMidiNoteOn(midi, t) {
+  if (held.size === 0 && now() - rootSoundedAt > ROOT_RETRIGGER_MS) soundRoot();   // a new attempt: the root under it again
   held.add(midi);
   echoOn(midi);
+  if (holdTracker && !question) holdTracker.noteOn(midi);
   activeDetector().noteOn(midi, t);
   renderKeyboard();
 }
 function onMidiNoteOff(midi, t) {
   held.delete(midi);
   echoOff(midi);
+  if (holdTracker && !question) holdTracker.noteOff(midi);
   const sub = activeDetector().noteOff(midi, t);
   renderKeyboard();
   onSubmission(sub);
@@ -846,7 +980,15 @@ function loadSettings(params) {
   settings.mode = store.get('mode', 'both') === 'single' ? 'single' : 'both';
   settings.startKey = normaliseKey(store.get('startKey', 'C')) || 'C';
   settings.pedalSubmit = !!store.get('pedalSubmit', false);
-  settings.followUp = store.get('followUp', true) !== false;
+  // Voice-leading questions, with migration from the followUp flag (false → off, otherwise both), then dropped.
+  let questions = store.get('questions', null);
+  const legacyFollowUp = store.get('followUp', null);
+  if (!QUESTION_MODES.includes(questions)) {
+    questions = legacyFollowUp === false ? 'off' : 'both';
+    if (legacyFollowUp !== null) store.set('questions', questions);
+  }
+  if (legacyFollowUp !== null) store.remove('followUp');
+  settings.questions = questions;
   // Hints, with migration from the Stage 3 hidePath flag (true → none, false → guided), then dropped.
   let hints = store.get('hints', null);
   const legacy = store.get('hidePath', null);
@@ -864,6 +1006,15 @@ function loadSettings(params) {
   return { fromUrl: !!(urlKey || urlMode) };
 }
 
+/** Put the settings' values on their controls. */
+function syncSettingsControls() {
+  $('set-key').value = settings.startKey;
+  $('set-mode').value = settings.mode;
+  $('set-hints').value = settings.hints;
+  $('set-pedal').checked = settings.pedalSubmit;
+  $('set-questions').value = settings.questions;
+}
+
 function wireSettings() {
   const keySel = $('set-key');
   for (const k of CYCLE) {
@@ -871,13 +1022,12 @@ function wireSettings() {
     o.value = k.key; o.textContent = parseNote(k.key).name;
     keySel.appendChild(o);
   }
-  keySel.value = settings.startKey;
-  $('set-mode').value = settings.mode;
-  $('set-hints').value = settings.hints;
-  $('set-pedal').checked = settings.pedalSubmit;
-  $('set-followup').checked = settings.followUp;
+  syncSettingsControls();
 
-  $('set-followup').addEventListener('change', e => { settings.followUp = e.target.checked; store.set('followUp', settings.followUp); });
+  $('set-questions').addEventListener('change', e => {
+    settings.questions = QUESTION_MODES.includes(e.target.value) ? e.target.value : 'both';
+    store.set('questions', settings.questions);
+  });
   $('cos-settings').addEventListener('toggle', () => { if ($('cos-settings').open) { refreshDeviceList(); refreshEchoControl(); } });
   $('set-device').addEventListener('change', e => { if (input && e.target.value) { input.selectDevice(e.target.value); refreshEchoControl(); } });
   $('set-echo').addEventListener('change', e => { setEcho(e.target.checked); if (!e.target.checked) for (const m of [...echoing]) echoOff(m); });
@@ -910,8 +1060,42 @@ function wireSettings() {
 // INIT
 // ════════════════════════════════════════════════════════════════════
 
+/** Tutorial chrome: the lesson line under the title, lesson-only / drill-only parts (CSS on .cos-page--lesson), the restart button's name. */
+function applyLessonChrome() {
+  const page = document.querySelector('.cos-page');
+  if (page) page.classList.toggle('cos-page--lesson', !!lesson);
+  $('cos-lesson').hidden = !lesson;
+  $('cos-lesson-title').textContent = lesson ? `Lesson ${lesson.id}: ${lesson.title}` : '';
+  $('cos-lesson-back').href = window.location.pathname;
+  $('btn-restart').textContent = lesson ? '↻ Restart lesson' : '↻ Restart lap';
+  if (!lesson) { const prompt = $('cos-prompt'); prompt.hidden = true; prompt.textContent = ''; }
+}
+
+/**
+ * Leave the lesson for the drill without reloading (audio and MIDI stay up).
+ * `over` ({ key, hints }) overrides the remembered lap for this visit, as URL
+ * params do: nothing of it is persisted. Without it the drill resumes where
+ * it was left.
+ */
+function exitLesson(over = null) {
+  lesson = null; holdTracker = null;
+  applyLessonChrome();
+  loadSettings(null);
+  const key = over && normaliseKey(over.key);
+  if (key) settings.startKey = key;
+  if (over && HINT_LEVELS.includes(over.hints)) settings.hints = over.hints;
+  syncSettingsControls();
+  makeDetector();
+  try { window.history.replaceState(null, '', window.location.pathname + (key ? `?key=${encodeURIComponent(key)}` : '')); } catch (_) { /* the address bar keeps ?lesson= */ }
+  const resume = store.get('resume', null);
+  const canResume = !over && resume && resume.mode === settings.mode && resume.startKey === settings.startKey;
+  startLap({ resumeIndex: canResume ? resume.index : 0 });
+}
+
 export function init(params = null) {
   const { fromUrl } = loadSettings(params);
+  lesson = params && params.lesson ? buildLesson(params.lesson) : null;   // an unknown lesson number falls back to the drill
+  applyLessonChrome();
   keyboard = new VoicingKeyboard('cos-keyboard', { ...KEYBOARD_RANGE, height: KEYBOARD_HEIGHT, minKeyWidth: KEYBOARD_MIN_KEY, ariaLabel: 'Keyboard for playing the shell', onKeyClick });
   player = new VoicingPlayer();
   makeDetector();
@@ -930,6 +1114,8 @@ export function init(params = null) {
   $('btn-startfrom').addEventListener('click', () => { $('cos-settings').open = true; $('set-key').focus(); $('set-key').scrollIntoView({ block: 'center' }); });
   $('btn-show').addEventListener('click', () => { showMe = true; renderKeyboard(); setFeedback(`${target().display}: ${noteLabel(target().bass.name)} under ${target().upper.map(u => noteLabel(u.name)).join(' ')}. Now you play it.`, 'info'); });
   $('btn-restart').addEventListener('click', () => startLap());
+  $('btn-lesson-next').addEventListener('click', () => exitLesson({ key: 'F', hints: 'guided' }));
+  $('btn-lesson-back').addEventListener('click', () => exitLesson());
 
   $('start-overlay').addEventListener('click', async () => {
     if (audioStarted) return;
@@ -942,7 +1128,7 @@ export function init(params = null) {
     ensureSampler();   // preload the piano for Hear it and echo; not awaited
     // Resume where the player left off, unless the URL asked for a different lap.
     const resume = store.get('resume', null);
-    const canResume = resume && resume.mode === settings.mode && resume.startKey === settings.startKey && !fromUrl;
+    const canResume = !lesson && resume && resume.mode === settings.mode && resume.startKey === settings.startKey && !fromUrl;
     startLap({ resumeIndex: canResume ? resume.index : 0 });
   });
 }
@@ -950,7 +1136,8 @@ export function init(params = null) {
 /** Current state for Stage 4 (follow-up question, logging, links) and tests. */
 export function getState() {
   return { index, target: target(), lapLength: lap.length, misses, showMe, lapComplete, settings: { ...settings }, held: [...held], staged: [...staged], deviceName: input ? input.deviceName : null,
-    question: question ? { part: question.part, prompt: questionPart().prompt, attempt: question.attempt, answer: questionPart().answerName } : null, lapEntries: lapEntries.length,
+    question: question ? { part: question.part, transition: question.q.transition, prompt: questionPart().prompt, attempt: question.attempt, answer: questionPart().answerName } : null, lapEntries: lapEntries.length,
+    hints: hintLevel(), lesson: lesson && step() ? { id: lesson.id, step: index, round: step().round, input: step().input, hold: step().hold, ask: step().ask, holdMisses } : null,
     staff: { loadMs: staffLoadMs, scene: staffKey ? JSON.parse(staffKey) : null, state: $('cos-staff') ? $('cos-staff').dataset.state : null } };
 }
 

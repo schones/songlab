@@ -16,14 +16,16 @@
  *   describeMove(prevUpper, upper, opts?)         → { kind: 'step'|'replace', voices, summary }
  *   checkAnswer(target, heldMidis, prevPlayedUpper?) → { correct, errors, coaching, message, played }
  *   createSubmitDetector({ minNotes, settleMs, pedalSubmit }) → { noteOn, noteOff, pedal, reset, held }
- *   followUp(vTarget, iTarget, opts?)             → the two-part V7 → I question: { from, to, move, land, stay, parts:[move, land], explanation, ok }
+ *   followUp(fromTarget, toTarget, opts?)         → the two-part voice-leading question for ii → V or V7 → I: { from, to, transition:'ii-V'|'V-I'|null, move, land, stay, parts:[move, land], explanation, ok }
  *   noteLabel(name)                               → "C♭4 (B3)" for awkward spellings, else the name unchanged
  *   phraseRecipe(target, opts?)                   → recipe line for a phrase's first chord, or null
  *   moveRule(prevTarget, target, opts?)           → { kind: 'fall'|'seam'|'replace', ok, text } for every other chord
  *   (checkAnswer, describeMove, followUp, phraseRecipe and moveRule take opts.dual to format note names with noteLabel)
  *   checkFollowUp(question, part, midi, opts?)    → { correct, message, octaveOff } for one played note against part 'move' or 'land'
- *   chordEntry({...}) / followUpEntry({...})      → ResultDetail envelopes (gameId 'cycle-of-shells') for the result log
- *   summarizeLap(entries)                         → { chords, attempts, firstTryPct, followUps, followUpPct, followUpParts, worstKeys, topErrors }
+ *   chordEntry({...}) / followUpEntry({...})      → ResultDetail envelopes (gameId 'cycle-of-shells') for the result log;
+ *                                                   follow-up entries carry detail.transition, both take an optional `lesson` tag
+ *   summarizeLap(entries)                         → { chords, attempts, firstTryPct, followUps, followUpPct, followUpParts, followUpTransitions, worstKeys, topErrors }
+ *   FOLLOW_UP_TRANSITIONS                         → ['ii-V', 'V-I']
  *   ERROR_WORDS                                   → error code → plain words ("wrong quality")
  *   CYCLE, FORMS, PREFERRED_BAND, OUTER_BAND, BASS_OCTAVE, selfTest
  *
@@ -510,11 +512,16 @@ function createSubmitDetector({ minNotes = 3, settleMs = 150, pedalSubmit = fals
 // ════════════════════════════════════════════════════════════════════
 
 const FOLLOW_UP_PARTS = ['move', 'land'];
+const FOLLOW_UP_TRANSITIONS = ['ii-V', 'V-I'];
 
 /**
- * The two-part question asked after a completed ii–V–I, about V7 → I:
+ * The two-part question about one change inside a ii–V–I. Asked about V7 → I:
  *   part 'move'  "Play the note in G7 that has to move."  → the 7th of the V7
  *   part 'land'  "Now play where it goes."               → the 3rd of the I
+ * and, in the same words, about ii → V ("Play the note in Dm7 that has to
+ * move." → Dm7's 7th, C, which falls to B, G7's 3rd; its 3rd, F, stays as
+ * G7's 7th). `transition` names the change by the two targets' roles:
+ * 'ii-V', 'V-I', or null for any other pair.
  * Each part is answered by playing one note; any octave is accepted
  * (checkFollowUp). Names are chord-relative, so they follow the key
  * (D♭7 → G♭maj7: C♭ falls to B♭); opts.dual labels awkward ones "C♭ (B)"
@@ -523,8 +530,8 @@ const FOLLOW_UP_PARTS = ['move', 'land'];
  * carries such a hint; then every name in the line goes between commas:
  * "The 7th of D♭7, C♭ (B), falls a half step to the 3rd of G♭maj7, B♭."
  * `ok` reports whether the rule holds for the pair (7th down a half step
- * onto the 3rd, 3rd held as the 7th) — true for every V → I of the cycle.
- * @returns {{ from, to, fromParsed, toParsed,
+ * onto the 3rd, 3rd held as the 7th) — true for every ii → V and V → I of the cycle.
+ * @returns {{ from, to, transition, fromParsed, toParsed,
  *             move:{pc,name}, land:{pc,name}, stay:{pc,name},
  *             parts:Array<{ id:'move'|'land', prompt, answerPC, answerName }>, explanation, ok }}
  */
@@ -538,8 +545,9 @@ function followUp(vTarget, iTarget, opts = {}) {
   // A name with an enharmonic hint ("C♭ (B)") already has brackets: the whole line then sets its note names off with commas instead.
   const m = nl(move.name), l = nl(land.name), st = nl(stay.name);
   const hinted = [m, l, st].some(x => x.includes('('));
+  const pair = `${vTarget.role}-${iTarget.role}`;
   return {
-    from, to, fromParsed: v.parsed, toParsed: i.parsed, move, land, stay,
+    from, to, transition: FOLLOW_UP_TRANSITIONS.includes(pair) ? pair : null, fromParsed: v.parsed, toParsed: i.parsed, move, land, stay,
     parts: [
       { id: 'move', prompt: `Play the note in ${from} that has to move.`, answerPC: move.pc, answerName: move.name },
       { id: 'land', prompt: 'Now play where it goes.', answerPC: land.pc, answerName: land.name },
@@ -661,18 +669,18 @@ const difficultyOf = settings => ({ lapMode: settings.mode, hints: settings.hint
 
 /**
  * One chord submission as a log entry.
- * @param {{ target, result, played:number[], attempt:number, source:'lift'|'pedal'|'check', device?:string|null, showMeUsed?:boolean, settings, duration?:number, timestamp?:string }} a
+ * `lesson` (tutorial steps only) is stored as detail.lesson, e.g. { id, round, step, input }; drill entries carry no such field.
+ * @param {{ target, result, played:number[], attempt:number, source:'lift'|'pedal'|'check', device?:string|null, showMeUsed?:boolean, settings, duration?:number, timestamp?:string, lesson?:object|null }} a
  */
-function chordEntry({ target, result, played, attempt, source, device = null, showMeUsed = false, settings, duration = 0, timestamp }) {
-  return resultEnvelope({
-    timestamp, mode: 'practice', difficulty: difficultyOf(settings), duration, correct: result.correct,
-    detail: {
-      kind: 'chord', key: target.key, symbol: target.display, role: target.role, form: target.form, band: target.band,
-      target: { bass: target.bass.midi, upper: target.upper.map(u => u.midi) },
-      played: sortNum([...played]), errors: result.errors.map(e => e.code), coaching: result.coaching.map(c => c.code),
-      attempt, source, device, showMeUsed: !!showMeUsed,
-    },
-  });
+function chordEntry({ target, result, played, attempt, source, device = null, showMeUsed = false, settings, duration = 0, timestamp, lesson = null }) {
+  const detail = {
+    kind: 'chord', key: target.key, symbol: target.display, role: target.role, form: target.form, band: target.band,
+    target: { bass: target.bass.midi, upper: target.upper.map(u => u.midi) },
+    played: sortNum([...played]), errors: result.errors.map(e => e.code), coaching: result.coaching.map(c => c.code),
+    attempt, source, device, showMeUsed: !!showMeUsed,
+  };
+  if (lesson) detail.lesson = lesson;
+  return resultEnvelope({ timestamp, mode: 'practice', difficulty: difficultyOf(settings), duration, correct: result.correct, detail });
 }
 
 /**
@@ -680,12 +688,15 @@ function chordEntry({ target, result, played, attempt, source, device = null, sh
  * Each part is logged on its own: detail.part is 'move' or 'land', detail.answer the
  * note that part asks for. `octaveOff` (part 'land' only) marks a right note played in
  * another octave than the half step below the note played for part 'move'.
- * @param {{ prevTarget, target, question, part:'move'|'land', played:number|null, attempt:number, skipped?:boolean, correct?:boolean, octaveOff?:boolean, settings, duration?:number, timestamp?:string }} a
+ * detail.transition is the question's change: 'ii-V' or 'V-I' (null for any other pair).
+ * `lesson` as in chordEntry.
+ * @param {{ prevTarget, target, question, part:'move'|'land', played:number|null, attempt:number, skipped?:boolean, correct?:boolean, octaveOff?:boolean, settings, duration?:number, timestamp?:string, lesson?:object|null }} a
  */
-function followUpEntry({ prevTarget, target, question, part, played = null, attempt, skipped = false, correct = false, octaveOff = false, settings, duration = 0, timestamp }) {
+function followUpEntry({ prevTarget, target, question, part, played = null, attempt, skipped = false, correct = false, octaveOff = false, settings, duration = 0, timestamp, lesson = null }) {
   const asked = question ? question.parts.find(x => x.id === part) : null;
-  const detail = { kind: 'followUp', part, key: target.key, from: prevTarget.display, to: target.display, answer: asked ? asked.answerName : null, played, attempt, skipped: !!skipped };
+  const detail = { kind: 'followUp', part, transition: (question && question.transition) || null, key: target.key, from: prevTarget.display, to: target.display, answer: asked ? asked.answerName : null, played, attempt, skipped: !!skipped };
   if (part === 'land') detail.octaveOff = !skipped && !!correct && !!octaveOff;
+  if (lesson) detail.lesson = lesson;
   return resultEnvelope({ timestamp, mode: 'practice', difficulty: difficultyOf(settings), duration, correct: !skipped && !!correct, detail });
 }
 
@@ -693,10 +704,12 @@ function followUpEntry({ prevTarget, target, question, part, played = null, atte
  * Summary of one lap's entries (chord and follow-up entries, any order).
  * @returns {{ chords:number, attempts:number, firstTryPct:number|null, followUps:number, followUpPct:number|null,
  *             followUpParts:{ move:{answers, pct}, land:{answers, pct} },
+ *             followUpTransitions:{ 'ii-V':{answers, pct}, 'V-I':{answers, pct} },
  *             worstKeys:Array<{key, misses}>, topErrors:Array<{code, label, count}> }}
  *   chords = targets answered correctly; firstTryPct = share of those answered on attempt 1;
  *   followUps = follow-up answers over both parts (skips included), followUpPct = share of them correct,
- *   followUpParts = the same per part (entries from before the two-part question carry no part and count only in the total); worstKeys = up to three keys with the most
+ *   followUpParts = the same per part (entries from before the two-part question carry no part and count only in the total);
+ *   followUpTransitions = the same per change, ii → V and V → I (entries from before the ii → V question carry no transition and count only in the total); worstKeys = up to three keys with the most
  *   wrong chord submissions; topErrors = up to five error codes by count over wrong submissions, in plain words.
  */
 function summarizeLap(entries) {
@@ -717,6 +730,7 @@ function summarizeLap(entries) {
     firstTryPct: pct(correct.filter(e => e.detail.attempt === 1).length, correct.length),
     followUps: fus.length, followUpPct: pct(fus.filter(e => e.correct).length, fus.length),
     followUpParts: Object.fromEntries(FOLLOW_UP_PARTS.map(part => { const of = fus.filter(e => e.detail.part === part); return [part, { answers: of.length, pct: pct(of.filter(e => e.correct).length, of.length) }]; })),
+    followUpTransitions: Object.fromEntries(FOLLOW_UP_TRANSITIONS.map(tr => { const of = fus.filter(e => e.detail.transition === tr); return [tr, { answers: of.length, pct: pct(of.filter(e => e.correct).length, of.length) }]; })),
     worstKeys, topErrors,
   };
 }
@@ -728,7 +742,7 @@ function summarizeLap(entries) {
 export {
   buildLap, describeMove, checkAnswer, createSubmitDetector, followUp, shellTones,
   noteLabel, phraseRecipe, moveRule,
-  checkFollowUp, chordEntry, followUpEntry, summarizeLap, ERROR_WORDS, GAME_ID, FOLLOW_UP_PARTS,
+  checkFollowUp, chordEntry, followUpEntry, summarizeLap, ERROR_WORDS, GAME_ID, FOLLOW_UP_PARTS, FOLLOW_UP_TRANSITIONS,
   CYCLE, FORMS, PREFERRED_BAND, OUTER_BAND, BASS_OCTAVE, selfTest,
 };
 
@@ -989,9 +1003,9 @@ async function selfTest() {
   const wrongEntry = chordEntry({ target: dm7, result: wq, played: [38, 54, 60], attempt: 2, source: 'check', settings: st, showMeUsed: true });
   assert('chordEntry: wrong answer carries the codes, showMeUsed, a fresh ISO timestamp', [wrongEntry.correct, wrongEntry.detail.errors, wrongEntry.detail.showMeUsed, wrongEntry.detail.device, /^\d{4}-\d{2}-\d{2}T/.test(wrongEntry.timestamp)], [false, ['WRONG_QUALITY'], true, null, true]);
   const fuEntry = followUpEntry({ prevTarget: g7, target: cmaj7, question: fuq, part: 'move', played: 65, attempt: 1, correct: true, settings: st, duration: 800 });
-  assert('followUpEntry: part move detail', [fuEntry.correct, fuEntry.detail], [true, { kind: 'followUp', part: 'move', key: 'C', from: 'G7', to: 'Cmaj7', answer: 'F', played: 65, attempt: 1, skipped: false }]);
+  assert('followUpEntry: part move detail', [fuEntry.correct, fuEntry.detail], [true, { kind: 'followUp', part: 'move', transition: 'V-I', key: 'C', from: 'G7', to: 'Cmaj7', answer: 'F', played: 65, attempt: 1, skipped: false }]);
   const landEntry = followUpEntry({ prevTarget: g7, target: cmaj7, question: fuq, part: 'land', played: 52, attempt: 1, correct: true, octaveOff: true, settings: st, duration: 600 });
-  assert('followUpEntry: part land detail (its own entry, answer E, octaveOff)', [landEntry.correct, landEntry.detail], [true, { kind: 'followUp', part: 'land', key: 'C', from: 'G7', to: 'Cmaj7', answer: 'E', played: 52, attempt: 1, skipped: false, octaveOff: true }]);
+  assert('followUpEntry: part land detail (its own entry, answer E, octaveOff)', [landEntry.correct, landEntry.detail], [true, { kind: 'followUp', part: 'land', transition: 'V-I', key: 'C', from: 'G7', to: 'Cmaj7', answer: 'E', played: 52, attempt: 1, skipped: false, octaveOff: true }]);
   const landMiss = followUpEntry({ prevTarget: g7, target: cmaj7, question: fuq, part: 'land', played: 53, attempt: 1, correct: false, octaveOff: true, settings: st });
   assert('followUpEntry: a wrong land answer is never octaveOff', [landMiss.correct, landMiss.detail.octaveOff], [false, false]);
   const skipEntry = followUpEntry({ prevTarget: g7, target: cmaj7, question: fuq, part: 'land', attempt: 1, skipped: true, settings: st });
@@ -1001,10 +1015,32 @@ async function selfTest() {
     chordEntry({ target: gm7, result: checkAnswer(gm7, [n('G2'), n('F3'), n('B♭3')]), played: [43, 53, 58], attempt: 1, source: 'lift', settings: st }),
     fuEntry, landEntry, landMiss, skipEntry];
   assert('summarizeLap: counts, percentages, worst keys, errors in plain words', summarizeLap(sumIn),
-    { chords: 3, attempts: 5, firstTryPct: 67, followUps: 4, followUpPct: 50, followUpParts: { move: { answers: 1, pct: 100 }, land: { answers: 3, pct: 33 } }, worstKeys: [{ key: 'C', misses: 1 }, { key: 'F', misses: 1 }],
+    { chords: 3, attempts: 5, firstTryPct: 67, followUps: 4, followUpPct: 50, followUpParts: { move: { answers: 1, pct: 100 }, land: { answers: 3, pct: 33 } }, followUpTransitions: { 'ii-V': { answers: 0, pct: null }, 'V-I': { answers: 4, pct: 50 } }, worstKeys: [{ key: 'C', misses: 1 }, { key: 'F', misses: 1 }],
       topErrors: [{ code: 'WRONG_FORM', label: 'wrong form (3rd and 7th swapped)', count: 1 }, { code: 'WRONG_QUALITY', label: 'wrong quality', count: 1 }, { code: 'WRONG_ROOT', label: 'wrong root', count: 1 }] });
-  assert('summarizeLap: empty lap → nulls', summarizeLap([]), { chords: 0, attempts: 0, firstTryPct: null, followUps: 0, followUpPct: null, followUpParts: { move: { answers: 0, pct: null }, land: { answers: 0, pct: null } }, worstKeys: [], topErrors: [] });
+  assert('summarizeLap: empty lap → nulls', summarizeLap([]), { chords: 0, attempts: 0, firstTryPct: null, followUps: 0, followUpPct: null, followUpParts: { move: { answers: 0, pct: null }, land: { answers: 0, pct: null } }, followUpTransitions: { 'ii-V': { answers: 0, pct: null }, 'V-I': { answers: 0, pct: null } }, worstKeys: [], topErrors: [] });
   assert('summarizeLap: a follow-up entry from before the two-part question (no part) still counts in the total', (s => [s.followUps, s.followUpPct, s.followUpParts.move.answers])(summarizeLap([{ correct: true, detail: { kind: 'followUp', key: 'C' } }, fuEntry])), [2, 100, 1]);
+
+  // ── Tutorial Stage 1: the question at both changes, transition in the log and the summary ──
+  const fu2 = followUp(dm7, g7);
+  assert('followUp Dm7 → G7: transition ii-V; C moves, lands on B, F stays; the rule holds', [fu2.transition, fu2.parts.map(x => [x.id, x.prompt, x.answerName]), fu2.stay.name, fu2.ok],
+    ['ii-V', [['move', 'Play the note in Dm7 that has to move.', 'C'], ['land', 'Now play where it goes.', 'B']], 'F', true]);
+  assert('…explanation', fu2.explanation, 'The 7th of Dm7 (C) falls a half step to the 3rd of G7 (B). The 3rd of Dm7 (F) stays and becomes the 7th of G7.');
+  assert('followUp transition: V-I for G7 → Cmaj7, null for any other pair (a seam, targets without roles)', [fu.transition, followUp(cmaj7, gm7).transition, followUp({ symbol: 'G7' }, { symbol: 'Cmaj7' }).transition], ['V-I', null, null]);
+  assert('followUp ii → V, both lap: the rule holds for every ii → V in either form (24 phrases)', both.filter(t => t.role === 'V').every(t => { const f = followUp(both[t.index - 1], t); return f.ok && f.transition === 'ii-V'; }), true);
+  assert('followUp ii → V, all 12 keys: no ♯ in a flat key, no ♭ in a sharp key, no double accidentals',
+    CYCLE.every(k => { const ts = single.filter(t => t.key === k.key), f = followUp(ts[0], ts[1]); const names = f.move.name + f.land.name + f.stay.name; const flat = /b/.test(k.key) || k.key === 'F'; const sharp = ['B', 'E', 'A', 'D', 'G'].includes(k.key); return !(flat && /♯/.test(names)) && !(sharp && /♭/.test(names)) && !/♯♯|♭♭/.test(names); }), true);
+  assert('followUp ii → V dual, A♭m7 → D♭7: C♭ (B) stays, so the line uses commas', followUp(abm7, db7, { dual: true }).explanation,
+    'The 7th of A♭m7, G♭, falls a half step to the 3rd of D♭7, F. The 3rd of A♭m7, C♭ (B), stays and becomes the 7th of D♭7.');
+  assert('checkFollowUp ii → V: C right; F stays as the 7th of G7; B is where it lands; land B right below',
+    [checkFollowUp(fu2, 'move', n('C4')).message, checkFollowUp(fu2, 'move', n('F3')).message, checkFollowUp(fu2, 'move', n('B3')).message, checkFollowUp(fu2, 'land', n('B3'), { movedMidi: n('C4') })],
+    ['C — the 7th of Dm7.', 'F stays — it becomes the 7th of G7.', 'B is where it lands — play the note in Dm7 that moves there.', { correct: true, message: '', octaveOff: false }]);
+  const tag = { id: 3, round: 2, step: 5, input: 'guides' };
+  const iiEntry = followUpEntry({ prevTarget: dm7, target: g7, question: fu2, part: 'move', played: 60, attempt: 1, correct: true, settings: st, lesson: tag });
+  assert('followUpEntry ii → V: transition ii-V, the lesson tag last', iiEntry.detail, { kind: 'followUp', part: 'move', transition: 'ii-V', key: 'C', from: 'Dm7', to: 'G7', answer: 'C', played: 60, attempt: 1, skipped: false, lesson: tag });
+  assert('chordEntry: a lesson tag is stored on the detail; without one the field is absent', [chordEntry({ target: dm7, result: ok1, played: [38, 53, 60], attempt: 1, source: 'lift', settings: st, lesson: tag }).detail.lesson, 'lesson' in okEntry.detail], [tag, false]);
+  const iiMiss = followUpEntry({ prevTarget: dm7, target: g7, question: fu2, part: 'land', played: 53, attempt: 1, correct: false, settings: st });
+  assert('summarizeLap: follow-ups split by transition', summarizeLap([iiEntry, iiMiss, fuEntry, landEntry, landMiss, skipEntry]).followUpTransitions, { 'ii-V': { answers: 2, pct: 50 }, 'V-I': { answers: 4, pct: 50 } });
+  assert('summarizeLap: an entry without a transition counts only in the total', (s => [s.followUps, s.followUpTransitions['V-I'].answers])(summarizeLap([{ correct: true, detail: { kind: 'followUp', part: 'move', key: 'C' } }, fuEntry])), [2, 1]);
 
   const passed = results.filter(Boolean).length;
   console.log(`\n─── ${passed}/${results.length} passed ───\n`);

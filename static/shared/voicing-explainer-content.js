@@ -149,6 +149,7 @@ const EXTERNAL = {
   'theory-chord-progressions': { kind: 'page', url: '/theory/chord-progressions', title: 'Chord Progressions' },
   'theory-modes':             { kind: 'page', url: '/theory/modes', title: 'Modes' },
   'game-cycle-of-shells':     { kind: 'page', url: '/games/cycle-of-shells', title: 'Cycle of Shells' },
+  'game-cycle-of-shells-lesson-3': { kind: 'page', url: '/games/cycle-of-shells?lesson=3', title: 'Cycle of Shells — Lesson 3: Find the smallest movement' },
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -911,6 +912,10 @@ const TOPICS = {
         and sing either guide-tone line.
       - Move the progression to another key, keeping the same alternation:
         3rd-below, 7th-below, 3rd-below.
+      - Take it two notes at a time in the guided lesson
+        [Find the smallest movement](game-cycle-of-shells-lesson-3): the
+        root is played for you while you hold one guide tone and move the
+        other.
       - Practise this round the whole cycle in [Cycle of Shells](game-cycle-of-shells).
 
       ## Sources
@@ -932,7 +937,9 @@ const TOPICS = {
       The rag bar 16 example was checked in code (namedVsPlayed on event 2: played R 3 ♭7, left out 5; the fixture's bassSource there
       is "inferred" — the lowest chord note, no bass line under it — and the chord symbols are "derived").
       Examples (learn-example.js): dm7-shell-3-below-7, cmaj7-shell-3-below-7; reused c7-shell-3-below-7, c7-shell-7-below-3,
-      g7-shell-tritone, eb7-shell-in-the-rag. The ii–V–I guide-tone lines are a learn-example self-test check. Text verbatim.`,
+      g7-shell-tritone, eb7-shell-in-the-rag. The ii–V–I guide-tone lines are a learn-example self-test check. Text verbatim.
+      2026-11-16: "Try it" gained a link to Lesson 3 of the Cycle of Shells tutorial (EXTERNAL game-cycle-of-shells-lesson-3);
+      a pointer, no new claim.`,
   },
   'chord-tones-and-roles': {
     title: 'Chord tones, degrees and slash chords',
@@ -1380,6 +1387,7 @@ async function selfTest() {
   check('verified topics carry no disclaimer', ['chord-tones-and-roles', 'tritone', 'guide-tones-and-shells'].every(s => renderTopic(s).status === 'verified' && renderTopic(s).disclaimer === null));
   check('glossary: tritone and enharmonic → the tritone topic', glossaryLookup('tritone')?.slug === 'tritone' && glossaryLookup('Enharmonic')?.slug === 'tritone');
   check('guide-tones topic links the Cycle of Shells game through EXTERNAL', renderTopic('guide-tones-and-shells').html.includes('<a href="/games/cycle-of-shells" title="Cycle of Shells" class="learn-link">Cycle of Shells</a>'));
+  check('guide-tones topic\'s Try it links Lesson 3 of the Cycle of Shells tutorial', renderTopic('guide-tones-and-shells').html.includes('<a href="/games/cycle-of-shells?lesson=3" title="Cycle of Shells — Lesson 3: Find the smallest movement" class="learn-link">Find the smallest movement</a>'));
   check('tritone topic links Intro chapter 4 through EXTERNAL', renderTopic('tritone').html.includes('<a href="/intro/4" title="Fundamentals 4 — Beyond Triads" class="learn-link">Intro chapter 4</a>'));
 
   const counts = {}; for (const s of slugs) counts[TOPICS[s].status] = (counts[TOPICS[s].status] || 0) + 1;
