@@ -1,3 +1,4 @@
 // Tone comes from the harness's fake (globalThis.Tone); no samples are fetched.
 export const SALAMANDER_URLS = {}, SALAMANDER_BASE = '';
 export const loadTone = async () => globalThis.Tone;
+export { midiToNoteName } from '../../../static/shared/voicing-player.js';   // the real (pure) helper

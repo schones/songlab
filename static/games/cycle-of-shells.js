@@ -70,7 +70,7 @@ import { createShellInput } from './cycle-of-shells-input.js';
 import { staffMEI, heldChord, COLORS as STAFF_COLORS } from './cycle-of-shells-staff.js';
 import { VEROVIO_VERSION } from '../shared/voicing-staff.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
-import { VoicingPlayer, loadSampler } from '../shared/voicing-player.js';
+import { VoicingPlayer, loadSampler, midiToNoteName } from '../shared/voicing-player.js';
 import { parseNote, parseSymbol, namedVsPlayed } from '../shared/voicing-analysis.js';
 import { spellMidi } from '../shared/voicing-explore.js';
 
@@ -168,6 +168,7 @@ const store = {
 // ════════════════════════════════════════════════════════════════════
 
 const target = () => lap[index] || null;
+/** Display spelling ("C♯4"). Never a sampler name: Tone cannot read ♯ — sampler calls use midiToNoteName. */
 const noteName = midi => { const p = parseNote(midi); return p.name + p.octave; };
 const pcName = name => name.replace(/-?\d+$/, '');
 const capitalize = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -708,12 +709,12 @@ async function ensureSampler() {
 
 function echoOn(midi) {
   if (!audioStarted || muted() || !echoEnabled()) return;
-  ensureSampler().then(s => { if (s && held.has(midi) && !echoing.has(midi)) { echoing.add(midi); s.triggerAttack(noteName(midi), undefined, ECHO_VELOCITY); } });
+  ensureSampler().then(s => { if (s && held.has(midi) && !echoing.has(midi)) { echoing.add(midi); s.triggerAttack(midiToNoteName(midi), undefined, ECHO_VELOCITY); } });
 }
 function echoOff(midi) {
   if (!echoing.has(midi)) return;
   echoing.delete(midi);
-  if (sampler) sampler.triggerRelease(noteName(midi));
+  if (sampler) sampler.triggerRelease(midiToNoteName(midi));
 }
 
 async function hearIt() {

@@ -190,7 +190,7 @@ import { createPassRecorder, createPassHistory, createPracticeClock, scorePass, 
 import { lineRanges, lineIndexFor } from './player-staff-model.js';
 import { createShellInput } from '../games/cycle-of-shells-input.js';
 import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
-import { loadTone, SALAMANDER_URLS, SALAMANDER_BASE } from '../shared/voicing-player.js';   // Tone + the piano samples only; VoicingPlayer itself is no longer used here (3)
+import { loadTone, midiToNoteName, SALAMANDER_URLS, SALAMANDER_BASE } from '../shared/voicing-player.js';   // Tone + the piano samples only; VoicingPlayer itself is no longer used here (3)
 import { listenSchedule, pieceBpm, tempoLabel, DEFAULT_BPM } from './player-listen.js';
 import { metronome, patternFor, DEFAULT_VOLUME as METRO_VOLUME_DEFAULT } from './metronome.js';
 import { createBeatClock, LOOKAHEAD } from './beat-clock.js';
@@ -227,9 +227,8 @@ const CORRECT_FLASH_MS = 400;                        // minimum green on a key (
 const KEY_MARGIN = 3;                                // keys past the piece's lowest / highest
 const KEY_STATES = ['expected', 'correct', 'wrong', 'held', 'playing'];
 const BLACK_PCS = new Set([1, 3, 6, 8, 10]);
-const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-/** ASCII spelling for Tone (parseNote gives ♯, which Tone's note parser does not read). */
-const noteName = midi => `${NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+/** ASCII spelling for Tone (parseNote gives ♯, which Tone's note parser does not read): the shared helper every sampler call uses. */
+const noteName = midiToNoteName;
 
 const $ = id => document.getElementById(id);
 const els = {

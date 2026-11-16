@@ -54,6 +54,23 @@ const SALAMANDER_URLS = {
   A7: 'A7.mp3',
 };
 
+/** Pitch-class spellings Tone's note parser reads: ASCII sharps, the spelling of the SALAMANDER_URLS keys. */
+const SAMPLER_PC_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+/**
+ * The name to hand a Tone.Sampler for a midi number: "C#4", "A#3" (60 → "C4").
+ * Every sampler call on the site goes through this one. Display spellings
+ * (parseNote / pcToNote: "C♯", "B♭") are NOT sampler names — Tone's parser
+ * does not read ♯ / ♭, the name becomes NaN and the note never sounds.
+ * @param {number} midi
+ * @returns {string}
+ */
+function midiToNoteName(midi) {
+  const m = Math.round(Number(midi));
+  if (!Number.isFinite(m)) throw new TypeError(`midiToNoteName: not a midi number: ${midi}`);
+  return `${SAMPLER_PC_NAMES[((m % 12) + 12) % 12]}${Math.floor(m / 12) - 1}`;
+}
+
 const VELOCITY = { bass: 0.75, voicing: 0.6, melody: 0.8 };
 const LEAD_IN_GAIN = 0.85;       // lead-in notes a touch softer than the bar itself
 const START_DELAY = 0.08;        // seconds of scheduling headroom after now
@@ -153,7 +170,7 @@ class VoicingPlayer {
     this._onEnd = onEnd;
     const visibleFrom = Number(schedule.barStart) || 0;   // nothing lights before the selected bar's beat 0
     this._part = new Tone.Part((time, note) => {
-      const name = Tone.Frequency(note.midi, 'midi').toNote();
+      const name = midiToNoteName(note.midi);
       const velocity = (VELOCITY[note.role] || 0.6) * (note.leadIn ? LEAD_IN_GAIN : 1);
       sampler.triggerAttackRelease(name, Math.max(note.duration, 0.02), time, velocity);
       const lightAt = time + Math.max(0, visibleFrom - note.time), lightEnd = time + note.duration;
@@ -206,8 +223,60 @@ class VoicingPlayer {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════
+// SELF-TEST
+//   node --input-type=module -e "import('./static/shared/voicing-player.js').then(m => m.selfTest())"
+// Every piano key (midi 21–108) must map to a name the sampler accepts.
+// Under Node the vendored sample files are checked on disk; in a browser
+// with Tone loaded (window.Tone) the names also go through Tone's own parser.
+// ════════════════════════════════════════════════════════════════════
+
+/** Tone 14's note grammar (Tone.Frequency): letter, optional b / # / x / bb, octave. Anything else parses to NaN. */
+const _TONE_NOTE_RE = /^([a-g](?:bb|b|#|x)?)(-?[0-9]+)$/i;
+const _TONE_NOTE_PC = { cbb: -2, cb: -1, c: 0, 'c#': 1, cx: 2, dbb: 0, db: 1, d: 2, 'd#': 3, dx: 4, ebb: 2, eb: 3, e: 4, 'e#': 5, ex: 6, fbb: 3, fb: 4, f: 5, 'f#': 6, fx: 7, gbb: 5, gb: 6, g: 7, 'g#': 8, gx: 9, abb: 7, ab: 8, a: 9, 'a#': 10, ax: 11, bbb: 9, bb: 10, b: 11, 'b#': 12, bx: 13 };
+/** Midi for a note name as Tone reads it, or NaN (what the sampler would get). */
+function _toneMidi(name) {
+  const m = String(name).match(_TONE_NOTE_RE);
+  return m ? _TONE_NOTE_PC[m[1].toLowerCase()] + (parseInt(m[2], 10) + 1) * 12 : NaN;
+}
+
+async function selfTest() {
+  let pass = 0, fail = 0;
+  const assert = (label, ok, detail = '') => { if (ok) pass++; else { fail++; console.error(`FAIL: ${label}${detail ? ' — ' + detail : ''}`); } };
+  const LOW = 21, HIGH = 108;   // A0–C8, the 88 keys
+  const sampleMidis = Object.keys(SALAMANDER_URLS).map(_toneMidi);
+  assert('every sample key is a name Tone reads', sampleMidis.every(Number.isFinite), Object.keys(SALAMANDER_URLS).filter(k => !Number.isFinite(_toneMidi(k))).join(' '));
+
+  const seenPcs = new Set();
+  for (let midi = LOW; midi <= HIGH; midi++) {
+    const name = midiToNoteName(midi);
+    seenPcs.add(midi % 12);
+    assert(`midi ${midi} → "${name}" is a name the sampler accepts`, _TONE_NOTE_RE.test(name));
+    assert(`midi ${midi} → "${name}" reads back as ${midi}`, _toneMidi(name) === midi, `got ${_toneMidi(name)}`);
+    const nearest = Math.min(...sampleMidis.map(s => Math.abs(s - midi)));
+    assert(`midi ${midi} ("${name}") has a sample within 3 semitones`, nearest <= 3, `nearest is ${nearest} away`);
+    if (typeof window !== 'undefined' && window.Tone) assert(`Tone reads "${name}" as ${midi}`, window.Tone.Frequency(name).toMidi() === midi);
+  }
+  assert('all 12 pitch classes covered', seenPcs.size === 12);
+  assert('black keys are ASCII sharps', [61, 63, 66, 68, 70].map(midiToNoteName).join(' ') === 'C#4 D#4 F#4 G#4 A#4');
+  assert('60 is C4; 21 is A0; 108 is C8', [60, 21, 108].map(midiToNoteName).join(' ') === 'C4 A0 C8');
+  // The regression: display spellings are not sampler names.
+  assert('"C♯4" and "B♭3" are NOT names the sampler accepts', Number.isNaN(_toneMidi('C♯4')) && Number.isNaN(_toneMidi('B♭3')));
+  let threw = false; try { midiToNoteName('x'); } catch (_) { threw = true; }
+  assert('a non-number throws instead of naming a note', threw);
+
+  if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+    const fs = await import('node:fs'), url = await import('node:url');
+    const dir = url.fileURLToPath(new URL('../vendor/salamander/', import.meta.url));
+    for (const file of Object.values(SALAMANDER_URLS)) assert(`sample file ${file} is vendored`, fs.existsSync(dir + file));
+  }
+
+  console.log(`voicing-player selfTest: ${pass}/${pass + fail} passed`);
+  return { pass, fail };
+}
+
 export {
-  VoicingPlayer, loadTone, loadSampler, SALAMANDER_VERSION, SALAMANDER_BASE, SALAMANDER_URLS,
+  VoicingPlayer, loadTone, loadSampler, midiToNoteName, selfTest, SALAMANDER_VERSION, SALAMANDER_BASE, SALAMANDER_URLS,
   // Explainer layer (Session 6.5): read-only constants for interpolation into content.
   TONE_URL, VELOCITY, LEAD_IN_GAIN, START_TIMEOUT_MS, START_DELAY,
 };
