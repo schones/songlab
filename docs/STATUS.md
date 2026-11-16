@@ -1,6 +1,6 @@
 # SongLab Project Status
 
-**Last updated:** 2026-11-13
+**Last updated:** 2026-11-16
 **Branch:** `dev` — all active work. Cycle of Shells merged 2026-10-27;
 Voicing Explorer Sessions 1–6.5 merged `df0e2fc`; Learn Phase 0 + Phase 1
 topics merged via `learn-topics`; Cantor v1; MIDI multi-port fix `57afaa9`.
@@ -66,7 +66,11 @@ from MIDI or the on-screen keyboard; stages 1–4 with a pure core
 (`cycle-of-shells-core.js`), MIDI wrapper, results log, guided hints,
 follow-up questions, lap summary, deep links. Listed in the Games menu and
 landing grid; linked from the guide-tones topic and the ii_V_I walkthrough
-(`concept_specifics` landed `4316f8a`). Stage 4 follow-ups live in RADAR
+(`concept_specifics` landed `4316f8a`). 2026-11-16: the follow-up became
+a two-part played question (which note moves, where it goes), asked at
+ii→V as well as V→I, and **tutorial mode Stage 1** landed — Lesson 3
+"Find the smallest movement" at `?lesson=3`, from the five-lesson plan
+`docs/find-your-way-home.md` (`5ed838e`; not yet checked in a browser). Stage 4 follow-ups live in RADAR
 (keyboard access for clickable keys, MIDI hot-plug, site-wide device
 default, sharp labels on held notes, double accidentals on held
 non-chord tones). It is the third hand-rolled game loop; `game-flow.js`
@@ -195,6 +199,22 @@ Full version: [Claude doc](https://claude.ai/artifact/DHHd1R3qux19CPWyX7fPaA) ·
 ---
 
 ## Current Focus
+
+**Cycle of Shells tutorial mode (2026-11-16, `dev`, `5ed838e`).** The
+five-lesson plan *Find Your Way Home* (`docs/find-your-way-home.md`) is
+being built into Cycle of Shells as lessons that reuse the drill's
+checker, hints and log. Stage 1 is in: Lesson 3 "Find the smallest
+movement" (two-note 3rd + 7th shapes in C over a root the game supplies)
+at `/games/cycle-of-shells?lesson=3`, linked from the guide-tones topic's
+"Try it". The same day the drill's follow-up became a two-part played
+question (`cc4bcf1`) and is now asked at both changes, ii→V and V→I
+(setting "Voice-leading questions: both changes / V→I only / off"), and
+the silent-black-keys echo bug was fixed site-wide (`11c142b`). Verified
+by Node self-tests and a stub-DOM smoke run only — **Lesson 3 needs a
+look in Chrome and a play-through on the RD-2000** (layout of the prompt
+line and lesson bar, the supplied root's sound, the hold check). Next for
+the tutorial: Lessons 1, 2, 4 and 5 on the same step-list shape, and a
+lesson picker. Current state block below.
 
 **Guided-practice track — follow-along MIDI player (2026-10-30, `dev`)**
 is the newest workstream. The first piece (Carol of the Bells, Winston,
@@ -901,15 +921,15 @@ Approaching Cantor v1 user-testing readiness once the presentational arc lands o
 - 3-octave keyboards sized to fill wider containers, global key size overrides
 - End-of-chapter "What's Next" cards
 
-### Cycle of Shells — current state (updated 2026-10-22)
+### Cycle of Shells — current state (updated 2026-11-16)
 
-**Landed on branch `cycle-of-shells` (verified in Node self-tests and
-headless Chrome; not yet merged to dev):**
+**Landed on dev (merged 2026-10-27; verified in Node self-tests and
+headless Chrome):**
 - `/games/cycle-of-shells`: ii–V–I shell voicings (root in the bass,
   3rd + 7th above, no 5th) round the cycle of fourths, checked chord by
   chord from MIDI (RD-2000 over USB, Launchkey) or the on-screen
   keyboard. Untimed; wrong answers explained by degree.
-- Pure core `static/games/cycle-of-shells-core.js` (97/97): the 36
+- Pure core `static/games/cycle-of-shells-core.js` (124/124): the 36
   targets with two-band placement (preferred E♭3–F4, outer C3–G4),
   form-strict / octave-flexible checker with an error taxonomy,
   lift-to-submit detector (150 ms settle, optional pedal-only submit),
@@ -931,8 +951,67 @@ headless Chrome; not yet merged to dev):**
   `minKeyWidth` options; walkthrough-sidebar concept entries may be
   arrays with `homeKeyParam`; EXTERNAL `game-cycle-of-shells`.
 
+**Landed 2026-11-16 (Node self-tests + a stub-DOM smoke run; not yet
+checked in a browser or at the piano):**
+- **Two-part played follow-up** (`cc4bcf1`): "Play the note in G7 that
+  has to move." (the 7th), then "Now play where it goes." (the next
+  chord's 3rd; the right note in another octave is accepted with a
+  note), then the explanation line. Two tries per part, Skip always
+  there, every answer logged per part; lap summary shows "which note
+  moves" / "where it goes" percentages.
+- **Questions at both changes** (`5ed838e`): asked at ii→V as well as
+  V→I. Setting "Voice-leading questions: both changes / V→I only / off"
+  (default both; `settings.questions`, the old `followUp` boolean
+  migrates). Log entries carry `transition: 'ii-V' | 'V-I'`; the lap
+  summary splits by transition (`followUpTransitions`). Enharmonic
+  hints keep the comma style ("The 7th of D♭7, C♭ (B), falls…").
+- **Tutorial mode Stage 1** (`5ed838e`), from
+  `docs/find-your-way-home.md`. New pure module
+  `static/games/cycle-of-shells-lessons.js` (37/37): a lesson is a
+  hand-built step list; each step carries its target, the chord it
+  comes from, input kind (`guides` two notes / `shell` / `tones`),
+  hint level, what is shown, a prompt, and whether it holds a note or
+  asks the question. The shape is meant to fit Lessons 1–5; only
+  Lesson 3 is built.
+- **Lesson 3 "Find the smallest movement"** — `?lesson=3`, in C, 11
+  steps in 4 rounds: copy each two-note shape (Dm7 F–C, G7 F–B, Cmaj7
+  E–B); hold F, move C to B; hold B, move F to E; connect all three (a
+  pass with note names, then a pass with no visuals and the question at
+  both changes). The game sounds and shows the root (gold) and adds it
+  under the two played notes so the unchanged `checkAnswer` does the
+  checking. Hints step down across rounds; two misses on a step turn
+  on one more level of help for that step ("Show me" is hidden in
+  lessons). Lesson header with "Back to drill"; at the end "Try it in
+  F" (drill in F, guided, not saved) and "Back to drill", both in place
+  without a reload. Lesson entries are logged with `detail.lesson`
+  `{ id, round, step, input }`; no resume is saved for a lesson.
+- **Hold rounds are one step each.** The submit detector commits only
+  when every key is up, so a held note cannot carry across two
+  submissions: play F–C, keep F down, move C to B, then let go. A
+  tracker checks the common tone stayed down (MIDI only; on-screen
+  clicks skip it). Right notes without the hold are sent back twice
+  without a miss, then accepted with a note.
+- Guide-tones topic "Try it" links to Lesson 3 (EXTERNAL
+  `game-cycle-of-shells-lesson-3`; explainer content 46/46).
+- **Fixed: MIDI echo silent on black keys** (`11c142b`). The echo handed
+  Tone display spellings ("A♯3"), which its parser reads as NaN. New
+  shared `midiToNoteName` in `static/shared/voicing-player.js` (ASCII
+  sharps; self-test 299/299 covers all 88 keys and the vendored
+  samples) is now the one name source for sampler calls in Cycle of
+  Shells, `/player` and Hear it.
+
 **Open / deferred:**
-- Merge to dev after Dustin's play-through on the RD-2000.
+- **Browser + RD-2000 check of Lesson 3 and the two-part questions**:
+  prompt line and lesson bar layout (fold at 1440×900), the supplied
+  root's sound, the hold check by feel, black keys sounding in the
+  echo.
+- Tutorial Lessons 1, 2, 4, 5 and a lesson picker (Lesson 3 is reached
+  by deep link only). Lessons 1–2 need full-chord (`tones`) input in
+  any order, which the step shape names but the page does not handle
+  yet.
+- Lesson 3 asks the question on the two hold steps and the last pass
+  only (four in all); it is a per-step flag if they should be
+  everywhere.
 - game-flow.js extraction (third hand-rolled game) deferred to the
   platform audit; see RADAR.
 - Stage 4 follow-ups in RADAR: keyboard access for clickable keys,
@@ -1342,9 +1421,6 @@ console snippets only):**
   before every render; VoicingStaff does not).
 - Move the step-2 route smoke script from the Claude Code scratchpad to
   `tools/check_player_routes.py`.
-- Cycle of Shells echo may not sound black keys: it passes `♯` note names
-  to Tone (`cycle-of-shells.js` `noteName`); `player.js` uses ASCII names.
-  Listed in Known Issues.
 
 **Public surfaces (test harness / debugging):**
 - `window.__player` — `state`, `load(name)`, `showLine(index, {bar, keep})`,
@@ -1371,7 +1447,7 @@ console snippets only):**
 ### Games & Tools
 - Harmony Trainer, Chord Walks (4 tiers), Rhythm Lab, Strum Patterns, Chord Spotter, Scale Builder, Melody Match
 - **Follow-along player** `/player` (2026-10-30; loops + trouble spots + No stress + Listen 2026-11-03; control rack + metronome 2026-11-05): wait-for-me practice of a recorded piece from MIDI; see the current-state block above
-- **Cycle of Shells** (2026-10-22, branch `cycle-of-shells`): ii–V–I shell voicings round the cycle from MIDI; see the current-state block above
+- **Cycle of Shells** (2026-10-22; two-part questions at both changes + tutorial Lesson 3 at `?lesson=3`, 2026-11-16): ii–V–I shell voicings round the cycle from MIDI; see the current-state block above
 - **Swing Trainer**: ear-training for jazz swing feel (rotary knob, waveform viz, Practice/Test)
 - **Polyrhythm Trainer** (new): Guitar Hero-style falling-note game. Practice Mode (phase-based BPM ramp: Listen → Layer A → Layer B → Both → Victory) and Challenge Mode (arcade adaptive with leaderboard). Dark DAW theme, drum pads, lane breathing waves. First game on `input-provider.js` + `onset-detection.js`. Spec: `docs/polyrhythm-trainer-spec.md`
 - **SkratchLab**: Blockly + audio + music blocks + Rhythm Builder
@@ -1423,10 +1499,6 @@ itemised in `docs/AUDIT-2026-10-27.md` §1 and summarised here.
   between 3rd and 7th; dim7 does too.
 
 **Games (2026-10-30):**
-- Cycle of Shells MIDI echo may be silent on black keys: `noteName` in
-  `cycle-of-shells.js` builds `A♯3`-style names from `parseNote`, which
-  Tone's note parser does not read. `static/player/player.js` uses ASCII
-  names (`A#3`); do the same there. Unverified at the piano.
 - `/learn` is not in the site nav; `/learn/<unknown-slug>` returns 200.
 - Every Theory card links to at least one stub (extensions,
   omitting-tones, voice-leading, voicings-as-shapes, rootless-voicings).

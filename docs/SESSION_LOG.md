@@ -3,6 +3,101 @@
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
 
+## 2026-11-16 — Cycle of Shells: black-key echo fix, two-part questions at both changes, tutorial Stage 1 (Lesson 3)
+
+On `dev`, three commits: `11c142b`, `cc4bcf1`, `5ed838e`. Checked by
+Node self-tests and a stub-DOM smoke run; nothing here has been looked
+at in a browser or played on the RD-2000 yet.
+
+### Landed
+- **Fixed: silent black keys in the MIDI echo** (`11c142b`). Sampler
+  calls were given display spellings ("A♯3"); Tone's parser reads those
+  as NaN and the note never sounds. New shared `midiToNoteName` in
+  `static/shared/voicing-player.js` (ASCII sharps) is the one source of
+  sampler names for the Cycle of Shells echo, `/player` and Hear it.
+  Self-test added (299/299): every key 21–108 maps to a name Tone
+  reads, has a sample within 3 semitones, and the sample files are on
+  disk. Closes the Known Issue from 2026-10-30.
+- **Two-part played follow-up** (`cc4bcf1`; core + page + template).
+  After the I chord: "Play the note in G7 that has to move." then "Now
+  play where it goes." then the explanation. Two tries per part (after
+  two misses on part 1 the note is named and part 2 follows), the right
+  note in another octave accepted with a note, Skip logs every unasked
+  part as skipped. Lap summary gained per-part percentages.
+- **Questions at both changes** (`5ed838e`). `followUp` now works for
+  ii→V as well as V→I and returns `transition`; log entries carry it;
+  `summarizeLap` adds `followUpTransitions`. Setting "Voice-leading
+  questions: both changes / V→I only / off", default both, replacing
+  the checkbox (a stored `followUp: false` migrates to off). Core
+  self-test 124/124.
+- **Tutorial Stage 1** (`5ed838e`), from the plan
+  `docs/find-your-way-home.md` (added in the same commit):
+  - `static/games/cycle-of-shells-lessons.js` (new, pure, 37/37):
+    lessons as hand-built step lists — per step the target, the chord
+    it comes from, input kind, hint level, show flags, prompt, hold,
+    ask. `buildLesson`, `stepUpHints`, `supplyBass`,
+    `createHoldTracker`, `lessonTag`.
+  - Lesson 3 "Find the smallest movement" at `?lesson=3`: C major, 11
+    steps in 4 rounds (copy each shape; hold F, move C; hold B, move F;
+    connect all three). Root supplied by the game — sounded, shown
+    gold, and added under the played notes before `checkAnswer`.
+  - Page (`cycle-of-shells.js`, `templates/cycle-of-shells.html`):
+    lesson header with "Back to drill", prompt line, round progress,
+    end panel with "Try it in F" / "Back to drill", drill-only chrome
+    hidden in lessons, `getState()` reports `hints`, `lesson` and the
+    question's `transition`.
+  - Guide-tones topic "Try it" links to the lesson
+    (`voicing-explainer-content.js`, 46/46).
+
+### Diagnosed / decided
+- **A lesson is a custom lap.** The page maps the steps' targets to the
+  lap and reads everything else off the step, so the checker, hints
+  overlay, questions and log are the drill's own. The only new checking
+  code is `supplyBass`.
+- **"Hold F" cannot span two submissions.** The detector commits when
+  all keys are up (and the pedal disarms it), so the hold rounds are
+  single steps: target is the destination chord, the tracker confirms
+  the common tone never lifted. Unheld right notes are sent back twice
+  (no miss, not logged) and then accepted with a note, so nobody gets
+  stuck; playing only the origin shape gets a nudge, not a miss.
+  On-screen clicks cannot hold, so they skip the check.
+- **Hint fading.** Guided arrows were asked for on both hold rounds, so
+  rounds 1–3 are guided and the step-down happens inside round 4 (a
+  names pass, then a none pass). Two misses on a step raise the help
+  one level for that step only; this replaces "Show me" in lessons.
+- **Questions in Lesson 3** are asked on the two hold steps and at both
+  changes of the last pass (four). The copy round and the names pass
+  do not ask.
+- "Try it in F" and "Back to drill" switch in place (no reload, audio
+  and MIDI stay up); the F / guided override is for that visit only.
+
+### Setup for next session
+- Working tree clean at `5ed838e`.
+- First: Dustin's Chrome + RD-2000 pass over `?lesson=3` and a drill
+  lap with questions at both changes (prompt line and lesson bar
+  layout, the supplied root's sound and retrigger, the hold check, the
+  black-key echo).
+- Then Stage 2 of the tutorial: Lessons 1 and 2 need full-chord input
+  in any order (`tones`), which the step shape names but the page does
+  not handle yet; then Lessons 4–5 and a picker.
+
+### Calibration notes
+- The stub-DOM smoke for the Cycle of Shells page lived in the session
+  scratchpad and is gone with it. If the tutorial grows, give it a home
+  like `tests/player/smoke.mjs`.
+
+### Flagged for later
+- The guide-tones topic is marked verified and gained one "Try it"
+  bullet; noted in its notes line.
+- STATUS still lists "Cycle of Shells merge — parked (2026-11-13)"
+  under Parked, although the game merged 2026-10-27 and was worked on
+  today. Left as written; Dustin to say what it refers to.
+
+### Out of scope / deferred
+- Lesson picker, lesson progress across visits, and "ready to advance"
+  gating — after more than one lesson exists.
+
+
 ## 2026-11-13 — Player 3: shared beat clock, play-along, pause / resume; drift investigation closed; Feel / anchors + Song notes
 
 Guided-practice track, on `dev`. Committed as `ea74c81`. All of it
