@@ -9,7 +9,7 @@
  *
  * Depends on:
  *   - cycle-of-shells-core.js   → buildLap, describeMove, checkAnswer, createSubmitDetector, noteLabel, phraseRecipe, moveRule,
- *                                 followUp, checkFollowUp, chordEntry, followUpEntry, summarizeLap, CYCLE
+ *                                 followUp (two-part V7 → I question), checkFollowUp, chordEntry, followUpEntry, summarizeLap, CYCLE
  *   - cycle-of-shells-log.js    → createResultLog (ResultDetail entries in localStorage)
  *   - cycle-of-shells-input.js  → createShellInput (MIDI)
  *   - cycle-of-shells-staff.js  → staffMEI, heldChord (the staff panel's MEI, pure)
@@ -40,10 +40,15 @@
  * 'cycleOfShells.midiDevice'. A legacy hidePath value migrates to hints.
  *
  * Follow-up question (setting 'followUp', default on): after each correct
- * I chord the page asks which note moved from V to I (core followUp); the
- * guide is hidden while the question is open, one played note answers it
- * (a second submit detector with minNotes 1), two tries, Skip always
- * available; the lap never blocks and chord misses are untouched.
+ * I chord the page asks a two-part question about V7 → I (core followUp):
+ * "Play the note in G7 that has to move." (the V7's 7th), then "Now play
+ * where it goes." (the I's 3rd; the right note in another octave than the
+ * half step below is accepted with a note), then the explanation line.
+ * The guide is hidden while the question is open; one played note answers
+ * each part (a second submit detector with minNotes 1), two tries per part
+ * (after two misses on part 1 the note is named and part 2 follows), Skip
+ * always available; every answer is logged per part; the lap never blocks
+ * and chord misses are untouched.
  *
  * Staff (Stage 3h): a grand staff beside the buttons, engraved by Verovio
  * (loaded lazily after the start overlay, one toolkit instance for the
@@ -306,35 +311,60 @@ function submit(midis, source) {
 // FOLLOW-UP QUESTION
 // ════════════════════════════════════════════════════════════════════
 
+const FOLLOW_UP_TRIES = 2;         // per part
+
+const newFollowUpDetector = () => createSubmitDetector({ minNotes: 1, settleMs: SETTLE_MS, pedalSubmit: settings.pedalSubmit });
+const questionPart = () => question.q.parts.find(p => p.id === question.part);
+
 function openQuestion(prev, t) {
-  question = { prev, target: t, q: followUp(prev, t, DUAL), attempt: 0, openedAt: now() };
+  question = { prev, target: t, q: followUp(prev, t, DUAL), part: 'move', attempt: 0, movedMidi: null, openedAt: now() };
   staged.clear();
-  fuDetector = createSubmitDetector({ minNotes: 1, settleMs: SETTLE_MS, pedalSubmit: settings.pedalSubmit });
+  fuDetector = newFollowUpDetector();
   detector.reset();
-  $('cos-coaching').textContent = `${question.q.prompt} Play that note.`;
+  $('cos-coaching').textContent = questionPart().prompt;
   renderControls();
   renderKeyboard();
 }
 
-/** One played note (or a staged click) answers the open question. `source` is 'lift', 'pedal' or 'check'. */
+/** Part 1 is over (answered, or named after two misses): ask part 2. `lead` is what to say first. */
+function openLandPart(lead, movedMidi) {
+  question.part = 'land'; question.attempt = 0; question.movedMidi = movedMidi; question.openedAt = now();
+  staged.clear();
+  fuDetector = newFollowUpDetector();
+  $('cos-coaching').textContent = `${lead} ${questionPart().prompt}`;
+  renderKeyboard();
+}
+
+const followUpLog = extra => record(followUpEntry({ prevTarget: question.prev, target: question.target, question: question.q, part: question.part, settings, duration: now() - question.openedAt, ...extra }));
+
+/** One played note (or a staged click) answers the open part of the question. `source` is 'lift', 'pedal' or 'check'. */
 function answerQuestion(midis, source) {
   if (!question) return;
   const list = [...new Set(midis)];
-  if (list.length !== 1) { $('cos-coaching').textContent = `${question.q.prompt} Play just one note.`; return; }
+  if (list.length !== 1) { $('cos-coaching').textContent = `${questionPart().prompt} Play just one note.`; return; }
   const midi = list[0];
+  const { q, part } = question;
   question.attempt++;
-  const r = checkFollowUp(question.q, midi, DUAL);
-  record(followUpEntry({ prevTarget: question.prev, target: question.target, question: question.q, played: midi, attempt: question.attempt, correct: r.correct, settings, duration: now() - question.openedAt }));
-  if (r.correct) { closeQuestion(`✓ ${question.q.explanation}`); return; }
-  if (question.attempt >= 2) { closeQuestion(`${r.message} ${question.q.explanation}`); return; }
+  const r = checkFollowUp(q, part, midi, { ...DUAL, movedMidi: question.movedMidi });
+  followUpLog({ played: midi, attempt: question.attempt, correct: r.correct, octaveOff: r.octaveOff });
+  const lastTry = question.attempt >= FOLLOW_UP_TRIES;
+  if (part === 'move') {
+    if (r.correct) { openLandPart(`✓ ${r.message}`, midi); return; }
+    if (lastTry) { openLandPart(`${r.message} It's ${noteLabel(q.move.name)}, the 7th of ${q.from}.`, null); return; }
+  } else {
+    if (r.correct) { closeQuestion(['✓', r.message, q.explanation].filter(Boolean).join(' ')); return; }
+    if (lastTry) { closeQuestion(`${r.message} ${q.explanation}`); return; }
+  }
   $('cos-coaching').textContent = `${r.message} One more try.`;
   staged.clear();
   renderKeyboard();
 }
 
+/** Skip the rest of the question: the open part and any part not yet asked are each logged as skipped. */
 function skipQuestion() {
   if (!question) return;
-  record(followUpEntry({ prevTarget: question.prev, target: question.target, question: question.q, attempt: question.attempt + 1, skipped: true, settings, duration: now() - question.openedAt }));
+  followUpLog({ attempt: question.attempt + 1, skipped: true });
+  if (question.part === 'move') { question.part = 'land'; question.attempt = 0; followUpLog({ attempt: 1, skipped: true, duration: 0 }); }
   closeQuestion(question.q.explanation);
 }
 
@@ -397,7 +427,9 @@ function renderSummary(sum) {
   const keyName = k => parseNote(k).name;
   $('sum-chords').textContent = sum.chords ? `${sum.chords} (${sum.attempts} attempts)` : '0';
   $('sum-first').textContent = sum.firstTryPct == null ? '—' : `${sum.firstTryPct}%`;
-  $('sum-followup').textContent = sum.followUpPct == null ? (sum.followUps ? '0%' : 'none asked') : `${sum.followUpPct}% of ${sum.followUps}`;
+  const partPct = (label, p) => (p && p.answers ? `${label} ${p.pct}%` : null);
+  const parts = [partPct('which note moves', sum.followUpParts.move), partPct('where it goes', sum.followUpParts.land)].filter(Boolean).join(' · ');
+  $('sum-followup').textContent = sum.followUpPct == null ? (sum.followUps ? '0%' : 'none asked') : `${sum.followUpPct}% of ${sum.followUps} answers${parts ? ` (${parts})` : ''}`;
   $('sum-keys').textContent = sum.worstKeys.length ? sum.worstKeys.map(k => `${keyName(k.key)} (${k.misses})`).join(' · ') : 'none — clean lap';
   $('sum-errors').textContent = sum.topErrors.length ? sum.topErrors.map(e => `${e.label}: ${e.count}`).join(' · ') : 'none';
   $('cos-summary').hidden = false;
@@ -853,7 +885,7 @@ function wireSettings() {
     settings.pedalSubmit = e.target.checked;
     store.set('pedalSubmit', settings.pedalSubmit);
     makeDetector();
-    if (question) fuDetector = createSubmitDetector({ minNotes: 1, settleMs: SETTLE_MS, pedalSubmit: settings.pedalSubmit });
+    if (question) fuDetector = newFollowUpDetector();
     renderControls();
   });
   $('set-hints').addEventListener('change', e => {
@@ -918,7 +950,7 @@ export function init(params = null) {
 /** Current state for Stage 4 (follow-up question, logging, links) and tests. */
 export function getState() {
   return { index, target: target(), lapLength: lap.length, misses, showMe, lapComplete, settings: { ...settings }, held: [...held], staged: [...staged], deviceName: input ? input.deviceName : null,
-    question: question ? { prompt: question.q.prompt, attempt: question.attempt, answer: question.q.answerName } : null, lapEntries: lapEntries.length,
+    question: question ? { part: question.part, prompt: questionPart().prompt, attempt: question.attempt, answer: questionPart().answerName } : null, lapEntries: lapEntries.length,
     staff: { loadMs: staffLoadMs, scene: staffKey ? JSON.parse(staffKey) : null, state: $('cos-staff') ? $('cos-staff').dataset.state : null } };
 }
 
