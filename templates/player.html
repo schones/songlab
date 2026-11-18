@@ -28,7 +28,7 @@
     min-height: calc(100vh - 72px);
     box-sizing: border-box;
   }
-  /* One width for header, rack, strip, hints, staff and keyboard: a line of four bars needs it (the staff SVG is sized by width). */
+  /* One width for header, rack, strip, hints, staff and keyboard: a line of four bars needs it (each staff line fills this width at a fixed staff size; player-staff.js PAGE_WIDTH). */
   .pl-column { max-width: 1400px; margin: 0 auto; }
 
   /* ── Header: piece title (h1) left; ← Back + SONG picker right ── */
@@ -393,6 +393,14 @@
           <label class="pl-check" title="Wrong notes don't block, aren't shown and aren't counted; the player just follows along"><input type="checkbox" id="pl-no-stress"> No stress</label>
           <!-- Auto-collapse (player.js autoCollapse): the rack closes on the first MIDI note or Listen start after it was opened -->
           <label class="pl-check" title="Close the controls on the first note played or when Listen / Play along starts; off: they only open and close with ⚙ Controls"><input type="checkbox" id="pl-rack-auto" checked> Hide controls while playing</label>
+          <!-- Lines (player.js setLines): one line on the staff, or the current line with the next one under it. Remembered. -->
+          <div class="pl-seg">
+            <span class="pl-seg__label" id="pl-lines-label">Lines</span>
+            <div class="pl-seg__group" role="group" aria-labelledby="pl-lines-label" id="pl-lines" title="Lines of music on the staff: the current line alone, or with the next line under it">
+              <button type="button" class="pl-seg__btn" data-lines="1" aria-pressed="false" aria-label="Show one line">1</button>
+              <button type="button" class="pl-seg__btn" data-lines="2" aria-pressed="true" aria-label="Show two lines: the current line and the next">2</button>
+            </div>
+          </div>
         </section>
       </div>
 
@@ -436,7 +444,7 @@
 
   </div>
 
-  <!-- Staff: one line at a time (PlayerStaff, Verovio; lines from norm.lines); Prev / Next or ← / → page by line, Shift+← / → by bar. -->
+  <!-- Staff: the current line and, under it, the line played next (PlayerStaff's two slots, Verovio; lines from norm.lines; "Lines" in the Mode card: 1 | 2); Prev / Next or ← / → page by line, Shift+← / → by bar. -->
   <div class="pl-column">
     <!-- Summary strip (always visible): line nav · settings summary + ⚙ Controls (open / close the rack) · live buttons · status (loop range, pass, clean x / y, wrong count) right -->
     <div class="pl-strip">

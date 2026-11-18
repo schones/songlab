@@ -3,7 +3,7 @@
  * =========
  * Page glue for /player (Milestone 1): wires the existing pieces together.
  *
- *   PlayerStaff            player-staff.js            one line engraved, note states, bar marker
+ *   PlayerStaff            player-staff.js            one or two lines engraved (two slots), note states, bar marker
  *   lineRanges / lineIndexFor
  *                          player-staff-model.js      norm.lines → the lines the staff shows
  *   buildSteps / attachIds / createFollower
@@ -30,6 +30,22 @@
  * follower is per piece; it advances through the line, and showLine() is
  * called when its next step leaves the drawn range. ← / → page by line,
  * Shift+← / → move by bar.
+ *
+ * Two-line view (state.viewLines, LINES_KEY, "Lines: 1 | 2" in the Mode
+ * card; default 2): the staff has two slots (player-staff.js). state.line
+ * and staff.range still mean the CURRENT line — everything above is
+ * unchanged — and the other slot is a passive, dimmed preview of the line
+ * that will be played next (viewFor / nextLine): line k + 1, or, when a
+ * loop spans lines and the current line is its last, the loop's first
+ * line. On the last line of the piece with nothing to follow, the page does
+ * not shift: the line before stays on top and the last line is the active
+ * one in the bottom slot. drawLine() is the one place the staff is asked
+ * for lines (showLine for practice, listenTurnTo for the transports); the
+ * staff shifts up one line when the new current line is the previewed one
+ * and cuts otherwise. state.shown is the view last asked for, so syncView
+ * (a loop set or cleared changes which line is next) and restorePage (after
+ * a transport) re-draw only when it differs. With Lines at 1 there is one
+ * slot and paging is line by line as before.
  *
  * Loop for practice (state.loop mirrors follower.loop()): "Repeat bar" /
  * "Repeat line" toggles act on the current bar / drawn line; tapping two
@@ -100,8 +116,8 @@
  * drawn line's hits (hitIndex), so tied pieces on a later line light too —
  * and the bar marker follows the clock. A bar on another line turns the
  * page when the clock schedules it, up to 150 ms before its downbeat
- * (listenTurnTo: staff.render without the slide, the follower untouched;
- * repaintTransport puts the transport's paint back). Stop, the end of the
+ * (listenTurnTo → drawLine: the staff shifts up one line, the follower
+ * untouched; repaintTransport puts the transport's paint back). Stop, the end of the
  * piece, a start that fails, and any navigation or state change (every
  * handler calls stopListen() first) run finishListen(): the original line
  * is re-drawn when the page was turned and paintStates() restores the
@@ -181,7 +197,7 @@
  * Judging (practice and play-along) is by keys: state.held never includes
  * a pedalled note.
  *
- * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, setNoStress, listen, playAlong, stopListen, tempo, clock, timing, bus, metronome, trouble, practice, staff, keyboard, …).
+ * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, setNoStress, setLines, viewFor, listen, playAlong, stopListen, tempo, clock, timing, bus, metronome, trouble, practice, staff, keyboard, …).
  */
 
 import { PlayerStaff } from './player-staff.js';
@@ -211,6 +227,8 @@ const COUNT_IN_DEFAULT = 1, COUNT_IN_MAX = 2;
 const RACK_OPEN_KEY = 'songlab_player_rack_open';     // control rack open ('1') / closed ('0'); read only when auto-collapse is off
 const RACK_AUTO_KEY = 'songlab_player_rack_auto';     // "Hide controls while playing" checkbox; on by default ('0' = off)
 const RACK_MS = 150;                                   // the rack's open / close animation (player.html .pl-rack-shell)
+const LINES_KEY = 'songlab_player_lines';             // "Lines: 1 | 2" (Mode card): one line on the staff, or the current line + the next; default 2
+const LINES_DEFAULT = 2;
 const GUIDE_KEY = 'songlab_player_guide_volume';      // play-along "Guide volume" 0–100 (0 = click only); default 35
 const GUIDE_DEFAULT = 35;
 const NOTES_OPEN_KEY = 'songlab_player_notes_open';   // + ':<piece>' → '1' / '0': the Song notes panel open or closed, per piece; closed by default
@@ -250,6 +268,7 @@ const els = {
   guide: $('pl-guide'), guideReadout: $('pl-guide-readout'),   // Listen card: play-along guide volume
   metro: $('pl-metro'), metroVolume: $('pl-metro-volume'), countIn: $('pl-count-in'),   // Listen card, bottom row (2b)
   trouble: $('pl-trouble'),
+  viewLines: $('pl-lines'),   // Mode card: "Lines" 1 | 2 (segmented)
   rackShell: $('pl-rack'), rackToggle: $('pl-rack-toggle'), rackAuto: $('pl-rack-auto'),   // collapsible rack + ⚙ Controls (strip) + "Hide controls while playing" (Mode card)
   summary: $('pl-summary'), summaryText: $('pl-summary-text'), summaryDot: $('pl-summary-dot'), summaryDevice: $('pl-summary-device'),   // strip settings summary
   staffHost: $('pl-staff'),
@@ -259,7 +278,9 @@ const els = {
 const state = {
   piece: null, norm: null, pieces: [],
   lines: [], lineWarnings: [],   // lineRanges(norm): [{ from, to }] and why norm.lines was ignored, if it was
-  line: -1,                      // index into lines of the drawn line
+  line: -1,                      // index into lines of the current line (the staff's active slot)
+  viewLines: LINES_DEFAULT,      // lines on the staff: 1, or 2 = the current line + the one played next (LINES_KEY)
+  shown: '',                     // the view last asked of the staff (viewKey): '' when nothing is drawn
   bar: null,                     // the active bar within the drawn line
   hands: 'both',
   noStress: false,        // forgiving follower; see the header
@@ -774,10 +795,7 @@ els.hands.addEventListener('change', e => {
   syncPass();
   const cur = state.follower.current();
   if (cur && !inDrawnRange(cur.bar)) showLine(lineOf(cur.bar), { bar: cur.bar, keep: true });   // this line has nothing for that hand from here on
-  else {
-    if (cur && cur.bar !== state.bar) { state.bar = cur.bar; updateBarNav(); }   // this bar has nothing for that hand
-    paintStates();
-  }
+  else showLine(state.line, { bar: cur ? cur.bar : state.bar, keep: true, animate: false });   // the same line, both slots re-drawn (the bar moves on when this one has nothing for that hand)
 });
 
 // ── No stress ────────────────────────────────────────────────────
@@ -813,6 +831,57 @@ function activeBar(range, fallback) {
   return cur && range && cur.bar >= range.from && cur.bar <= range.to ? cur.bar : fallback;
 }
 
+/**
+ * The line played after line `k`, or -1 when nothing follows: line k + 1 —
+ * except that when `loop` ({ from, to }) spans lines and k is its last
+ * line, the loop's first line comes next. A loop inside one line changes
+ * nothing (the preview is line k + 1).
+ */
+function nextLine(k, loop) {
+  if (loop) {
+    const a = lineOf(loop.from), b = lineOf(loop.to);
+    if (a >= 0 && a !== b && k === b) return a;
+  }
+  return k + 1 < state.lines.length ? k + 1 : -1;
+}
+/**
+ * What the staff shows with line `k` as the current line: { top, bottom,
+ * active } (ranges; active 0 = top, 1 = bottom). One line: just k. Two:
+ * k on top and the next line (nextLine) below — or, on a last line with
+ * nothing to follow, the line before on top and k, active, below (the last
+ * two lines of the piece stay up). A one-line piece shows one line.
+ */
+function viewFor(k, loop) {
+  const cur = state.lines[k];
+  if (!cur) return null;
+  if (state.viewLines !== 2) return { top: cur, bottom: null, active: 0 };
+  const n = nextLine(k, loop);
+  if (n >= 0) return { top: cur, bottom: state.lines[n], active: 0 };
+  if (k > 0) return { top: state.lines[k - 1], bottom: cur, active: 1 };
+  return { top: cur, bottom: null, active: 0 };
+}
+const viewKey = v => (v ? `${v.top.from}-${v.top.to}|${v.bottom ? `${v.bottom.from}-${v.bottom.to}` : ''}|${v.active}` : '');
+/** The loop that decides the next line while a transport runs or is paused: its own range when it repeats. */
+const transportLoop = () => { const r = state.listen.range; return r && r.loop ? r : null; };
+/**
+ * Ask the staff for line `index` as the current line (and its companion,
+ * viewFor). The one place lines are drawn: showLine (practice) and
+ * listenTurnTo (the transports) both come through here. Resolves as
+ * staff.show: { hits, warnings } of the current line, or null.
+ */
+function drawLine(index, { animate = true, loop = state.loop } = {}) {
+  const v = viewFor(index, loop);
+  if (!v) return Promise.resolve(null);
+  state.shown = viewKey(v);
+  return staff.show(v.top, v.bottom, { active: v.active, animate });
+}
+/** A loop set, changed or cleared can change which line comes next without the current line changing: re-draw when the view is no longer the one shown. Practice only (a transport draws its own). */
+function syncView() {
+  if (!state.norm || !state.lines[state.line] || state.listen.active || state.listen.paused) return;
+  if (viewKey(viewFor(state.line, state.loop)) === state.shown) return;
+  showLine(state.line, { bar: state.bar, keep: true, animate: false });
+}
+
 function updateBarNav() {
   const k = state.line, K = state.lines.length;
   els.barLabel.textContent = K && k >= 0 ? `Line ${k + 1} / ${K} · Bar ${state.bar}` : 'Line – / – · Bar –';
@@ -826,9 +895,11 @@ function updateBarNav() {
  * bar. With `keep` the follower stays where it is (auto-paging after a
  * step completes, restart, a hands change); otherwise it jumps to `bar`'s
  * first step and the pressed notes are cleared (Prev / Next, arrows).
- * A re-render of the drawn line (same range) has no transition; `animate:
- * false` skips it for a line change too (the restore after Listen).
+ * The staff shifts up one line when `index` is the line it was previewing
+ * and cuts otherwise; `animate: false` always cuts (the restore after
+ * Listen, a re-draw in place).
  */
+let showToken = 0;   // the latest showLine wins: an earlier one's late continuation must not repaint over it
 async function showLine(index, { bar, keep = false, animate = true } = {}) {
   if (!state.norm) return;
   const range = state.lines[index];
@@ -838,8 +909,9 @@ async function showLine(index, { bar, keep = false, animate = true } = {}) {
   if (!keep) { if (state.follower) state.follower.jumpTo(want); clearKeys(['expected', 'correct', 'wrong']); syncPass(); }
   state.bar = activeBar(range, want);
   updateBarNav();
-  const result = await staff.render(state.norm, range.from, { to: range.to, animate });
-  if (!result) return;   // superseded by a later render, or failed (the staff shows why)
+  const token = ++showToken;
+  const result = await drawLine(index, { animate });
+  if (!result || token !== showToken) return;   // superseded by a later draw, or failed (the staff shows why)
   const warnings = [...state.lineWarnings, ...result.warnings.map(w => `line ${index + 1}: ${w}`)];
   banner(warnings.join('; '));
   attachIds(state.steps, result.hits);
@@ -943,6 +1015,7 @@ function syncLoop() {
   staff.setBarTint('loop', L ? barNumbers().filter(b => b >= L.from && b <= L.to) : []);
   updateStatus();
   syncSummary();
+  syncView();   // which line is "next" follows the loop
 }
 
 /**
@@ -965,6 +1038,7 @@ function setLoop(from, to = from, { exitAfter, jump = true } = {}) {
     syncPass();
     return null;
   }
+  state.loop = f.loop();   // before the jump: the line drawn there shows this loop's next line (syncLoop below does the rest)
   if (jump) goToBar(r.from); else syncPass();   // goToBar syncs the pass itself
   syncLoop();
   return state.loop;
@@ -1245,6 +1319,7 @@ async function startTransport(mode, opts = {}) {
   if (!resume) staff.setBarMarker(null);   // a resume keeps the marker on the bar it starts from
   indexHits();
   syncTransportButtons();
+  if (!resume && lineOf(range.from) === state.line && viewKey(viewFor(state.line, transportLoop())) !== state.shown) listenTurnTo(state.line, token, { animate: false });   // this range repeats where practice does not (or the reverse): the line shown as next is the transport's
   const label = mode === 'playalong' ? 'Play along' : 'Listen';
   els.status.textContent = `${mode === 'playalong' ? 'Playing along' : 'Listening'} · ${barsText(range.from, range.to)}${range.loop ? ' · looping' : ''}${resume ? ` · from bar ${resume.bar}` : ''}`;
 
@@ -1298,10 +1373,9 @@ function toggleTransport(mode) {
   if (!L.active && L.paused && L.paused.mode === mode) return resumeListen();
   return startTransport(mode);
 }
-/** After a transport: put the follower's line back if the page was turned, and its paint. */
+/** After a transport: put the follower's line — and the line after it — back if the page was turned (both slots), and the follower's paint. */
 function restorePage() {
-  const want = state.lines[state.line];
-  if (want && staff.range && (staff.range.from !== want.from || staff.range.to !== want.to)) showLine(state.line, { bar: state.bar, keep: true, animate: false });
+  if (state.lines[state.line] && viewKey(viewFor(state.line, state.loop)) !== state.shown) showLine(state.line, { bar: state.bar, keep: true, animate: false });
   else paintStates();
 }
 
@@ -1345,13 +1419,18 @@ function releaseGuide() {
   guideCount.clear();
 }
 
-/** Draw line `index` for the transport only: no slide, the follower and state.line / state.bar untouched; the transport's paint goes back on once drawn. */
-async function listenTurnTo(index, token) {
+/**
+ * Draw line `index` as the transport's current line (playing or paused):
+ * the follower and state.line / state.bar untouched; the transport's paint
+ * goes back on once drawn. A forward turn is the staff's one-line shift —
+ * the line is already engraved in the preview slot, so nothing heavy runs
+ * here, ahead of the downbeat. animate: false cuts (a re-draw in place).
+ */
+async function listenTurnTo(index, token, { animate = true } = {}) {
   const L = state.listen;
-  const range = state.lines[index];
-  if (!range || !L.active) return;
-  const result = await staff.render(state.norm, range.from, { to: range.to, animate: false });
-  if (!result || !L.active || L.token !== token) return;
+  if (!state.lines[index] || !(L.active || L.paused)) return;
+  const result = await drawLine(index, { animate, loop: transportLoop() });
+  if (!result || !(L.active || L.paused) || L.token !== token) return;
   repaintTransport();
 }
 
@@ -1644,6 +1723,30 @@ els.rackAuto.addEventListener('change', () => { setRackAuto(els.rackAuto.checked
 els.rackShell.addEventListener('pointerdown', () => { state.rack.pointer = true; });
 for (const ev of ['pointerup', 'pointercancel']) document.addEventListener(ev, () => { state.rack.pointer = false; });
 
+// ── Lines (Mode card): one line on the staff, or the current line + the next (remembered; applies at once) ──
+
+/** Every slot re-drawn where the page stands: the practice line, or the transport's (playing or paused). */
+function redrawView() {
+  if (!state.norm || state.line < 0) return;
+  const L = state.listen;
+  if (L.active || L.paused) { if (L.drawn >= 0) listenTurnTo(L.drawn, L.token, { animate: false }); }
+  else showLine(state.line, { bar: state.bar, keep: true, animate: false });
+}
+/** 1 or 2 lines on the staff (aria-pressed on the segment buttons); anything else is the default. */
+function setLines(n, { save = true } = {}) {
+  const v = Number(n);
+  state.viewLines = v === 1 || v === 2 ? v : LINES_DEFAULT;
+  for (const b of els.viewLines.querySelectorAll('[data-lines]')) b.setAttribute('aria-pressed', String(Number(b.dataset.lines) === state.viewLines));
+  if (save) saveRack(LINES_KEY, String(state.viewLines));
+  redrawView();
+  return state.viewLines;
+}
+els.viewLines.addEventListener('click', e => {
+  const b = e.target instanceof Element ? e.target.closest('[data-lines]') : null;
+  if (!b) return;
+  setLines(b.dataset.lines); b.blur();
+});
+
 /** The strip's settings summary: "100% · metronome off · count-in 1 · both hands [· No stress] [· loop bars 2–3]" + MIDI dot and device. */
 function syncSummary() {
   const parts = [
@@ -1664,6 +1767,7 @@ function syncSummary() {
 }
 
 setRackAuto(readRack(RACK_AUTO_KEY) !== '0', { save: false });
+setLines(readRack(LINES_KEY) ?? LINES_DEFAULT, { save: false });
 setRackOpen(state.rack.auto ? false : readRack(RACK_OPEN_KEY) !== '0', { save: false, animate: false });   // auto on: closed; off: as remembered (open at first)
 syncSummary();
 
@@ -1908,7 +2012,7 @@ function unload() {
   state.norm = null; state.bar = null; state.steps = []; state.follower = null; state.wrong = 0;
   state.lines = []; state.lineWarnings = []; state.line = -1;
   cancelPending(); clearTrouble(); recorder.cancel();
-  updateBarNav(); staff.clear(); clearKeys(); syncLoop(); syncListen();
+  updateBarNav(); staff.clear(); state.shown = ''; clearKeys(); syncLoop(); syncListen();
 }
 
 async function load(name) {
@@ -1936,6 +2040,8 @@ async function load(name) {
       mountKeyboard(norm);
       clearKeys();
       staff.clear();          // old hits must not attach to the new piece's steps
+      state.shown = '';
+      staff.prepare(norm, state.lines);   // engrave every line once and size the slots to the tallest; not awaited — the first showLine (staff.show) waits for it
       cancelPending(); clearTrouble();
       passHistory.reset();    // pass counts start over with the piece (a restart keeps them: it begins the next pass)
       rebuildFollower(null);  // a new follower: no loop
@@ -2052,6 +2158,7 @@ window.__player = {
   listen, playAlong, stopListen, pauseListen, resumeListen, clockSample, clockDrift, clockProbe, get tempo() { return state.tempoPct; }, set tempo(v) { setTempoPct(v); }, clock, timing, bus, setGuideVolume, controller: songlabPlayer,
   metronome, setMetronome, setMetroVolume, setCountIn, get metro() { return state.metro; },
   setRackOpen, setRackAuto, get rack() { return state.rack; },
+  setLines, viewFor, nextLine, get lines() { return state.viewLines; },
   get trouble() { return state.trouble; }, get practice() { return state.practice; }, loopCounts, passHistory, get recorder() { return recorder; }, thresholds: THRESHOLDS,
   get keyboard() { return keyboard; }, get input() { return input; }, get follower() { return state.follower; }, get steps() { return state.steps; },
   noteOn: onMidiNoteOn, noteOff: onMidiNoteOff, pedal: onPedal,

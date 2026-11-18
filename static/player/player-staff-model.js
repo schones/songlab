@@ -7,11 +7,13 @@
  * with onset / dur in quarters from the bar start, pitches spelled from the
  * key, filler rests, ties across bar lines, optional clefs).
  *
- *   toMEI(norm, { from, to, beams = true })  → { mei, hits, warnings }
+ *   toMEI(norm, { from, to, beams = true, systemBreak = false })  → { mei, hits, warnings }
  *       mei       one <section> with a <measure> per bar from..to (inclusive),
  *                 each with xml:id="pl-m<bar>" (so the SVG's g.measure#pl-m<bar> maps clicks to bars)
  *       hits      { [noteId]: { id, midi, name, bar, staff, hand, onset, at, q, tieStop } }
  *       warnings  strings: skipped graces, overruns, unparseable pitches, …
+ *       systemBreak  true: an <sb/> opens the section, so Verovio's `breaks: 'encoded'` lays the range out as ONE system
+ *                 justified to the page width (player-staff.js: every line at the same staff size)
  *   splitDur(quarters)          → [{ q, dur, dots }] longest first (meter-rules.js, re-exported for tests)
  *   keyFifths(text)             → fifths from 'B♭ minor' / 'Bbm' / 'F' …; null when unparseable
  *   clefFor(norm, hand, bar, bars) → 'treble' | 'bass'
@@ -314,7 +316,7 @@ function layerXML(pieces, n, clefChange, grid, beams = true) {
  *                                      beams: false writes no <beam> (ids and ties are identical either way)
  * @returns {{ mei: string, hits: object, warnings: string[] }}
  */
-function toMEI(norm, { from, to, beams = true } = {}) {
+function toMEI(norm, { from, to, beams = true, systemBreak = false } = {}) {
   const warnings = [];
   const allBars = Array.isArray(norm && norm.bars) ? norm.bars : [];
   if (!allBars.length) throw new Error('toMEI: norm has no bars');
@@ -394,7 +396,7 @@ function toMEI(norm, { from, to, beams = true } = {}) {
   <meiHead><fileDesc><titleStmt><title>${title} — bars ${bars[0].bar}–${bars[bars.length - 1].bar}</title></titleStmt><pubStmt/></fileDesc></meiHead>
   <music><body><mdiv><score>
     <scoreDef><staffGrp symbol="brace" bar.thru="true">${staffDef(1, startClef.rh)}${staffDef(2, startClef.lh)}</staffGrp></scoreDef>
-    <section>
+    <section>${systemBreak ? '<sb/>' : ''}
     ${measures.join('\n    ')}
     </section>
   </score></mdiv></body></music>

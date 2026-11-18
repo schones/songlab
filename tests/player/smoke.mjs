@@ -8,7 +8,7 @@
  * RD-2000 check: nothing is drawn and nothing sounds.
  *
  *   node tests/player/smoke.mjs            every scenario, each in its own process (≈ 25 s: the clock is real time)
- *   node tests/player/smoke.mjs pause      one scenario: pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars
+ *   node tests/player/smoke.mjs pause      one scenario: pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars | two-lines
  *
  * Add a scenario: a function in SCENARIOS that boots the harness, checks,
  * and ends with h.done().
@@ -203,6 +203,66 @@ const SCENARIOS = {
     const { P, el, check } = h;
     check('anchors as a bar list: the bars in the piece only, sent to the staff; beat 1 of those bars only', [[...P.anchors], P.staff.anchors, P.isAnchor(5, 0), P.isAnchor(5, 1), P.isAnchor(2, 0)], [[1, 5, 9], [1, 5, 9], true, false, false]);
     check('"Strict" row as plain text (no notes to link to); no Song notes button', [el('pl-info-feel').textContent, el('pl-info-feel').children.length, el('pl-info-feel-row').hidden, el('pl-notes-btn').hidden], ['Strict', 0, false, true]);
+    h.done();
+  },
+
+  /** The two-line view: which line the page asks the staff to preview (next line, loop wrap, end of the piece), Lines 1 | 2, the transports. */
+  async 'two-lines'() {
+    const h = await boot();
+    const { P, C, L, key, check, sleep, storage } = h;
+    const S = P.staff;
+    const last = () => { const v = S.shows[S.shows.length - 1]; return [v.top, v.bottom, v.active]; };
+    const view = () => [...last(), S.range, P.state.line];
+    check('load: every line prepared once; line 1 on top, line 2 previewed, the top slot active', [S.prepared, view(), P.lines], [[[[1, 4], [5, 8], [9, 12], [13, 16]]], [[1, 4], [5, 8], 0, { from: 1, to: 4 }, 0], 2]);
+
+    // ── paging: the next line below; the last two lines stay up at the end ──
+    key('ArrowRight'); await sleep(20);
+    check('→: line 2 current, line 3 previewed (a forward move may shift)', [view(), S.shows[S.shows.length - 1].animate], [[[5, 8], [9, 12], 0, { from: 5, to: 8 }, 1], true]);
+    key('ArrowRight'); await sleep(20); key('ArrowRight'); await sleep(20);
+    check('the last line: no shift — line 3 stays on top, line 4 is the active one in the bottom slot', view(), [[9, 12], [13, 16], 1, { from: 13, to: 16 }, 3]);
+    key('ArrowLeft'); await sleep(20);
+    check('← from the last line: the same two lines, the top one active again', view(), [[9, 12], [13, 16], 0, { from: 9, to: 12 }, 2]);
+
+    // ── wait-for-me across a line: the follower's own page turn asks for the next pair ──
+    key('r'); await sleep(20);
+    const playBar = () => { for (const chord of [[86, 67], [70], [74], [86]]) { for (const m of chord) P.noteOn(m, performance.now()); for (const m of chord) P.noteOff(m); } };
+    for (let b = 0; b < 4; b++) playBar();
+    await sleep(20);
+    check('playing bars 1–4 turns to line 2 with line 3 under it', [view(), P.state.bar, P.state.wrong], [[[5, 8], [9, 12], 0, { from: 5, to: 8 }, 1], 5, 0]);
+
+    // ── loops: a loop across lines previews its first line from its last; one inside a line changes nothing ──
+    P.setLoop(3, 6); await sleep(20);
+    check('loop bars 3–6: at its start (line 1) the preview is line 2', view(), [[1, 4], [5, 8], 0, { from: 1, to: 4 }, 0]);
+    P.stepLine(1); await sleep(20);
+    check('…on its last line (line 2) the preview is the loop\'s first line', [view(), !!P.state.loop], [[[5, 8], [1, 4], 0, { from: 5, to: 8 }, 1], true]);
+    P.clearLoop(); await sleep(20);
+    check('clearing the loop there puts line 3 back under it, without a shift', [view(), S.shows[S.shows.length - 1].animate], [[[5, 8], [9, 12], 0, { from: 5, to: 8 }, 1], false]);
+    const before = S.shows.length;
+    P.setLoop(5, 8); await sleep(20);
+    check('Repeat line (bars 5–8): the preview stays line 3, nothing re-drawn', [view(), S.shows.length - before], [[[5, 8], [9, 12], 0, { from: 5, to: 8 }, 1], 0]);
+    P.setLoop(13, 16); await sleep(20);
+    check('a loop inside the last line: the last two lines, the bottom one active', view(), [[9, 12], [13, 16], 1, { from: 13, to: 16 }, 3]);
+    P.clearLoop(); await sleep(20);
+
+    // ── Lines: 1 | 2 ──
+    key('r'); await sleep(20);
+    check('Lines 1: one slot, remembered', [P.setLines(1), storage.songlab_player_lines, (await sleep(20), view())], [1, '1', [[1, 4], null, 0, { from: 1, to: 4 }, 0]]);
+    key('ArrowRight'); await sleep(20);
+    check('…paging is line by line', view(), [[5, 8], null, 0, { from: 5, to: 8 }, 1]);
+    check('Lines 2 again: both slots re-drawn in place', [P.setLines(2), storage.songlab_player_lines, (await sleep(20), view())], [2, '2', [[5, 8], [9, 12], 0, { from: 5, to: 8 }, 1]]);
+    check('anything else is the default (2)', P.setLines('x', { save: false }), 2);
+
+    // ── a transport: its own loop decides the preview; a stop restores both slots ──
+    key('r'); await sleep(20);
+    P.setCountIn(0); P.tempo = 200;   // 164 bpm, 3/4: a bar is 1.098 s
+    await C.listen({ from: 3, to: 6, loop: true });
+    await sleep(2500);   // bars 3, 4, then bar 5 from 2.2 s
+    check('Listen looping bars 3–6: on line 2 the preview is line 1 (the wrap); the follower has not moved', [L.active, view()], [true, [[5, 8], [1, 4], 0, { from: 5, to: 8 }, 0]]);
+    P.setLines(1); await sleep(20);
+    check('Lines 1 while it plays: the transport\'s line alone, still playing', [L.active, view()], [true, [[5, 8], null, 0, { from: 5, to: 8 }, 0]]);
+    P.setLines(2); await sleep(20);
+    C.stop(); await sleep(50);
+    check('stop: the practice pair is back (lines 1 and 2), cut', [view(), S.shows[S.shows.length - 1].animate], [[[1, 4], [5, 8], 0, { from: 1, to: 4 }, 0], false]);
     h.done();
   },
 };
