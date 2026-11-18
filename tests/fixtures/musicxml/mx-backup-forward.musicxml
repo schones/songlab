@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-written fixture for tools/pieces/musicxml_to_norm.py: two voices on staff 1 written with forward and backup; staff 2 has nothing at all. -->
+<score-partwise version="4.0">
+  <work><work-title>Backup Forward</work-title></work>
+  <part-list>
+    <score-part id="P1"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef>
+        <clef number="2"><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>4</duration>
+        <voice>1</voice>
+        <type>half</type>
+        <staff>1</staff>
+      </note>
+      <forward><duration>4</duration></forward>
+      <backup><duration>8</duration></backup>
+      <forward><duration>2</duration></forward>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>2</duration>
+        <voice>2</voice>
+        <type>quarter</type>
+        <staff>1</staff>
+      </note>
+      <note>
+        <pitch><step>G</step><octave>4</octave></pitch>
+        <duration>4</duration>
+        <voice>2</voice>
+        <type>half</type>
+        <staff>1</staff>
+      </note>
+    </measure>
+  </part>
+</score-partwise>

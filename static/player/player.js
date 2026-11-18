@@ -243,6 +243,7 @@ const CLICK_SECONDS = 0.6;                           // on-screen key: attack + 
 const WRONG_FLASH_MS = 500;
 const CORRECT_FLASH_MS = 400;                        // minimum green on a key (clicks release at once)
 const KEY_MARGIN = 3;                                // keys past the piece's lowest / highest
+const KEY_MIN_SPAN = 48;                             // the keyboard's smallest span in semitones: four octaves, C to C (pieceRange)
 const KEY_STATES = ['expected', 'correct', 'wrong', 'held', 'playing'];
 const BLACK_PCS = new Set([1, 3, 6, 8, 10]);
 /** ASCII spelling for Tone (parseNote gives ♯, which Tone's note parser does not read): the shared helper every sampler call uses. */
@@ -516,7 +517,13 @@ function flashKey(midi, st, ms) {
   }, ms));
 }
 
-/** Keyboard range from the piece: lowest / highest attacked midi (both hands), a few keys of margin, snapped outward to white keys. */
+/**
+ * Keyboard range from the piece: lowest / highest attacked midi (both hands), a
+ * few keys of margin, snapped outward to white keys. A range narrower than
+ * KEY_MIN_SPAN (four octaves) becomes whole octaves, C to C, at least four of
+ * them, with the piece near the middle (minSpan); a wider piece keeps its own
+ * range, as before.
+ */
 function pieceRange(norm) {
   let lo = Infinity, hi = -Infinity;
   for (const s of buildSteps(norm, { hands: 'both' })) for (const n of s.notes) { lo = Math.min(lo, n.midi); hi = Math.max(hi, n.midi); }
@@ -524,7 +531,17 @@ function pieceRange(norm) {
   lo -= KEY_MARGIN; hi += KEY_MARGIN;
   while (BLACK_PCS.has(lo % 12)) lo--;
   while (BLACK_PCS.has(hi % 12)) hi++;
-  return { low: Math.max(21, lo), high: Math.min(108, hi) };
+  lo = Math.max(21, lo); hi = Math.min(108, hi);
+  return hi - lo < KEY_MIN_SPAN ? minSpan(lo, hi) : { low: lo, high: hi };
+}
+
+/** [lo, hi] → the Cs around it, widened an octave at a time on the side with less room until it spans KEY_MIN_SPAN; kept on the piano (C1–C8). */
+function minSpan(lo, hi) {
+  let low = Math.max(24, Math.floor(lo / 12) * 12), high = Math.ceil(hi / 12) * 12;
+  while (high - low < KEY_MIN_SPAN) {
+    if ((lo - low <= high - hi && low > 24) || high >= 108) low -= 12; else high += 12;
+  }
+  return { low: Math.min(low, lo), high };   // a piece that reaches below C1 keeps its lowest keys (A0)
 }
 
 function mountKeyboard(norm) {

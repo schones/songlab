@@ -47,6 +47,18 @@
  * with bar memory per letter + octave per staff (review_page.assign_accidentals);
  * a tied-into note never shows one.
  *
+ * Repeats and navigation marks (display only; nothing here changes what is
+ * played). norm.repeats { start: [bar…], end: [bar…] } become repeat
+ * barlines: left="rptstart" / right="rptend" on the measure, so a start on
+ * the first bar of a range and an end on its last bar both draw (each line
+ * is its own document); an end directly followed by a start inside the range
+ * is one right="rptboth". norm.marks { <type>: [bar…] }: `segno` and `coda`
+ * are the signs above the top staff at the start of the bar (<repeatMark>);
+ * `toCoda` (with a small coda sign), `dsAlCoda`, `dcAlCoda`, `dsAlFine`,
+ * `dcAlFine` and `fine` are text above the top staff, right-aligned at the
+ * end of the bar (<dir>; MARK_TEXT). Absent fields: no marks. Unknown mark
+ * types and bars that are not numbers are reported in warnings.
+ *
  * Ids are pl-b{bar}-{staff}-{n}. In hits, `onset` is the attack onset of the
  * event the piece belongs to (what a follower matches on) and `at` is where
  * the piece is drawn; `tieStop` is true for the continuation pieces of a split
@@ -303,6 +315,44 @@ function piecesXML(pieces, grid, beams) {
   return pieces.map((p, i) => `${starts.has(i) ? '<beam>' : ''}${pieceXML(p)}${ends.has(i) ? '</beam>' : ''}`).join('');
 }
 
+// Navigation marks: the signs at the start of a bar, the text marks at its end (norm.marks).
+const MARK_SIGNS = ['segno', 'coda'];
+const MARK_TEXT = { toCoda: 'To Coda', dsAlCoda: 'D.S. al Coda', dcAlCoda: 'D.C. al Coda', dsAlFine: 'D.S. al Fine', dcAlFine: 'D.C. al Fine', fine: 'Fine' };
+const MARK_TYPES = [...MARK_SIGNS, ...Object.keys(MARK_TEXT)];
+const CODA_SYMBOL = '<rend fontsize="60%"><symbol glyph.auth="smufl" glyph.num="U+E048"/></rend>';   // the SMuFL coda sign at text size (no extra height)
+
+/** A norm bar list (norm.repeats.start, norm.marks.segno, …) → a Set of bar numbers; anything else is reported. */
+function barSet(value, what, warnings) {
+  if (value == null) return new Set();
+  const list = Array.isArray(value) ? value : [value];
+  const bad = list.filter(b => !Number.isInteger(b));
+  if (bad.length) warnings.push(`${what}: ${JSON.stringify(bad)} ignored (bar numbers expected)`);
+  return new Set(list.filter(b => Number.isInteger(b)));
+}
+
+/** norm.repeats / norm.marks → { starts, ends, marks: { type: Set } } (display only). */
+function formMarks(norm, warnings) {
+  const rp = norm && norm.repeats && typeof norm.repeats === 'object' ? norm.repeats : {};
+  const mk = norm && norm.marks && typeof norm.marks === 'object' ? norm.marks : {};
+  const marks = {};
+  for (const type of Object.keys(mk)) {
+    if (!MARK_TYPES.includes(type)) { warnings.push(`marks.${type} not understood (${MARK_TYPES.join(' | ')}); ignored`); continue; }
+    marks[type] = barSet(mk[type], `marks.${type}`, warnings);
+  }
+  return { starts: barSet(rp.start, 'repeats.start', warnings), ends: barSet(rp.end, 'repeats.end', warnings), marks };
+}
+
+/** The control events of one bar's marks: signs at beat 1, text marks right-aligned at the end of the bar (tstamp = beats + 1). */
+function marksXML(marks, bar, endStamp) {
+  const out = [];
+  for (const type of MARK_SIGNS) if (marks[type] && marks[type].has(bar)) out.push(`<repeatMark xml:id="pl-mark-${type}-${bar}" tstamp="1" staff="1" place="above" func="${type}"/>`);
+  for (const type of Object.keys(MARK_TEXT)) {
+    if (!marks[type] || !marks[type].has(bar)) continue;
+    out.push(`<dir xml:id="pl-mark-${type}-${bar}" tstamp="${endStamp}" staff="1" place="above"><rend halign="right">${MARK_TEXT[type]}${type === 'toCoda' ? ' ' + CODA_SYMBOL : ''}</rend></dir>`);
+  }
+  return out;
+}
+
 function layerXML(pieces, n, clefChange, grid, beams = true) {
   const silent = pieces.every(p => p.rest || p.space);
   const body = silent && n === 1 ? '<mRest/>' : silent ? '' : piecesXML(pieces, grid, beams);
@@ -367,6 +417,7 @@ function toMEI(norm, { from, to, beams = true, systemBreak = false } = {}) {
     }
   });
 
+  const form = formMarks(norm, warnings);
   const hits = {};
   const measures = models.map((m, i) => {
     const prevBar = i > 0 ? models[i - 1].bar : null;
@@ -383,8 +434,13 @@ function toMEI(norm, { from, to, beams = true, systemBreak = false } = {}) {
       if (n.tieNext) controls.push(`<tie startid="#${n.id}" endid="#${n.tieNext}"/>`);
       if (n.tieOut === 'bar') controls.push(`<tie startid="#${n.id}" tstamp2="0m+${beatsPerBar + 1}"/>`);
     }
-    const right = m.bar === lastBar ? 'end' : 'single';
-    return `<measure n="${m.bar}" xml:id="pl-m${m.bar}" right="${right}">\n      ${staves.join('\n      ')}${controls.length ? '\n      ' + controls.join('\n      ') : ''}\n    </measure>`;
+    controls.push(...marksXML(form.marks, m.bar, meter.count + 1));
+    // Repeat barlines. An end met by a start in the next drawn bar is one rptboth; the first bar of the range always draws its own start.
+    const nextBar = i + 1 < models.length ? models[i + 1].bar : null;
+    const both = form.ends.has(m.bar) && nextBar != null && form.starts.has(nextBar);
+    const left = form.starts.has(m.bar) && !(i > 0 && form.ends.has(prevBar)) ? ' left="rptstart"' : '';
+    const right = both ? 'rptboth' : form.ends.has(m.bar) ? 'rptend' : m.bar === lastBar ? 'end' : 'single';
+    return `<measure n="${m.bar}" xml:id="pl-m${m.bar}"${left} right="${right}">\n      ${staves.join('\n      ')}${controls.length ? '\n      ' + controls.join('\n      ') : ''}\n    </measure>`;
   });
 
   const staffDef = (n, clef) =>
@@ -408,7 +464,7 @@ function toMEI(norm, { from, to, beams = true, systemBreak = false } = {}) {
 // EXPORTS
 // ════════════════════════════════════════════════════════════════════
 
-export { toMEI, splitDur, keyFifths, parseTime, clefFor, lineRanges, lineIndexFor, selfTest };
+export { MARK_TYPES, MARK_TEXT, toMEI, splitDur, keyFifths, parseTime, clefFor, lineRanges, lineIndexFor, selfTest };
 
 // ════════════════════════════════════════════════════════════════════
 // SELF-TEST
@@ -637,6 +693,41 @@ async function selfTest() {
   assert('lineRanges: barsPerLine 1 → one line per bar (today\'s behaviour); 0 / junk → 4', [lineRanges(barsOf([1, 2, 3]), { barsPerLine: 1 }).ranges, lineRanges(SIXTEEN, { barsPerLine: 0 }).ranges.length, lineRanges(SIXTEEN, { barsPerLine: 'x' }).ranges.length], [R([1, 1], [2, 2], [3, 3]), 4, 4]);
   assert('lineRanges: no bars / no norm → no ranges, no warnings', [lineRanges({ bars: [] }), lineRanges(null)], [{ ranges: [], warnings: [] }, { ranges: [], warnings: [] }]);
   assert('lineRanges: the PRELUDE fixture (1–16, no lines) → four lines; lineIndexFor finds bar 9 in line 2', (() => { const r = lineRanges(PRELUDE); return [r.ranges, r.warnings, lineIndexFor(r.ranges, 9)]; })(), [FOUR_BY_FOUR, [], 2]);
+
+  // Repeats and navigation marks (display only)
+  {
+    const whole = p => [ev(0, 4, [p])];
+    const FORM = { piece: 'form-fixture', key: 'C', time: '4/4', beatsPerBar: 4,
+      repeats: { start: [2, 4], end: [3, 5] },
+      marks: { segno: [2], coda: [6], toCoda: [3], dsAlCoda: [5], dcAlCoda: [1], dsAlFine: [1], dcAlFine: [6], fine: [4] },
+      bars: [1, 2, 3, 4, 5, 6].map(bar => ({ bar, rh: whole('C5'), lh: [rest(0, 4)] })) };
+    const head = (mei, bar) => { const m = new RegExp(`<measure n="${bar}"[^>]*>`).exec(mei); return m ? m[0] : null; };
+    const body = (mei, bar) => { const m = new RegExp(`<measure n="${bar}"[\\s\\S]*?</measure>`).exec(mei); return m ? m[0] : ''; };
+    const marksOf = (mei, bar) => (body(mei, bar).match(/xml:id="pl-mark-[a-zA-Z]+-\d+"/g) || []).map(x => x.slice(16, -1));
+    const all = toMEI(FORM, { from: 1, to: 6 });
+    assert('repeats: a start on bar 2, an end on bar 3 met by a start on bar 4 → one rptboth and no left on bar 4, an end on bar 5; no warnings',
+      [1, 2, 3, 4, 5, 6].map(b => head(all.mei, b).replace(/<measure n="\d+" xml:id="pl-m\d+"|>/g, '').trim()).concat([all.warnings]),
+      ['right="single"', 'left="rptstart" right="single"', 'right="rptboth"', 'right="single"', 'right="rptend"', 'right="end"', []]);
+    assert('repeats: each line is its own document — a start on the first bar of a range and an end on its last bar both draw',
+      [head(toMEI(FORM, { from: 2, to: 3 }).mei, 2), head(toMEI(FORM, { from: 2, to: 3 }).mei, 3), head(toMEI(FORM, { from: 4, to: 5 }).mei, 4), head(toMEI(FORM, { from: 4, to: 5 }).mei, 5)],
+      ['<measure n="2" xml:id="pl-m2" left="rptstart" right="single">', '<measure n="3" xml:id="pl-m3" right="rptend">', '<measure n="4" xml:id="pl-m4" left="rptstart" right="single">', '<measure n="5" xml:id="pl-m5" right="rptend">']);
+    assert('marks: every type lands in its own bar', [1, 2, 3, 4, 5, 6].map(b => marksOf(all.mei, b)),
+      [['dcAlCoda-1', 'dsAlFine-1'], ['segno-2'], ['toCoda-3'], ['fine-4'], ['dsAlCoda-5'], ['coda-6', 'dcAlFine-6']]);
+    assert('marks: segno and coda are <repeatMark> above the top staff at beat 1',
+      [/<repeatMark xml:id="pl-mark-segno-2" tstamp="1" staff="1" place="above" func="segno"\/>/.test(body(all.mei, 2)), /<repeatMark xml:id="pl-mark-coda-6" tstamp="1" staff="1" place="above" func="coda"\/>/.test(body(all.mei, 6))], [true, true]);
+    assert('marks: the text marks are right-aligned <dir>s at the end of the bar (tstamp 5 in 4/4) with the printed wording',
+      Object.keys(MARK_TEXT).map(t => { const m = new RegExp(`<dir xml:id="pl-mark-${t}-\\d+" tstamp="5" staff="1" place="above"><rend halign="right">([^<]*)`).exec(all.mei); return m ? m[1].trim() : null; }),
+      ['To Coda', 'D.S. al Coda', 'D.C. al Coda', 'D.S. al Fine', 'D.C. al Fine', 'Fine']);
+    assert('marks: only "To Coda" carries the coda sign (one <symbol> in the whole piece)', [count(all.mei, /<symbol /g), /To Coda <rend fontsize="60%"><symbol glyph\.auth="smufl" glyph\.num="U\+E048"\/><\/rend><\/rend><\/dir>/.test(body(all.mei, 3))], [1, true]);
+    assert('marks: the end-of-bar tstamp follows the meter (3/4 → 4)', /<dir xml:id="pl-mark-fine-1" tstamp="4"/.test(toMEI({ ...FORM, time: '3/4', beatsPerBar: 3, repeats: undefined, marks: { fine: [1] }, bars: [{ bar: 1, rh: [ev(0, 3, ['C5'])], lh: [rest(0, 3)] }] }, { from: 1, to: 1 }).mei), true);
+    assert('marks: marks do not touch notes — ids and hits are the same with and without them',
+      JSON.stringify(toMEI({ ...FORM, repeats: undefined, marks: undefined }, { from: 1, to: 6 }).hits) === JSON.stringify(all.hits), true);
+    assert('no fields → no marks: the prelude fixture has no repeat barline, repeatMark or dir', (() => { const m = toMEI(PRELUDE, { from: 1, to: 16 }).mei; return [count(m, /rpt(start|end|both)/g), count(m, /<repeatMark /g), count(m, /<dir /g)]; })(), [0, 0, 0]);
+    const odd = toMEI({ ...FORM, repeats: { start: ['2'], end: 3 }, marks: { segno: [2, 'x'], volta: [1] } }, { from: 1, to: 6 });
+    assert('unknown mark types and non-numeric bars are reported and ignored; a single number is accepted as a list',
+      [head(odd.mei, 2), head(odd.mei, 3), marksOf(odd.mei, 2), odd.warnings.length],
+      ['<measure n="2" xml:id="pl-m2" right="single">', '<measure n="3" xml:id="pl-m3" right="rptend">', ['segno-2'], 3]);
+  }
   assert('lineIndexFor: first bar → 0, a middle bar → 1, the last bar → 3, outside → -1, empty / junk ranges → -1', [lineIndexFor(FOUR_BY_FOUR, 1), lineIndexFor(FOUR_BY_FOUR, 6), lineIndexFor(FOUR_BY_FOUR, 16), lineIndexFor(FOUR_BY_FOUR, 17), lineIndexFor([], 1), lineIndexFor(null, 1)], [0, 1, 3, -1, -1, -1]);
 
   // ── Smoke pass over the real prelude norm when present ───────────

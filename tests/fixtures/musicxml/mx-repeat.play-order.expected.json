@@ -1,0 +1,145 @@
+{
+ "piece": "repeat",
+ "title": "Repeat",
+ "reader": "musicxml",
+ "source": "mx-repeat.musicxml (staff 1 → rh, staff 2 → lh)",
+ "date": "2026-01-01",
+ "key": "C",
+ "time": "4/4",
+ "beatsPerBar": 4,
+ "clefs": {
+  "lh": [
+   {
+    "bar": 1,
+    "clef": "bass"
+   }
+  ],
+  "rh": [
+   {
+    "bar": 1,
+    "clef": "treble"
+   }
+  ]
+ },
+ "repeats": {
+  "start": [
+   2
+  ],
+  "end": [
+   3
+  ]
+ },
+ "form": {
+  "playOrder": [
+   1,
+   2,
+   3,
+   4,
+   2,
+   3,
+   4
+  ]
+ },
+ "bars": [
+  {
+   "bar": 1,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "C4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 2,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "D4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 3,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "E4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 4,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "F4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  }
+ ]
+}

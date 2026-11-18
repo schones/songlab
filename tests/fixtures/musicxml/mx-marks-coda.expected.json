@@ -1,0 +1,213 @@
+{
+ "piece": "marks-coda",
+ "title": "Marks Coda",
+ "reader": "musicxml",
+ "source": "mx-marks-coda.musicxml (staff 1 → rh, staff 2 → lh)",
+ "date": "2026-01-01",
+ "key": "C",
+ "time": "4/4",
+ "beatsPerBar": 4,
+ "clefs": {
+  "lh": [
+   {
+    "bar": 1,
+    "clef": "bass"
+   }
+  ],
+  "rh": [
+   {
+    "bar": 1,
+    "clef": "treble"
+   }
+  ]
+ },
+ "repeats": {
+  "start": [
+   2
+  ],
+  "end": [
+   3
+  ]
+ },
+ "marks": {
+  "segno": [
+   2
+  ],
+  "coda": [
+   5
+  ],
+  "toCoda": [
+   3
+  ],
+  "dsAlCoda": [
+   4
+  ],
+  "dcAlCoda": [
+   6
+  ]
+ },
+ "form": {
+  "playOrder": [
+   1,
+   2,
+   3,
+   2,
+   3,
+   4,
+   5,
+   6
+  ]
+ },
+ "bars": [
+  {
+   "bar": 1,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "C4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 2,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "D4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 3,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "E4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 4,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "F4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 5,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "G4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 6,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "A4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  }
+ ]
+}

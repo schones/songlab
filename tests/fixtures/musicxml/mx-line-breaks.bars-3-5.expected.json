@@ -1,0 +1,106 @@
+{
+ "piece": "line-breaks",
+ "title": "Line Breaks",
+ "reader": "musicxml",
+ "source": "mx-line-breaks.musicxml (bars 3–5 of 5, renumbered from 1; staff 1 → rh, staff 2 → lh)",
+ "date": "2026-01-01",
+ "key": "C",
+ "time": "4/4",
+ "beatsPerBar": 4,
+ "tempo": 120,
+ "clefs": {
+  "lh": [
+   {
+    "bar": 1,
+    "clef": "bass"
+   }
+  ],
+  "rh": [
+   {
+    "bar": 1,
+    "clef": "treble"
+   }
+  ]
+ },
+ "lines": [
+  1,
+  3
+ ],
+ "bars": [
+  {
+   "bar": 1,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "E4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 2,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "F4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 3,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "G4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  }
+ ]
+}

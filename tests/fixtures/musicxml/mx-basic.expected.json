@@ -1,0 +1,106 @@
+{
+ "piece": "basic-fixture",
+ "title": "Basic Fixture",
+ "reader": "musicxml",
+ "source": "mx-basic.musicxml (staff 1 → rh, staff 2 → lh)",
+ "date": "2026-01-01",
+ "key": "G minor",
+ "time": "3/4",
+ "beatsPerBar": 3,
+ "tempo": 96,
+ "tempoMarking": "Andante",
+ "clefs": {
+  "lh": [
+   {
+    "bar": 1,
+    "clef": "bass"
+   }
+  ],
+  "rh": [
+   {
+    "bar": 1,
+    "clef": "treble"
+   }
+  ]
+ },
+ "bars": [
+  {
+   "bar": 1,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 1,
+     "pitches": [
+      "G4",
+      "B♭4"
+     ],
+     "rest": false,
+     "tie": null
+    },
+    {
+     "onset": 1,
+     "dur": 2,
+     "pitches": [
+      "D5"
+     ],
+     "rest": false,
+     "tie": "start"
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 3,
+     "pitches": [
+      "G3"
+     ],
+     "rest": false,
+     "tie": "start"
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 2,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 2,
+     "pitches": [
+      "D5"
+     ],
+     "rest": false,
+     "tie": "stop"
+    },
+    {
+     "onset": 2,
+     "dur": 1,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 1,
+     "pitches": [
+      "G3"
+     ],
+     "rest": false,
+     "tie": "stop"
+    },
+    {
+     "onset": 1,
+     "dur": 2,
+     "pitches": [],
+     "rest": true,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  }
+ ]
+}

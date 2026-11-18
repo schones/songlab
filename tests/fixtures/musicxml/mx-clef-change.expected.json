@@ -1,0 +1,115 @@
+{
+ "piece": "clef-change",
+ "title": "Clef Change",
+ "reader": "musicxml",
+ "source": "mx-clef-change.musicxml (staff 1 → rh, staff 2 → lh)",
+ "date": "2026-01-01",
+ "key": "C",
+ "time": "4/4",
+ "beatsPerBar": 4,
+ "clefs": {
+  "lh": [
+   {
+    "bar": 1,
+    "clef": "treble"
+   },
+   {
+    "bar": 2,
+    "clef": "bass"
+   }
+  ],
+  "rh": [
+   {
+    "bar": 1,
+    "clef": "treble"
+   },
+   {
+    "bar": 3,
+    "clef": "bass"
+   }
+  ]
+ },
+ "bars": [
+  {
+   "bar": 1,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "E5"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "C4"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 2,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "D5"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "C3"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  },
+  {
+   "bar": 3,
+   "voice": [],
+   "rh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "E3"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "lh": [
+    {
+     "onset": 0,
+     "dur": 4,
+     "pitches": [
+      "C2"
+     ],
+     "rest": false,
+     "tie": null
+    }
+   ],
+   "uncertain": []
+  }
+ ]
+}
