@@ -14,6 +14,8 @@
  *   await staff.show({ from: 9, to: 12 }, { from: 13, to: 16 }, { active: 1 });   // the bottom slot is the active one (the last line of a piece)
  *   await staff.show({ from: 5, to: 8 });        // one slot
  *   await staff.show(top, bottom, { animate: false });   // never the upward shift (a hard cut)
+ *   await staff.show(top, bottom, { label: '↩ bar 9' }); // a small tag on the PASSIVE slot (the preview): where the music goes next when that is
+ *                                                //   a jump and not the next line. Laid over the slot's corner: no slot changes size. '' / none: no tag.
  *   staff.setNoteState('pl-b1-1-0', 'expected'); // 'expected' | 'correct' | 'wrong' | 'playing' | null — the active slot only
  *   staff.clearStates();
  *   staff.setDimmed(ids);                        // the other hand, drawn faint (pl-note--dim); [] clears — the active slot only
@@ -110,6 +112,8 @@ const CSS = /* css */ `
 /* A slot: one line. Every slot of a piece has the same aspect-ratio (set by script), so an empty one keeps its place. */
 .pl-staff-slot { position: relative; width: 100%; opacity: 1; transition: opacity ${SHIFT_MS}ms linear; }
 .pl-staff-slot--passive { opacity: 0.55; }
+/* The preview's jump tag ("↩ bar 9", "→ Coda"): laid over the slot's top right corner, out of the flow, so no slot changes size. */
+.pl-staff-slot__label { position: absolute; top: 2px; right: 6px; z-index: 1; padding: 2px 9px; border: 1px solid currentColor; border-radius: 999px; font: 600 0.8rem/1.2 system-ui, sans-serif; white-space: nowrap; color: var(--text-primary, #141210); background: var(--bg-card, var(--bg-primary, #FFFFFF)); pointer-events: none; }
 /* The slot's own SVG only (not Verovio's nested definition-scale svg, whose size is set by attribute): it fills the slot's width; height follows the shared viewBox. */
 .pl-staff-slot > svg { display: block; width: 100%; height: auto; color: var(--text-primary, #141210); fill: currentColor; }
 .pl-staff-svg g.note { transition: color 80ms linear; }
@@ -362,7 +366,7 @@ class PlayerStaff {
    * tints and anchors carry over. See "Line change" in the header for when
    * this shifts and when it cuts; `animate: false` always cuts.
    */
-  async show(top, bottom = null, { active = 0, animate = true } = {}) {
+  async show(top, bottom = null, { active = 0, animate = true, label = '' } = {}) {
     const token = ++this._token;
     if (this._preparing) await this._preparing;
     if (token !== this._token) return null;
@@ -392,6 +396,8 @@ class PlayerStaff {
     this._slots = next;
     this._active = act2;
     next.forEach((s, i) => s.el.classList.toggle('pl-staff-slot--passive', i !== act2));
+    next.forEach((s, i) => { s.label = i !== act2 && next.length > 1 && label ? String(label) : ''; this._drawLabel(s); });   // the preview's jump tag; every other slot loses its own
+    if (leaving) { leaving.label = ''; this._drawLabel(leaving); }
     if (leaving) leaving.el.classList.add('pl-staff-slot--passive');   // no longer the active line: it dims as it slides out
     this._layout();
 
@@ -403,7 +409,7 @@ class PlayerStaff {
     next.forEach((s, i) => { if (!shift || i === 0 || i === act2) this._fill(s); });
     if (leaving && !this._startShift(leaving)) for (const s of next) this._fill(s);   // nothing to animate after all: everything now
 
-    this._svgHost.setAttribute('aria-label', `Staff notation for ${next.map(s => barsLabel(s.range)).join(', then ')}`);
+    this._svgHost.setAttribute('aria-label', `Staff notation for ${next.map(s => barsLabel(s.range) + (s.label ? ` (${s.label})` : '')).join(', then ')}`);
     this._setState('ready', '');
     const a = next[act2];
     return { hits: a.hits, warnings: a.entry.warnings };
@@ -412,7 +418,7 @@ class PlayerStaff {
   _makeSlot(range) {
     const el = document.createElement('div');
     el.className = 'pl-staff-slot';
-    const slot = { el, range: { from: range.from, to: range.to }, key: keyOf(range), entry: null, svg: null, hits: {}, states: new Map(), markerBar: null, extent: null, filled: false };
+    const slot = { el, range: { from: range.from, to: range.to }, key: keyOf(range), entry: null, svg: null, hits: {}, states: new Map(), markerBar: null, extent: null, filled: false, label: '', labelEl: null };
     this._sizeSlot(slot);
     return slot;
   }
@@ -425,13 +431,27 @@ class PlayerStaff {
     slot.entry = e;
     if (e.error) return;
     slot.el.innerHTML = e.svg;
-    slot.svg = slot.el.querySelector('svg');
+    slot.labelEl = null;   // gone with the old content
+    this._drawLabel(slot);
+    slot.svg = slot.el.querySelector(':scope > svg') || slot.el.querySelector('svg');
     slot.hits = {}; slot.states = new Map(); slot.markerBar = null; slot.extent = null;
     if (!slot.svg) return;
     this._applyBox(slot);
     for (const [id, hit] of Object.entries(e.hits)) if (this._find(id, slot)) slot.hits[id] = hit;
     for (const t of TINTS) this._drawTint(t, [slot]);
     this._drawAnchors([slot]);
+  }
+
+  /** The slot's jump tag (slot.label): an absolutely placed element over the slot, made, changed or removed. It takes no room. */
+  _drawLabel(slot) {
+    if (!slot.label) { if (slot.labelEl) { slot.labelEl.remove(); slot.labelEl = null; } return; }
+    if (!slot.labelEl || slot.labelEl.parentNode !== slot.el) {
+      slot.labelEl = document.createElement('div');
+      slot.labelEl.className = 'pl-staff-slot__label';
+      slot.labelEl.setAttribute('aria-hidden', 'true');   // the host's aria-label says it
+      slot.el.appendChild(slot.labelEl);
+    }
+    slot.labelEl.textContent = slot.label;
   }
 
   /** Every slot the same shape: the shared box's aspect-ratio (an unfilled slot keeps its place). */

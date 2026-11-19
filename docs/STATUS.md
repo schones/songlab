@@ -1,6 +1,6 @@
 # SongLab Project Status
 
-**Last updated:** 2026-11-16
+**Last updated:** 2026-11-18
 **Branch:** `dev` — all active work. Cycle of Shells merged 2026-10-27;
 Voicing Explorer Sessions 1–6.5 merged `df0e2fc`; Learn Phase 0 + Phase 1
 topics merged via `learn-topics`; Cantor v1; MIDI multi-port fix `57afaa9`.
@@ -124,15 +124,28 @@ is right; the slide was the player rushing at 60 bpm. Later the same day
 downbeats on the staff, `anchor: true` on note events) and **Song
 notes** (per-piece notes in a slide-in panel from the header, N); a
 count-in-0 timing-log fix; and a stubbed-DOM smoke test of the real
-`player.js` (`tests/player/smoke.mjs`). Detail below under "What's
-Working".
+`player.js` (`tests/player/smoke.mjs`). 2026-11-18 (`1bcedd2`,
+`7a4ea41`): a **two-line view** (the current line on top, the line played
+next below, shifting up one line at a time; "Lines 1 | 2" in the Mode
+card, default 2) with every line engraved at one staff size in
+equal-height slots; a **MusicXML importer**
+(`tools/pieces/musicxml_to_norm.py`: a Soundslice or MuseScore score
+straight to a player piece, no Logic recording); **repeat barlines and
+navigation marks** drawn on the staff (segno, coda, To Coda, D.S. / D.C.
+al Coda / al Fine, Fine — display only, the player still plays the
+written bars straight through); and a four-octave minimum for the
+on-screen keyboard. Second and third pieces: Run Rudolph Run and its
+duet part, imported from one Soundslice export, private. Detail below
+under "What's Working".
 
 ### Public pieces pipeline — `tools/pieces/`, `sources/` (active, timeboxed)
 Seven public-domain scans are listed in `sources/SOURCES.md` (PDFs
 gitignored). Toolchain: `mxl_to_norm`, `diff_reads`, `collect_third`,
 `review_page` (3-way vote, Verovio render, pitch self-check), and since
 2026-10-30 `midi_to_norm` (MIDI recording → norm; optional `tempo`,
-`title`, `clefs` fields documented in `tools/pieces/README.md`). I Got
+`title`, `clefs` fields documented in `tools/pieces/README.md`), and
+since 2026-11-18 `musicxml_to_norm` (two-staff piano MusicXML → norm for
+the player; see the player's current state). I Got
 Rhythm is mid-review. Missing: a `norm_to_voicing.py` converter to the `/voicings`
 piece format (biggest gap); `review_page.py` is hard-wired to I Got
 Rhythm; no tracked record of where the IGR review stopped; schema needs a
@@ -179,7 +192,12 @@ Full version: [Claude doc](https://claude.ai/artifact/DHHd1R3qux19CPWyX7fPaA) ·
   fixes, collapsible rack) — done 2026-11-12 — and player 3 (shared
   beat clock, play-along with guide + timing log, Listen / play past the
   current line, pause / resume, pedal, controller + event bus) — done
-  2026-11-13, RD-2000 tested (`ea74c81`) → **next:** kids' track content
+  2026-11-13, RD-2000 tested (`ea74c81`) — and the two-line view, the
+  MusicXML importer, repeats and navigation marks on the staff, Run
+  Rudolph Run imported (solo + duet part) — done 2026-11-18 (`1bcedd2`,
+  `7a4ea41`) → **next:** a read-and-report for playback following the
+  form (`form.playOrder`), then the duet part as the band; then kids'
+  track content
   (Carol for Edie; Feel Good Inc. / Run Rudolph Run for Weston; the
   RD-2000 recording session also covers Carol lines 3–4 and Linus and
   Lucy) → warm-up screen → practice log (JSON on the mini, written by
@@ -1018,7 +1036,7 @@ checked in a browser or at the piano):**
   MIDI hot-plug, site-wide device default, sharp labels on held notes,
   ii_V_I walkthrough steps without concept_specifics.
 
-### Follow-along player — current state (updated 2026-11-13)
+### Follow-along player — current state (updated 2026-11-18)
 
 **Landed and verified on dev (Node self-tests; Milestone 1, Hands, No
 stress, the MIDI card and the metronome checked in Chrome with the
@@ -1038,7 +1056,68 @@ console snippets only):**
   be mirrored by a `tools/pieces/meter_rules.py` for the review page);
   beats shown by default (`norm.syncopation` field), meter hidden after
   line 1.
-- `static/player/player-staff-model.js` (77/77): norm → MEI with staff 1
+- Two-line view (2026-11-18, `1bcedd2`; Node self-tests, the smoke
+  test's `two-lines` scenario and a headless run of the real
+  `PlayerStaff` with Verovio 6.3.0): the current line on top and the
+  line played next below (`viewFor` / `nextLine` in `player.js`: line
+  k+1, or the loop's first line when the current line is the loop's
+  last). `state.line` and `staff.range` still mean the current line.
+  `PlayerStaff` owns two slots, each its own SVG, one active (hits, note
+  states, marker); the other is dimmed and gets tints, anchors and bar
+  taps. API `prepare(norm, ranges)` + `show(top, bottom, { active,
+  animate })`, replacing `render()`. A forward move shifts up one line in
+  150 ms and promotes the already-engraved next line; other moves cut.
+  At the end of the piece the last two lines stay and the final line is
+  active in the bottom slot. "Lines 1 | 2" in the Mode card
+  (`songlab_player_lines`, default 2).
+- Uniform staff size (same commit): each line is engraved as one system
+  justified to a fixed page width (`PAGE_WIDTH` 2100; Verovio `breaks:
+  'encoded'` over an `<sb/>`, `minLastJustification: 0`), so a dense line
+  tightens its spacing instead of shrinking. `prepare()` engraves every
+  line once at load, measures it, and gives every slot the same height
+  with the top staff line at the same place. A line that would be
+  squeezed under 65 % of its natural width (`MIN_SPACING`) gets a wider
+  page and is drawn smaller, with a warning. No Verovio call runs during
+  play.
+- Repeats and navigation marks, display only (2026-11-18, `7a4ea41`):
+  `norm.repeats` `{ start: [bar…], end: [bar…] }` and `norm.marks`
+  `{ segno, coda, toCoda, dsAlCoda, dcAlCoda, dsAlFine, dcAlFine, fine:
+  [bar…] }`. `toMEI` writes repeat barlines on the measure (a start on a
+  line's first bar and an end on its last both draw), the segno and coda
+  signs above the top staff at beat 1, and the text marks right-aligned
+  above the end of the bar ("To Coda" carries a small coda sign).
+  Playback is unchanged: written bars, straight through; `form.playOrder`
+  is written by the importer and read by nothing yet. The marks are
+  inside the tallest-line measurement, so slots stay uniform (they grow
+  about 4 % for Run Rudolph Run, about 10 % for its duet part).
+- On-screen keyboard: a piece narrower than four octaves gets whole
+  octaves C to C, at least four, with the piece near the middle
+  (`pieceRange` / `minSpan` in `player.js`; Run Rudolph Run C2–C6). Wider
+  pieces keep their own range (Carol stays F2–F6).
+- MusicXML importer (2026-11-18, `7a4ea41`):
+  `tools/pieces/musicxml_to_norm.py`, standard library only, `.musicxml`
+  / `.xml` / `.mxl`. Staff 1 → rh, staff 2 → lh; time, key, clefs, lines
+  (system breaks), tempo, `tempoMarking`, repeats and marks from the
+  file, each overridable by flag; `--bars FROM-TO` imports a range
+  renumbered from 1; `--play-order` or the file's repeats →
+  `form.playOrder` (bars are never unrolled); `fingering` carried per
+  event (one entry per pitch; nothing draws it yet); re-import keeps the
+  hand-written fields (feel, anchors, songNotes, syncopation, an edited
+  tempo) unless `--fresh`. Refuses, naming the bar: pickup or short bars,
+  tuplets, a time or key change in the range, clefs other than treble and
+  bass. Leaves out lyrics, fermatas, dynamics, double barlines, slurs.
+  Ties inside a bar are merged into one note (the staff model re-splits
+  by the meter; it does not draw a start/stop tie inside a bar). Fixture
+  test `tests/pieces/test_musicxml_to_norm.py` (37/37), fixtures in
+  `tests/fixtures/musicxml/`.
+- Pieces two and three: Run Rudolph Run (36 bars, C, 4/4, 148 bpm, 67
+  fingerings) and its duet part (36 bars), both from bars 1–36 and 37–72
+  of one Soundslice export kept outside the repo; repeats 9–32, segno 9,
+  To Coda 16, D.S. al Coda 32, coda 33, play order
+  1-32, 9-32, 9-16, 33-36 given by flag (the export carries the repeat
+  but no D.S. al Coda). Private, gitignored. The exact commands are in
+  SESSION_LOG 2026-11-18.
+- `static/player/player-staff-model.js` (87/87): norm → MEI with staff 1
   = RH, staff 2 = LH (hand-based, not pitch-split), a bar or a bar range,
   ties across bars, per-hand clef changes from the norm's `clefs`;
   `hits` map id → { midi, bar, hand, onset, at, tieStop }.
@@ -1395,6 +1474,20 @@ console snippets only):**
   2026-11-03). 1c No stress was checked on the RD-2000 2026-11-12.
 
 **Open / deferred:**
+- **Next:** a read-and-report for playback following the form
+  (`form.playOrder`), then the duet part as the band.
+- 2026-11-18 work was verified headlessly; Chrome results are not
+  recorded here. Still to confirm in Chrome: the coda sign beside "To
+  Coda" (drawn from a font embedded in the SVG), tints and the bar marker
+  on lines that carry marks, the keyboard minimum, the line-shift
+  animation under the beat clock, and whether two lines fit the screens
+  in use.
+- Not drawn: first and second ending brackets, fingering, fermatas,
+  lyrics, dynamics. A loop wrap whose first line is already previewed
+  shifts up instead of cutting.
+- The importer has only seen one real file (Soundslice). No MuseScore
+  export, multi-part file, grace note or mid-bar clef change has been
+  through it.
 - Player 3 (beat clock, play-along, pedal) needs its Chrome / RD-2000
   check: timing offsets against the click, the guide level at 35, stop
   cutting the guide cleanly, page turns at tempo.
@@ -1412,8 +1505,6 @@ console snippets only):**
   not carried).
 - Out of scope so far: MIDI control of loops, timed play-along scoring
   (the timing log exists; nothing reads it yet).
-- Multi-bar view: the model already takes a bar range; the page shows one
-  bar.
 - Staff splitting is not beat-aware (fine for 3/4; revisit for 4/4
   pieces).
 - `VoicingStaff` should set its Verovio options per render now that it
@@ -1433,7 +1524,8 @@ console snippets only):**
   `[player] pass recording …` / `… cancelled …` and one
   `[player] pass N of bars …` + `console.table` per pass.
 - Self-tests: `node --input-type=module -e "import('./static/player/player-staff-model.js').then(m => m.selfTest())"`
-  and the same for `player-follow.js`, `player-trouble.js`, `meter-rules.js`.
+  and the same for `player-follow.js`, `player-trouble.js`, `meter-rules.js`;
+  `node tests/player/smoke.mjs`; `python3 tests/pieces/test_musicxml_to_norm.py`.
 - Console snippets for a strict pass with misses in bars 6–7 and a No
   stress pass with a dropped note + a stray key per bar are in
   SESSION_LOG 2026-11-03.
@@ -1562,7 +1654,7 @@ itemised in `docs/AUDIT-2026-10-27.md` §1 and summarised here.
 | `docs/active-plans/instructional-content.md` | **Learn plan** — topic order, verification status |
 | `docs/active-plans/explainer-content.md` | Explainer registry drafts (Session 6.5 + Phase 0) |
 | `sources/SOURCES.md` | Public-domain scans, PD reasoning, pieces pipeline notes |
-| `tools/pieces/README.md` | Norm format (incl. `tempo`, `title`, `clefs` added 2026-10-30) and the pieces toolchain, `midi_to_norm.py` included |
+| `tools/pieces/README.md` | Norm format (incl. `tempo`, `title`, `clefs` added 2026-10-30) and the pieces toolchain, `midi_to_norm.py` and `musicxml_to_norm.py` included; `repeats`, `marks`, `fingering`, `tempoMarking` added 2026-11-18 |
 | `tools/voicings/schema.md` | Voiced-progression JSON schema (v1) consumed by `voicing-analysis.js` |
 | `docs/registry-inventory.md` | Chord-type registry audit + canonical JSON spec (§9: voicing-analysis local types) |
 | `docs/content-architecture.md` | Content model, topic schema, lens system |

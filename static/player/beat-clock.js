@@ -10,11 +10,17 @@
  * adapter the self-test uses.
  *
  *   createBeatClock({ audio, timer }) → clock
- *     configure({ bars, meter })
+ *     configure({ bars, meter, sequence })
  *         bars   the piece's bar numbers in order (they need not be contiguous)
+ *         sequence  instead of bars: the bars in PLAYED order (player-form.js) — kept as
+ *                given, not sorted, and a bar may be listed as often as it is played. It is
+ *                addressed by played index, `seq` (0-based): start({ fromSeq, toSeq, startSeq }),
+ *                seek({ seq }). Every payload carries the seq it falls in; `bar` stays the
+ *                WRITTEN bar. A plain bar list has seqs too (the index in the list), so
+ *                fromSeq / toSeq / startSeq work there as well. configure({ bars }) goes back.
  *         meter  a metronome.js pattern, a time string ('3/4') or { time, beatsPerBar }
  *     setTempo(bpm)          quarter notes per minute; LIVE — see "Tempo" below. `tempo` reads it.
- *     start({ fromBar, toBar, startBar, loop = false, countInBars = 0, items = [], at }) → { startTime, barOneTime, from, to, start } | null
+ *     start({ fromBar, toBar, startBar, fromSeq, toSeq, startSeq, loop = false, countInBars = 0, items = [], at }) → { startTime, barOneTime, from, to, start } | null
  *         Runs fromBar..toBar (defaults: the seek bar or the first bar, the last
  *         bar). loop: wraps to fromBar after toBar until stop(); otherwise the
  *         clock ends itself after toBar. countInBars bars of beats come first,
@@ -31,7 +37,7 @@
  *         audio time of that first downbeat, `start` the bar.
  *     stop()                 now: nothing more is dispatched and every callback
  *                            not yet run is dropped (due events, at()). Emits 'stopped'.
- *     seek(bar)              running: the position continues at `bar`'s downbeat from the
+ *     seek(bar | { seq })    running: the position continues at `bar`'s downbeat from the
  *                            scheduling horizon (≤ LOOKAHEAD away), inside the range only
  *                            (false otherwise). Stopped: the next start()'s default fromBar.
  *     on(type, fn)           AHEAD of time: called when the event is scheduled, up to
@@ -45,9 +51,9 @@
  *                            (exact around now; null when not running). position() = now.
  *     running, range         range: { from, to, loop } of the run, or null
  *
- *   Events — every payload is a position { bar, beat, audioTime, pass }: `beat` is
+ *   Events — every payload is a position { bar, seq, beat, audioTime, pass }: `beat` is
  *   quarters from the bar's start (0-based, the norm's `onset`), `pass` counts loop
- *   passes from 1.
+ *   passes from 1, `seq` is the played index of the bar (null during the count-in).
  *     beat          + { index, accent, countIn }   index: the beat's number in the bar (0-based)
  *                   per the meter pattern; during the count-in countIn is true and bar is null
  *     bar           each bar's downbeat (not during the count-in)
@@ -103,10 +109,12 @@ function createBeatClock({ audio = toneClock(), timer = realTimer() } = {}) {
   const ahead = Object.fromEntries(TYPES.map(t => [t, new Set()]));
   const due = Object.fromEntries(TYPES.map(t => [t, new Set()]));
   let bars = [1];
+  let ordered = false;     // bars is a played sequence (configure({ sequence })): unsorted, bars may repeat, addressed by index
   let pattern = toPattern('4/4');
   let bpm = DEFAULT_BPM;
   let run = null;          // the run under way; see start()
   let seekBar = null;      // seek() while stopped
+  let seekSeq = null;      // seek({ seq }) while stopped
   let queue = [];          // [{ time, fn }] callbacks waiting for the audio clock
   let generation = 0;      // bumped by stop(): a drain under way stops there
   let timerId = null;
@@ -124,7 +132,7 @@ function createBeatClock({ audio = toneClock(), timer = realTimer() } = {}) {
     const pass = run.loop ? Math.floor(barsIn / run.nBars) + 1 : 1;
     const bi = run.loop ? barsIn % run.nBars : Math.min(barsIn, run.nBars - 1);
     const beat = Math.max(0, u - (run.loop ? barsIn : bi) * pattern.bar);
-    return { bar: bars[run.i0 + bi], beat: Math.round(beat * 1e6) / 1e6, pass };
+    return { bar: bars[run.i0 + bi], seq: run.i0 + bi, beat: Math.round(beat * 1e6) / 1e6, pass };
   }
 
   /** Tell the ahead listeners now, the due listeners when the audio clock gets there. */
@@ -156,14 +164,14 @@ function createBeatClock({ audio = toneClock(), timer = realTimer() } = {}) {
     const audioTime = timeOf(u);
     const accent = isAccent(pattern, run.k);
     if (run.k < run.ciBeats) {   // count-in
-      if (run.k === 0) emit('countInStart', { bar: null, beat: 0, pass: 1, audioTime, bars: run.countInBars });
-      emit('beat', { bar: null, beat: pattern.beats[index], pass: 1, audioTime, index, accent, countIn: true });
+      if (run.k === 0) emit('countInStart', { bar: null, seq: null, beat: 0, pass: 1, audioTime, bars: run.countInBars });
+      emit('beat', { bar: null, seq: null, beat: pattern.beats[index], pass: 1, audioTime, index, accent, countIn: true });
       return;
     }
     const pos = { ...where(u + 1e-7), beat: pattern.beats[index], audioTime };
     if (index === 0) {
       if (run.countInBars > 0 && !run.countInEnded) { run.countInEnded = true; emit('countInEnd', { ...pos }); }
-      if (pos.pass > 1 && pos.bar === bars[run.i0]) emit('loopWrap', { ...pos, from: bars[run.i0], to: bars[run.i0 + run.nBars - 1] });
+      if (pos.pass > 1 && pos.seq === run.i0) emit('loopWrap', { ...pos, from: bars[run.i0], to: bars[run.i0 + run.nBars - 1] });
       emit('bar', { ...pos });
     }
     emit('beat', { ...pos, index, accent, countIn: false });
@@ -172,7 +180,7 @@ function createBeatClock({ audio = toneClock(), timer = realTimer() } = {}) {
   function emitItem(it) {
     const audioTime = timeOf(it.u);
     const pos = it.tail
-      ? { bar: bars[run.i0 + run.nBars - 1], beat: pattern.bar, pass: run.itemLap + 1 }   // the end of the last bar, not the next downbeat
+      ? { bar: bars[run.i0 + run.nBars - 1], seq: run.i0 + run.nBars - 1, beat: pattern.bar, pass: run.itemLap + 1 }   // the end of the last bar, not the next downbeat
       : where(it.u + 1e-7);
     emit('item', { ...pos, audioTime, item: it.item });
   }
@@ -199,8 +207,9 @@ function createBeatClock({ audio = toneClock(), timer = realTimer() } = {}) {
       const audioTime = timeOf(run.len);
       const done = run;
       run.ended = true;
-      call(ahead.ended, { bar: bars[run.i0 + run.nBars - 1], beat: pattern.bar, pass: 1, audioTime });
-      queue.push({ time: audioTime, fn: () => { if (run === done) run = null; call(due.ended, { bar: bars[done.i0 + done.nBars - 1], beat: pattern.bar, pass: 1, audioTime }); } });
+      const last = run.i0 + run.nBars - 1;
+      call(ahead.ended, { bar: bars[last], seq: last, beat: pattern.bar, pass: 1, audioTime });
+      queue.push({ time: audioTime, fn: () => { if (run === done) run = null; call(due.ended, { bar: bars[last], seq: last, beat: pattern.bar, pass: 1, audioTime }); } });
       break;
     }
     run.uDone = Math.max(run.uDone, Math.min(uH, run.loop ? Infinity : run.len));
@@ -238,8 +247,9 @@ function createBeatClock({ audio = toneClock(), timer = realTimer() } = {}) {
   }
 
   const clock = {
-    configure({ bars: list, meter } = {}) {
-      if (Array.isArray(list) && list.length) bars = list.filter(b => typeof b === 'number').slice().sort((a, b) => a - b);
+    configure({ bars: list, meter, sequence } = {}) {
+      if (Array.isArray(sequence) && sequence.length) { bars = sequence.filter(b => typeof b === 'number'); ordered = true; seekBar = seekSeq = null; }   // played order: as given
+      else if (Array.isArray(list) && list.length) { bars = list.filter(b => typeof b === 'number').slice().sort((a, b) => a - b); ordered = false; seekSeq = null; }
       if (meter !== undefined) pattern = toPattern(meter);
       return clock;
     },
@@ -254,21 +264,29 @@ function createBeatClock({ audio = toneClock(), timer = realTimer() } = {}) {
       return bpm;
     },
     get tempo() { return bpm; },
-    start({ fromBar, toBar, startBar, loop = false, countInBars = 0, items = [], at } = {}) {
+    start({ fromBar, toBar, startBar, fromSeq, toSeq, startSeq, loop = false, countInBars = 0, items = [], at } = {}) {
       stop();
-      const from = fromBar != null ? fromBar : (seekBar != null ? seekBar : bars[0]);
-      const to = toBar != null ? toBar : bars[bars.length - 1];
-      const a = Math.min(from, to), b = Math.max(from, to);
-      const i0 = bars.findIndex(x => x >= a);
-      let i1 = -1;
-      for (let i = 0; i < bars.length; i++) if (bars[i] <= b) i1 = i;
-      if (i0 < 0 || i1 < i0) return null;
-      seekBar = null;
+      let i0, i1;
+      if (ordered || fromSeq != null || toSeq != null) {   // by played index (a bar number, where one is given instead, means its first / last time)
+        const s0 = fromSeq != null ? fromSeq : fromBar != null ? bars.indexOf(fromBar) : seekSeq != null ? seekSeq : seekBar != null ? bars.indexOf(seekBar) : 0;
+        const s1 = toSeq != null ? toSeq : toBar != null ? bars.lastIndexOf(toBar) : bars.length - 1;
+        i0 = Math.min(s0, s1); i1 = Math.max(s0, s1);
+        if (!Number.isInteger(i0) || !Number.isInteger(i1) || i0 < 0 || i1 >= bars.length) return null;
+      } else {
+        const from = fromBar != null ? fromBar : (seekBar != null ? seekBar : bars[0]);
+        const to = toBar != null ? toBar : bars[bars.length - 1];
+        const a = Math.min(from, to), b = Math.max(from, to);
+        i0 = bars.findIndex(x => x >= a);
+        i1 = -1;
+        for (let i = 0; i < bars.length; i++) if (bars[i] <= b) i1 = i;
+        if (i0 < 0 || i1 < i0) return null;
+      }
+      seekBar = null; seekSeq = null;
       const n = Math.max(0, Math.round(Number(countInBars) || 0));
       const startTime = Number.isFinite(at) ? at : (audio.ready() ? audio.now() + LEAD : 0);
       const countInQ = n * pattern.bar;
       const nBars = i1 - i0 + 1;
-      const si = startBar != null ? bars.indexOf(startBar) - i0 : 0;
+      const si = startSeq != null ? startSeq - i0 : startBar != null ? bars.indexOf(startBar, i0) - i0 : 0;   // a bar number: its first time in the range
       const bi = si > 0 && si < nBars ? si : 0;     // bars into the range the run begins at
       const startU = bi * pattern.bar;
       const ciBeats = n * pattern.beats.length, skipBeats = bi * pattern.beats.length;
@@ -290,8 +308,10 @@ function createBeatClock({ audio = toneClock(), timer = realTimer() } = {}) {
     },
     stop,
     seek(bar) {
-      if (!run || run.ended) { seekBar = bar; return true; }
-      const bi = bars.indexOf(bar) - run.i0;
+      const toSeq = bar && typeof bar === 'object' ? bar.seq : null;   // seek({ seq }): a played index
+      if (!run || run.ended) { if (toSeq != null) { seekSeq = toSeq; seekBar = null; } else { seekBar = bar; seekSeq = null; } return true; }
+      const bi = (toSeq != null ? toSeq : bars.indexOf(bar, run.i0)) - run.i0;   // a bar number: its first time in the range
+      if (!Number.isInteger(bi)) return false;
       if (bi < 0 || bi >= run.nBars) return false;
       const lap = run.loop ? Math.max(0, Math.floor(run.uDone / run.len + 1e-7)) : 0;
       const target = lap * run.len + bi * pattern.bar;
@@ -323,7 +343,7 @@ function createBeatClock({ audio = toneClock(), timer = realTimer() } = {}) {
     positionAt(audioTime) {
       if (!run) return null;
       const u = uAt(audioTime);
-      if (u < run.ciUntil - EPS) return { bar: null, beat: Math.round((((u % pattern.bar) + pattern.bar) % pattern.bar) * 1e6) / 1e6, pass: 1, countIn: true, audioTime };
+      if (u < run.ciUntil - EPS) return { bar: null, seq: null, beat: Math.round((((u % pattern.bar) + pattern.bar) % pattern.bar) * 1e6) / 1e6, pass: 1, countIn: true, audioTime };
       return { ...where(run.loop ? u : Math.min(u, run.len)), countIn: false, audioTime };
     },
     position() { return run && audio.ready() ? clock.positionAt(audio.now()) : null; },
@@ -533,6 +553,63 @@ async function selfTest() {
     let threw = false;
     try { R.clock.on('nope', () => {}); } catch (_) { threw = true; }
     assert('an unknown event name throws', threw, true);
+  }
+
+  // ── a played sequence: unsorted, bars repeat, addressed by seq ──
+  {
+    const ORDER = [1, 2, 3, 4, 3, 4, 2, 5];   // bars 3–4 repeated, then back to 2, then on to 5
+    const R = rig({ bpm: 120 });               // 4/4: a bar is 2 s
+    R.clock.configure({ sequence: ORDER });
+    const items = ORDER.map((bar, i) => ({ q: i * 4 + 1, id: `s${i}` }));
+    const s = R.clock.start({ at: 1, items });
+    R.go(18);
+    assert('a sequence runs in the order given, not sorted: bars 1 2 3 4 3 4 2 5, a bar every 2 s', [R.of('bar').map(e => e.bar), R.of('bar').map(e => e.audioTime), [s.from, s.to, s.start]], [ORDER, [1, 3, 5, 7, 9, 11, 13, 15], [1, 5, 1]]);
+    assert('every payload carries seq, the played index; bar stays the written bar', [R.of('bar').map(e => e.seq), R.of('beat').filter(e => e.index === 2).map(e => [e.seq, e.bar]).slice(3, 6), R.of('item').map(e => [e.item.id, e.seq, e.bar]).slice(4, 7)], [[0, 1, 2, 3, 4, 5, 6, 7], [[3, 4], [4, 3], [5, 4]], [['s4', 4, 3], ['s5', 5, 4], ['s6', 6, 2]]]);
+    assert('ended after the last seq, with it; no loopWrap in a run that does not loop', [R.of('ended').map(e => [e.bar, e.seq, e.audioTime]), R.of('loopWrap').length], [[[5, 7, 17]], 0]);
+  }
+  {
+    const ORDER = [1, 2, 3, 4, 3, 4, 2, 5];
+    const R = rig({ bpm: 120 });
+    R.clock.configure({ sequence: ORDER });
+    R.clock.start({ at: 1 });
+    R.go(9.6);
+    assert('…while it runs: bar 3 at seq 2, then bar 3 at seq 4', [5.5, 9.5].map(t => (p => [p.bar, p.seq, p.beat])(R.clock.positionAt(t))), [[3, 2, 1], [3, 4, 1]]);
+    R.clock.stop();
+    const s = R.clock.start({ fromSeq: 2, toSeq: 6, startSeq: 4, countInBars: 1, at: 20, items: [{ q: 0, id: 'a' }, { q: 8, id: 'c' }, { q: 12, id: 'd' }] });
+    R.go(30);
+    assert('fromSeq / toSeq / startSeq: a resume at the SECOND bar 3 (seq 4) plays 3 4 2 from one bar after the start, not from the first bar 3', [[s.from, s.to, s.start, s.barOneTime], R.of('bar').filter(e => e.audioTime >= 20).map(e => [e.bar, e.seq, e.audioTime]), R.of('item').filter(e => e.audioTime >= 20).map(e => e.item.id), R.of('ended').slice(-1).map(e => [e.seq, e.audioTime])], [[3, 2, 3, 22], [[3, 4, 22], [4, 5, 24], [2, 6, 26]], ['c', 'd'], [[6, 28]]]);
+    assert('count-in payloads have no bar and no seq', R.of('beat').filter(e => e.countIn).map(e => [e.bar, e.seq]), [[null, null], [null, null], [null, null], [null, null]]);
+  }
+  {
+    const R = rig({ bpm: 120 });
+    R.clock.configure({ sequence: [3, 4, 3, 5] });   // the first bar comes round again inside the pass
+    R.clock.start({ loop: true, at: 0 });
+    R.go(17.8);
+    assert('a looped sequence whose first bar recurs mid-pass: loopWrap only where the pass really starts (seq 0), by index', [R.of('bar').map(e => `${e.pass}:${e.bar}`), R.of('loopWrap').map(e => [e.pass, e.bar, e.seq, e.audioTime])], [['1:3', '1:4', '1:3', '1:5', '2:3', '2:4', '2:3', '2:5', '3:3'], [[2, 3, 0, 8], [3, 3, 0, 16]]]);
+    assert('seek({ seq }) while running goes to that played index; a seq outside the range is refused', [R.clock.seek({ seq: 3 }), R.clock.seek({ seq: 9 }), (R.go(18.2), R.of('bar').slice(-1).map(e => [e.bar, e.seq]))], [true, false, [[5, 3]]]);
+    R.clock.stop();
+    assert('bar numbers still work on a sequence — the first time from, the last time to — and a bad seq range is null', [(x => [x.from, x.to])(R.clock.start({ fromBar: 4, toBar: 3, at: 30 })), R.clock.start({ fromSeq: 2, toSeq: 9, at: 30 }), R.clock.start({ fromSeq: -1, at: 30 })], [[4, 3], null, null]);
+    R.clock.stop();
+    R.clock.seek({ seq: 2 });
+    const s = R.clock.start({ at: 40 });
+    R.go(45);
+    assert('seek({ seq }) while stopped is the next start\'s first seq', [s.from, R.of('bar').filter(e => e.audioTime >= 40).map(e => [e.bar, e.seq])], [3, [[3, 2], [5, 3]]]);
+  }
+  {
+    const R = rig({ bars: [1, 2, 15, 16], bpm: 120 });   // a plain bar list, as the page passes today
+    R.clock.start({ fromBar: 2, toBar: 16, loop: true, at: 0 });
+    R.go(7.8);
+    assert('a plain bar list is unchanged, and its payloads carry seq too: the index in the list', [R.of('bar').map(e => [e.bar, e.seq, e.pass]), R.of('loopWrap').map(e => [e.bar, e.seq])], [[[2, 1, 1], [15, 2, 1], [16, 3, 1], [2, 1, 2]], [[2, 1]]]);
+    R.clock.stop();
+    R.clock.configure({ sequence: [2, 1] });
+    R.clock.configure({ bars: [16, 2, 1] });
+    R.clock.start({ at: 10 });
+    R.go(16.5);
+    assert('configure({ bars }) after a sequence sorts again', R.of('bar').filter(e => e.audioTime >= 10).map(e => e.bar), [1, 2, 16]);
+    const t = rig({ bpm: 120 });
+    const u = t.clock.start({ fromSeq: 1, toSeq: 2, startSeq: 2, at: 0 });
+    t.go(3);
+    assert('fromSeq / toSeq / startSeq on a plain list', [[u.from, u.to, u.start], t.of('bar').map(e => [e.bar, e.seq])], [[2, 3, 3], [[3, 2]]]);
   }
 
   // ── the metronome driven by the clock ───────────────────────────

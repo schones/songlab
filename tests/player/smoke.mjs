@@ -8,7 +8,7 @@
  * RD-2000 check: nothing is drawn and nothing sounds.
  *
  *   node tests/player/smoke.mjs            every scenario, each in its own process (≈ 25 s: the clock is real time)
- *   node tests/player/smoke.mjs pause      one scenario: pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars | two-lines
+ *   node tests/player/smoke.mjs pause      one scenario: form | form-none | pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars | two-lines
  *
  * Add a scenario: a function in SCENARIOS that boots the harness, checks,
  * and ends with h.done().
@@ -25,7 +25,95 @@ const NOTES = { feel: 'rubato', anchors: 'downbeats', songNotes: [{ id: 'history
 /** A rendered node of the stub DOM as text, with <b> / <i> for strong / em. */
 const flat = n => (typeof n === 'string' ? n : (n.tag === 'strong' ? `<b>${n.textContent}</b>` : n.tag === 'em' ? `<i>${n.textContent}</i>` : n.tag === 'h3' ? `# ${n.textContent}` : n.children.map(flat).join(n.tag === 'section' ? ' | ' : '')));
 
+/** A piece with a play order, the shape of Run Rudolph Run in small: 16 bars in lines of two; 1–8, 3–8 (the repeat), 3–4, then the coda 15–16. 18 played bars; bar 3 is seq 2, 8 and 14. Fast, so the whole form takes about 7 s at 200 %. */
+const FORM_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 3, 4, 5, 6, 7, 8, 3, 4, 15, 16];
+const FORM_PIECE = { piece: 'smoke-form', title: 'Smoke form', tempo: 240, lines: [1, 3, 5, 7, 9, 11, 13, 15], repeats: { start: [3], end: [8] }, marks: { segno: [3], toCoda: [4], dsAlCoda: [8], coda: [15] }, form: { playOrder: FORM_ORDER } };
+
 const SCENARIOS = {
+  /** Listen and play-along follow form.playOrder: the played sequence, the two-line view at the jumps, pause / resume by seq, seq in the log, the Form setting. */
+  async form() {
+    const h = await boot({ norm: fixtureNorm(FORM_PIECE) });
+    const { P, C, L, el, check, sleep, storage } = h;
+    const S = P.staff;
+    const until = async (f, ms = 12000) => { const t = Date.now(); while (!f() && Date.now() - t < ms) await sleep(5); return f(); };
+    const shown = from => S.shows.slice(from).map(v => [v.top, v.bottom, v.active, v.label]);
+    const started = type => h.events.filter(e => e[0] === type).slice(-1)[0][1];
+    P.setCountIn(0); P.tempo = 200;   // 480 bpm, 3/4: a bar is 0.375 s
+    check('a piece with a play order: 18 played bars, Form shown and "with repeats"; practice shows lines 1 and 2 as ever', [P.order.length, P.form, el('pl-form-row').hidden, shown(-1)], [18, 'repeats', false, [[[1, 2], [3, 4], 0, '']]]);
+
+    // ── Listen through the whole form ──
+    const bars = [], snaps = {};
+    P.clock.onDue('bar', p => { bars.push([p.bar, p.seq]); });
+    let from = S.shows.length;
+    await C.listen();
+    check('Listen names the run plainly, and says so in listen:start', [el('pl-status').textContent, (d => [d.form, d.bars, d.fromSeq, d.toSeq, d.startSeq, d.from, d.to, d.loop])(started('listen:start'))], ['Listening · whole song · 18 bars', [true, 18, 0, 17, 0, 1, 16, false]]);
+    await until(() => !L.active);
+    await sleep(40);
+    check('the clock plays the bars in played order, each with its seq', bars, FORM_ORDER.map((b, i) => [b, i]));
+    check('the two-line view: the line really played next below — back to bar 3 (tagged) after bars 7–8, the coda (tagged) the third time through 3–4; at the coda the line just played stays on top and the bottom slot is active; then practice is back', shown(from), [
+      [[3, 4], [5, 6], 0, ''], [[5, 6], [7, 8], 0, ''], [[7, 8], [3, 4], 0, '↩ bar 3'],
+      [[3, 4], [5, 6], 0, ''], [[5, 6], [7, 8], 0, ''], [[7, 8], [3, 4], 0, '↩ bar 3'],
+      [[3, 4], [15, 16], 0, '→ Coda'], [[3, 4], [15, 16], 1, ''],
+      [[1, 2], [3, 4], 0, ''],
+    ]);
+    check('it ended complete, and the follower was never moved', [(d => [d.complete, d.form])(started('listen:stop')), P.state.bar, P.state.line], [[true, true], 1, 0]);
+
+    // ── play-along: missed greying is dropped on re-entry; pause in the second time through bar 3, resume there ──
+    bars.length = 0;
+    const stale = () => [...L.missed].filter(n => (n.bar === 3 || n.bar === 4) && n.seq < 8).length;
+    const off = P.clock.onDue('bar', p => { if (p.seq === 5) snaps.before = stale(); if (p.seq === 8) { snaps.after = stale(); snaps.others = L.missed.size; } });
+    await C.playAlong();
+    check('play-along: the same run', el('pl-status').textContent, 'Playing along · whole song · 18 bars');
+    await until(() => L.seq === 8);
+    const at = [L.bar, L.seq];
+    C.pause(); off();
+    check('nothing was played, so bars 3–4 were grey after the first time through; entering bar 3 again clears that line, and only that line', [snaps.before > 0, snaps.after, snaps.others > 0], [true, 0, true]);
+    check('paused in the SECOND time through bar 3: the pause remembers the seq', [at, C.paused && [C.paused.mode, C.paused.bar, C.paused.seq], P.staff.marker], [[3, 8], ['playalong', 3, 8], 3]);
+    const lp = C.getPasses().slice(-1)[0];
+    check('the pass is one trip through the form, cut short; its entries carry seq, and bar 3 is in it twice (seq 2 and 8)', [lp.pass, lp.form, lp.bars, lp.complete, lp.expected.every(e => typeof e.seq === 'number'), [...new Set(lp.expected.filter(e => e.bar === 3).map(e => e.seq))]], [1, true, 18, false, true, [2, 8]]);
+    check('note events carry seq too', [typeof h.events.find(e => e[0] === 'note:expected')[1].seq, h.events.filter(e => e[0] === 'note:missed').some(e => e[1].bar === 3 && e[1].seq === 2)], ['number', true]);
+    bars.length = 0; from = S.shows.length;
+    await C.resume();
+    await until(() => bars.length >= 4);
+    check('resume starts at that seq — bar 3 the second time, then 4 5 6 — not at the first bar 3', [bars.slice(0, 4), (d => [d.resumed, d.startBar, d.startSeq, d.form])(started('playalong:start'))], [[[3, 8], [4, 9], [5, 10], [6, 11]], [true, 3, 8, true]]);
+    check('…and the page turns on from there (bars 5–6 with 7–8 under them)', shown(from).slice(0, 1), [[[5, 6], [7, 8], 0, '']]);
+    C.stop(); await sleep(40);
+
+    // ── from the current bar: the first time that bar is played ──
+    P.stepLine(1); P.stepLine(1); await sleep(40);   // line 3: bars 5–6
+    await C.listen(); await sleep(40);
+    check('from bar 5: its first occurrence (seq 4), 14 bars to the end of the form', [el('pl-status').textContent, (d => [d.fromSeq, d.toSeq, d.bars, d.startBar])(started('listen:start'))], ['Listening · from bar 5 · 14 bars with repeats', [4, 17, 14, 5]]);
+    C.stop(); await sleep(40);
+
+    // ── a loop plays as written; so does Form "as written" ──
+    P.setLoop(7, 8); await sleep(40);
+    await C.listen(); await sleep(40);
+    check('a loop is its bars as written, repeating: no form', [el('pl-status').textContent, started('listen:start').form, L.range.form === undefined], ['Listening · bars 7–8 · looping', false, true]);
+    P.clearLoop(); await sleep(40);
+    P.restart(); await sleep(40);
+    await C.listen(); await sleep(40);
+    check('Form "as written" stops a transport under way and is remembered', [P.setForm('written'), L.active, storage.songlab_player_form], ['written', false, 'written']);
+    bars.length = 0;
+    await C.listen();
+    await until(() => bars.length >= 9);
+    check('…and Listen is today\'s: bars 1–16 straight through (bar 9 after bar 8)', [el('pl-status').textContent, started('listen:start').form, bars.slice(7, 9).map(b => b[0])], ['Listening · bars 1–16', false, [8, 9]]);
+    C.stop(); await sleep(40);
+    check('wait-for-me practice is untouched by all this: 16 written bars of steps', [P.steps.length, P.steps[P.steps.length - 1].bar, P.setForm('repeats')], [16 * 4, 16, 'repeats']);
+    h.done();
+  },
+
+  /** A piece with no play order: no Form setting, everything as before. */
+  async 'form-none'() {
+    const h = await boot();
+    const { P, C, L, el, check, sleep } = h;
+    P.setCountIn(0); P.tempo = 200;
+    check('no play order: the Form row is hidden, order is null', [P.order, el('pl-form-row').hidden], [null, true]);
+    await C.listen(); await sleep(40);
+    check('Listen plays the written bars, whatever Form says', [el('pl-status').textContent, h.events.find(e => e[0] === 'listen:start')[1].form, L.range.form === undefined, L.drawnSeq], ['Listening · bars 1–16', false, true, null]);
+    C.stop(); await sleep(40);
+    h.done();
+  },
+
   /** Pause / resume on Space, P, the buttons and the controller; the page while paused; R and navigation. */
   async pause() {
     const h = await boot();

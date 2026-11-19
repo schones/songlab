@@ -2,6 +2,141 @@
 
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
+## 2026-11-18 — Player: two-line view, MusicXML importer, repeats and navigation marks, keyboard minimum
+
+**Next: read-and-report for playback following the form (form.playOrder), then the duet part as the band.**
+
+On `dev`, two commits: `1bcedd2` (two-line view), `7a4ea41` (importer,
+marks, keyboard). Verified by Node self-tests, the stub-DOM smoke test,
+the importer's fixture test and headless runs of the real `PlayerStaff`
+and Verovio 6.3.0. The imported Run Rudolph Run was opened in Chrome
+(that is where the tiny keyboard and the missing marks were found);
+Chrome results for the marks, the keyboard minimum and the two-line view
+are not recorded in this log.
+
+### Landed
+- **Two-line view** (`1bcedd2`; `player-staff.js` rewritten, `player.js`,
+  `player-staff-model.js`, `templates/player.html`, smoke test + stub).
+  The current line on top, the line played next below, shifting up one
+  line at a time. `PlayerStaff` owns two slots, each its own SVG; API is
+  now `prepare(norm, ranges)` + `show(top, bottom, { active, animate })`.
+  `viewFor` / `nextLine` choose the pair; `drawLine` is the single draw
+  point for `showLine` and `listenTurnTo`. "Lines 1 | 2" in the Mode card
+  (`songlab_player_lines`, default 2). The 30 % slide-and-fade is
+  replaced by a 150 ms one-line shift; non-forward moves cut. Smoke test
+  gains a `two-lines` scenario (8 scenarios).
+- **Uniform staff size** (same commit). Each line is one system justified
+  to a fixed page width (`breaks: 'encoded'` + `<sb/>` from `toMEI`'s new
+  `systemBreak` option, `minLastJustification: 0`), so a dense line
+  tightens instead of shrinking. Every line is engraved once at load and
+  every slot gets the same height, top staff lines aligned. Past 65 % of
+  natural width a line gets a wider page (drawn smaller) with a warning.
+- **MusicXML importer** (`7a4ea41`; `tools/pieces/musicxml_to_norm.py`,
+  new, standard library only). Staff 1 → rh, staff 2 → lh whatever the
+  part is named; time, key, clefs, lines, tempo, `tempoMarking`, repeats
+  and marks from the file with a flag for each; `--bars`, `--play-order`,
+  `fingering` per event, re-import keeps hand-written fields unless
+  `--fresh`; refusals name the bar. Test:
+  `tests/pieces/test_musicxml_to_norm.py` (37/37) over hand-written
+  fixtures in `tests/fixtures/musicxml/` (expected files are not named
+  `norm-*.json`, so the picker never lists them).
+- **Repeats and navigation marks on the staff, display only** (same
+  commit; `player-staff-model.js`, 87/87). New optional norm fields
+  `repeats: { start, end }` and `marks: { segno, coda, toCoda, dsAlCoda,
+  dcAlCoda, dsAlFine, dcAlFine, fine }`, each a bar list. Repeat barlines
+  sit on the measure, so they draw at line edges; signs above beat 1,
+  text marks right-aligned above the end of the bar; "To Coda" carries a
+  small coda sign. Playback is untouched.
+- **Keyboard minimum** (same commit; `pieceRange` / `minSpan` in
+  `player.js`). Under four octaves → whole octaves C to C, piece near the
+  middle. Carol is unchanged (F2–F6, exactly four octaves with the
+  margin); Run Rudolph Run C2–C6, the duet part C1–C5.
+- **Run Rudolph Run and its duet part imported** (private, gitignored):
+
+  ```sh
+  python3 -B tools/pieces/musicxml_to_norm.py ~/songlab-imports/run-rudolph.musicxml --bars 1-36 --piece run-rudolph-run --title "Run Rudolph Run" --key C --tempo 148 --play-order "1-32,9-32,9-16,33-36" --segno 9 --to-coda 16 --ds-al-coda 32 --coda 33 --tempo-marking "Fast Rock 'n' Roll"
+  python3 -B tools/pieces/musicxml_to_norm.py ~/songlab-imports/run-rudolph.musicxml --bars 37-72 --piece run-rudolph-run-duet --title "Run Rudolph Run (duet part)" --key C --tempo 148 --play-order "1-32,9-32,9-16,33-36" --segno 9 --to-coda 16 --ds-al-coda 32 --coda 33
+  ```
+- `tools/pieces/README.md`: the importer, `repeats`, `marks`,
+  `fingering`, `tempoMarking`.
+
+### Diagnosed / decided
+- **Two slots, not one two-system render.** `state.line` and
+  `staff.range` keep meaning the current line, so auto-paging, loops and
+  both transports did not change. One Verovio render with a system break
+  would have forced changes to `inDrawnRange`, the extent maths and every
+  paging decision.
+- **Engrave everything at load.** Finding the tallest line needs every
+  line engraved anyway, so the new next line is inserted from a cache
+  after the shift and no Verovio call runs during play.
+- **Real line heights were about twice the estimate** (410–445 px for
+  Carol at a 1366 px column, not 200–260). The staff is now drawn at
+  about 60 % of its old size so two lines fit; `PAGE_WIDTH` is the one
+  constant.
+- **Bars are never unrolled.** The importer writes bars as printed and
+  the playing order to `form.playOrder`; the player ignores `form` for
+  now. Following the form is the next task.
+- **The Soundslice export holds two arrangements back to back** (bars
+  1–36 with lyrics and fingering, 37–72 the duet part) and **no D.S. al
+  Coda at all**: only the barline repeat (9–32). The marks and the play
+  order came in by flag. Its lyrics are scrambled across ten lyric lines.
+- **Ties inside a bar are merged by the importer.** The staff model does
+  not draw a norm start/stop tie inside a bar (it warned 115 times on the
+  duet part); merged notes are re-split and tied by the meter, which
+  draws the same thing. The README documents within-bar start/stop as
+  legal, so this is a staff-model gap, worked around, not fixed.
+- **Ottava is not applied on import.** MusicXML pitches are sounding
+  pitches; `mxl_to_norm.py` (Audiveris) shifts them and was left alone.
+- **`source`, not `provenance`, names the imported file** (name only, no
+  path): `provenance` already has a per-bar shape from `apply_votes.py`.
+- **Coda sign in "To Coda"** uses a Verovio `<symbol>` at 60 % size: no
+  hack and no extra height, but it draws from a font embedded in the
+  SVG, which the headless rasteriser could not show.
+
+### Setup for next session
+- Working tree clean after `7a4ea41` apart from these two docs.
+- The source file stays at `~/songlab-imports/run-rudolph.musicxml`,
+  outside the repo; the fixture test runs an optional 72-bar check on it
+  when present.
+- Re-running either import command is safe (hand-written fields are
+  kept).
+
+### Calibration notes
+- Estimating pixel sizes from CSS and Verovio options was wrong by a
+  factor of two; measuring with the real toolkit in Node took minutes.
+- Trying the MEI in Verovio 6.3.0 before writing the plan settled how
+  repeats and marks draw at line edges, and whether the coda symbol was
+  a hack.
+- Running the staff model over a freshly imported piece caught the
+  within-bar tie gap that the importer's own validation could not see.
+- On this machine `timeout` is absent and `ls` hung inside a pipeline
+  once; `perl -e 'alarm N; exec @ARGV'` bounds a Verovio run.
+
+### Flagged for later
+- Chrome checks still open: the coda sign beside "To Coda"; tints and the
+  bar marker on lines with marks (they take their height from the line's
+  contents, and a long text over a narrow bar could widen that bar's
+  rectangle); the shift animation under the beat clock; whether two lines
+  fit the screens in use; the keyboard minimum.
+- Staff model: draw norm start/stop ties inside a bar, or drop that form
+  from the README.
+- Importer has seen one real file. Untested: MuseScore exports,
+  multi-part files, grace notes, mid-bar clef changes (applied from the
+  next bar with an `uncertain` note).
+- `--repeat-end none` clears the drawn sign but not a play order derived
+  from the file's repeats.
+- A loop wrap whose first line is already previewed shifts up instead of
+  cutting; say if a cut reads better.
+- The distance between the two staves can still vary from line to line;
+  only the top staff line is pinned.
+
+### Out of scope / deferred
+- Playback following `form.playOrder` (next, read-and-report first).
+- Drawing fingering, first and second ending brackets, fermatas, lyrics,
+  dynamics.
+- New bus events for line changes: the two draw points cover it.
+
+
 
 ## 2026-11-16 — Cycle of Shells: black-key echo fix, two-part questions at both changes, tutorial Stage 1 (Lesson 3)
 

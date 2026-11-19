@@ -401,6 +401,14 @@
               <button type="button" class="pl-seg__btn" data-lines="2" aria-pressed="true" aria-label="Show two lines: the current line and the next">2</button>
             </div>
           </div>
+          <!-- Form (player.js setForm): Listen and play-along follow the piece's repeats and jumps (form.playOrder), or play the bars once as written. Remembered. Shown only for a piece that has a play order. -->
+          <div class="pl-seg" id="pl-form-row" hidden>
+            <span class="pl-seg__label" id="pl-form-label">Form</span>
+            <div class="pl-seg__group" role="group" aria-labelledby="pl-form-label" id="pl-form" title="Listen and Play along: follow the repeats and jumps, or play every bar once as written. A loop always plays as written.">
+              <button type="button" class="pl-seg__btn" data-form="repeats" aria-pressed="true" aria-label="Play with repeats and jumps">with repeats</button>
+              <button type="button" class="pl-seg__btn" data-form="written" aria-pressed="false" aria-label="Play the bars once, as written">as written</button>
+            </div>
+          </div>
         </section>
       </div>
 

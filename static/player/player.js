@@ -47,6 +47,27 @@
  * a transport) re-draw only when it differs. With Lines at 1 there is one
  * slot and paging is line by line as before.
  *
+ * Form (player-form.js; state.order, state.form, FORM_KEY, "Form: with
+ * repeats | as written" in the Mode card, shown only for a piece with a
+ * form.playOrder; default with repeats): an UN-LOOPED Listen or play-along
+ * of such a piece follows the play order — repeats, D.S., the jump to the
+ * coda — from the first time the current bar is played to the end of the
+ * order (Run Rudolph Run: 68 bars). The transport's range then carries
+ * `form: { order, fromSeq, toSeq }`; the clock runs over the order as a
+ * played sequence and every position has a `seq`, the played index of its
+ * bar (L.seq; a pause remembers it and a resume starts there, so the
+ * second time through bar 9 resumes the second time). The two-line view
+ * previews the line that is really played next (viewFor with the
+ * transport's form: the first played bar ahead on another line), tagged
+ * "↩ bar 9" / "→ Coda" when that is a jump; at the end of the form the
+ * line just played stays on top and the last line is active below.
+ * Missed-note greying is dropped when its line is entered again.
+ * Timing-log entries and note events carry seq; a pass is one trip through
+ * the form. A loop, an explicit { from, to } range, "as written" and a
+ * piece with no play order all play the written bars in order, as before.
+ * Wait-for-me practice never follows the form: the follower, its step
+ * counter, trouble spots and pass recording walk the written bars.
+ *
  * Loop for practice (state.loop mirrors follower.loop()): "Repeat bar" /
  * "Repeat line" toggles act on the current bar / drawn line; tapping two
  * bars on the staff loops that range (state.pendingBar between the taps);
@@ -211,6 +232,7 @@ import { listenSchedule, pieceBpm, tempoLabel, DEFAULT_BPM } from './player-list
 import { metronome, patternFor, DEFAULT_VOLUME as METRO_VOLUME_DEFAULT } from './metronome.js';
 import { createBeatClock, LOOKAHEAD } from './beat-clock.js';
 import { createTimingLog, audioTimeFromStamp, HIT_WINDOW_MS } from './player-playalong.js';
+import { playOrderOf, playedSequence, firstSeqOf, isJump, nextLineAt, prevLineAt, jumpLabel } from './player-form.js';
 
 const DEVICE_KEY = 'songlab_player_midi_device';   // createShellInput has a fixed key; mapped through its injectable storage
 const SOUND_KEY = 'songlab_player_midi_sound';     // "Sound for MIDI notes" checkbox; off by default
@@ -229,6 +251,8 @@ const RACK_AUTO_KEY = 'songlab_player_rack_auto';     // "Hide controls while pl
 const RACK_MS = 150;                                   // the rack's open / close animation (player.html .pl-rack-shell)
 const LINES_KEY = 'songlab_player_lines';             // "Lines: 1 | 2" (Mode card): one line on the staff, or the current line + the next; default 2
 const LINES_DEFAULT = 2;
+const FORM_KEY = 'songlab_player_form';               // "Form: with repeats | as written" (Mode card): 'repeats' — Listen / play-along follow form.playOrder — or 'written'; default 'repeats'
+const FORM_DEFAULT = 'repeats';
 const GUIDE_KEY = 'songlab_player_guide_volume';      // play-along "Guide volume" 0–100 (0 = click only); default 35
 const GUIDE_DEFAULT = 35;
 const NOTES_OPEN_KEY = 'songlab_player_notes_open';   // + ':<piece>' → '1' / '0': the Song notes panel open or closed, per piece; closed by default
@@ -270,6 +294,7 @@ const els = {
   metro: $('pl-metro'), metroVolume: $('pl-metro-volume'), countIn: $('pl-count-in'),   // Listen card, bottom row (2b)
   trouble: $('pl-trouble'),
   viewLines: $('pl-lines'),   // Mode card: "Lines" 1 | 2 (segmented)
+  form: $('pl-form'), formRow: $('pl-form-row'),   // Mode card: "Form" with repeats | as written (segmented; the row is hidden for a piece with no play order)
   rackShell: $('pl-rack'), rackToggle: $('pl-rack-toggle'), rackAuto: $('pl-rack-auto'),   // collapsible rack + ⚙ Controls (strip) + "Hide controls while playing" (Mode card)
   summary: $('pl-summary'), summaryText: $('pl-summary-text'), summaryDot: $('pl-summary-dot'), summaryDevice: $('pl-summary-device'),   // strip settings summary
   staffHost: $('pl-staff'),
@@ -281,6 +306,8 @@ const state = {
   lines: [], lineWarnings: [],   // lineRanges(norm): [{ from, to }] and why norm.lines was ignored, if it was
   line: -1,                      // index into lines of the current line (the staff's active slot)
   viewLines: LINES_DEFAULT,      // lines on the staff: 1, or 2 = the current line + the one played next (LINES_KEY)
+  order: null,                   // the piece's play order (player-form playOrderOf: form.playOrder), or null when it has none
+  form: FORM_DEFAULT,            // 'repeats': an un-looped Listen / play-along follows state.order; 'written': bars once, in written order (FORM_KEY)
   shown: '',                     // the view last asked of the staff (viewKey): '' when nothing is drawn
   bar: null,                     // the active bar within the drawn line
   hands: 'both',
@@ -292,7 +319,7 @@ const state = {
   trouble: null,          // the last scored pass: { pass, score, number, suggested } (console / debug)
   practice: null,         // { playedMs } active time in either mode (set below; practice-log hook)
   tempoPct: TEMPO_DEFAULT,   // Listen tempo, percent of the piece's tempo (TEMPO_KEY)
-  listen: { active: false, started: false, paused: null, startBar: null, run: 0, mode: null, token: 0, range: null, schedule: null, bar: null, pass: 1, drawn: -1, sounding: new Set(), flash: new Map(), missed: new Set(), guideOn: new Set() },   // the transport (Listen or play-along) under way; see the header. mode: 'listen' | 'playalong'; range: { from, to, loop }; paused: { mode, range, bar } while a transport is paused (else null); startBar: the bar this start began at (a resume: the paused bar); run: counts fresh starts (a resume keeps it); bar / pass: where the clock is; drawn: the line on the staff; flash / missed: play-along feedback
+  listen: { active: false, started: false, paused: null, startBar: null, run: 0, mode: null, token: 0, range: null, schedule: null, bar: null, seq: null, startSeq: null, drawnSeq: null, visitLine: null, pass: 1, drawn: -1, sounding: new Set(), flash: new Map(), missed: new Set(), guideOn: new Set() },   // the transport (Listen or play-along) under way; see the header. mode: 'listen' | 'playalong'; range: { from, to, loop }; paused: { mode, range, bar } while a transport is paused (else null); startBar: the bar this start began at (a resume: the paused bar); run: counts fresh starts (a resume keeps it); bar / pass: where the clock is; seq: the played index of that bar (the clock's; with range.form it tells the times through a repeated bar apart), startSeq / drawnSeq: the seq this start began at / the line on the staff was turned to (form runs only, else null); visitLine: the line the clock is on (missed-note clearing); drawn: the line on the staff; flash / missed: play-along feedback
   guide: GUIDE_DEFAULT,      // play-along guide volume 0–100 (GUIDE_KEY)
   metro: { on: false, volume: METRO_VOLUME_DEFAULT, countIn: COUNT_IN_DEFAULT },   // Metronome row (METRO_KEY, METRO_VOLUME_KEY, COUNT_IN_KEY)
   rack: { open: false, auto: true, armed: false, pointer: false },   // control rack: open; auto-collapse on; armed = opened since the last auto-collapse; pointer = a drag inside it is under way (RACK_OPEN_KEY, RACK_AUTO_KEY)
@@ -868,16 +895,33 @@ function nextLine(k, loop) {
  * nothing to follow, the line before on top and k, active, below (the last
  * two lines of the piece stay up). A one-line piece shows one line.
  */
-function viewFor(k, loop) {
+function viewFor(k, loop, form = null) {
   const cur = state.lines[k];
   if (!cur) return null;
-  if (state.viewLines !== 2) return { top: cur, bottom: null, active: 0 };
+  if (state.viewLines !== 2) return { top: cur, bottom: null, active: 0, label: '' };
+  if (form && lineOf(form.order[form.seq]) === k) {   // a transport following the form: what is played next, not what is written next
+    const n = nextLineAt(form.order, form.seq, lineOf, { bars: barNumbers() });
+    if (n && state.lines[n.line]) return { top: cur, bottom: state.lines[n.line], active: 0, label: n.jump ? jumpLabel(n.bar, { from: form.order[n.seq - 1], codas: codaBars() }) : '' };
+    const p = prevLineAt(form.order, form.seq, lineOf, { fromSeq: form.fromSeq });
+    if (p && state.lines[p.line]) return { top: state.lines[p.line], bottom: cur, active: 1, label: '' };   // the end of the form: the line just played stays on top
+    if (k > 0 && k === state.lines.length - 1) return { top: state.lines[k - 1], bottom: cur, active: 1, label: '' };   // a run that began on the last line: the page as practice shows it
+    return { top: cur, bottom: null, active: 0, label: '' };
+  }
   const n = nextLine(k, loop);
-  if (n >= 0) return { top: cur, bottom: state.lines[n], active: 0 };
-  if (k > 0) return { top: state.lines[k - 1], bottom: cur, active: 1 };
-  return { top: cur, bottom: null, active: 0 };
+  if (n >= 0) return { top: cur, bottom: state.lines[n], active: 0, label: '' };
+  if (k > 0) return { top: state.lines[k - 1], bottom: cur, active: 1, label: '' };
+  return { top: cur, bottom: null, active: 0, label: '' };
 }
-const viewKey = v => (v ? `${v.top.from}-${v.top.to}|${v.bottom ? `${v.bottom.from}-${v.bottom.to}` : ''}|${v.active}` : '');
+const viewKey = v => (v ? `${v.top.from}-${v.top.to}|${v.bottom ? `${v.bottom.from}-${v.bottom.to}` : ''}|${v.active}|${v.label || ''}` : '');
+/** The written bars that carry a coda sign (norm.marks.coda): a jump to one is "→ Coda". */
+const codaBars = () => { const c = state.norm && state.norm.marks && state.norm.marks.coda; return Array.isArray(c) ? c : []; };
+/** Whether an un-looped transport follows the play order: the piece has one and Form is "with repeats". */
+const formOn = () => state.form === 'repeats' && Array.isArray(state.order) && state.order.length > 0;
+/** The form position that decides the next line while a transport following the form runs or is paused: { order, seq, fromSeq }, seq = where the line on the staff was turned to. null otherwise. */
+function transportForm() {
+  const L = state.listen, r = L.range;
+  return r && r.form && (L.active || L.paused) && L.drawnSeq != null ? { order: r.form.order, seq: L.drawnSeq, fromSeq: r.form.fromSeq } : null;
+}
 /** The loop that decides the next line while a transport runs or is paused: its own range when it repeats. */
 const transportLoop = () => { const r = state.listen.range; return r && r.loop ? r : null; };
 /**
@@ -886,11 +930,11 @@ const transportLoop = () => { const r = state.listen.range; return r && r.loop ?
  * listenTurnTo (the transports) both come through here. Resolves as
  * staff.show: { hits, warnings } of the current line, or null.
  */
-function drawLine(index, { animate = true, loop = state.loop } = {}) {
-  const v = viewFor(index, loop);
+function drawLine(index, { animate = true, loop = state.loop, form = null } = {}) {
+  const v = viewFor(index, loop, form);
   if (!v) return Promise.resolve(null);
   state.shown = viewKey(v);
-  return staff.show(v.top, v.bottom, { active: v.active, animate });
+  return staff.show(v.top, v.bottom, { active: v.active, animate, label: v.label });
 }
 /** A loop set, changed or cleared can change which line comes next without the current line changing: re-draw when the view is no longer the one shown. Practice only (a transport draws its own). */
 function syncView() {
@@ -1281,7 +1325,19 @@ function transportRange({ from, to, loop } = {}) {
     return { from: Math.min(a, b), to: Math.max(a, b), loop: !!loop };
   }
   if (state.loop) return { from: state.loop.from, to: state.loop.to, loop: loop !== false };
-  return { from: state.bar != null ? state.bar : bars[0], to: last, loop: !!loop };
+  const start = state.bar != null ? state.bar : bars[0];
+  if (!loop && formOn()) {   // the form: from the first time this bar is played to the end of the play order
+    const order = state.order, fromSeq = firstSeqOf(order, start);
+    if (fromSeq >= 0) return { from: start, to: order[order.length - 1], loop: false, form: { order, fromSeq, toSeq: order.length - 1 } };
+  }
+  return { from: start, to: last, loop: !!loop };
+}
+/** A transport range in words: "bars 5–8", or for a run that follows the form "whole song · 68 bars" / "from bar 20 · 49 bars with repeats". */
+function rangeText(range) {
+  const F = range.form;
+  if (!F) return barsText(range.from, range.to);
+  const n = F.toSeq - F.fromSeq + 1;
+  return F.fromSeq === 0 ? `whole song · ${n} bars` : `from bar ${range.from} · ${n} bars with repeats`;
 }
 
 /** Clock items for a range: every note of both hands as an 'on' and an 'off' by quarter position (listenSchedule at 60 bpm: a second is a quarter). Offs sort before ons at one position. */
@@ -1321,12 +1377,16 @@ async function startTransport(mode, opts = {}) {
   if (mode === 'listen' && muted()) return false;
   const range = resume ? resume.range : transportRange(opts);
   if (!range) return false;
-  const schedule = listenSchedule(state.norm, { from: range.from, to: range.to, bpm: 60 });   // seconds at 60 bpm = quarters
-  if (!schedule.notes.length) { banner(`Nothing to play in ${barsText(range.from, range.to)}.`); return false; }
+  const F = range.form || null;   // following the play order: { order, fromSeq, toSeq }
+  const schedule = F
+    ? listenSchedule(state.norm, { sequence: playedSequence(F.order, { fromSeq: F.fromSeq, toSeq: F.toSeq }), seqFrom: F.fromSeq, bpm: 60 })
+    : listenSchedule(state.norm, { from: range.from, to: range.to, bpm: 60 });   // seconds at 60 bpm = quarters
+  if (!schedule.notes.length) { banner(`Nothing to play in ${rangeText(range)}.`); return false; }
   const pattern = patternFor(state.norm.time, state.norm.beatsPerBar);   // the same grid as the schedule's bar length
   cancelPending();
   const token = ++L.token;
-  Object.assign(L, { active: true, started: false, paused: null, mode, range, schedule, bar: resume ? resume.bar : null, startBar: resume ? resume.bar : range.from, pass: 1, drawn: resume ? L.drawn : state.line });
+  const startSeq = F ? (resume && resume.seq != null ? resume.seq : F.fromSeq) : null;
+  Object.assign(L, { active: true, started: false, paused: null, mode, range, schedule, bar: resume ? resume.bar : null, startBar: resume ? resume.bar : range.from, seq: resume && resume.seq != null ? resume.seq : null, startSeq, drawnSeq: F ? (resume && L.drawnSeq != null ? L.drawnSeq : startSeq) : null, visitLine: null, pass: 1, drawn: resume ? L.drawn : state.line });
   if (!resume) L.run += 1;
   L.sounding = new Set(); L.flash = new Map(); L.missed = new Set(); L.guideOn = new Set();
   playingKeys.clear(); guideCount.clear();
@@ -1336,9 +1396,9 @@ async function startTransport(mode, opts = {}) {
   if (!resume) staff.setBarMarker(null);   // a resume keeps the marker on the bar it starts from
   indexHits();
   syncTransportButtons();
-  if (!resume && lineOf(range.from) === state.line && viewKey(viewFor(state.line, transportLoop())) !== state.shown) listenTurnTo(state.line, token, { animate: false });   // this range repeats where practice does not (or the reverse): the line shown as next is the transport's
+  if (!resume && lineOf(range.from) === state.line && viewKey(viewFor(state.line, transportLoop(), transportForm())) !== state.shown) listenTurnTo(state.line, token, { animate: false });   // this range repeats where practice does not (or the reverse): the line shown as next is the transport's
   const label = mode === 'playalong' ? 'Play along' : 'Listen';
-  els.status.textContent = `${mode === 'playalong' ? 'Playing along' : 'Listening'} · ${barsText(range.from, range.to)}${range.loop ? ' · looping' : ''}${resume ? ` · from bar ${resume.bar}` : ''}`;
+  els.status.textContent = `${mode === 'playalong' ? 'Playing along' : 'Listening'} · ${rangeText(range)}${range.loop ? ' · looping' : ''}${resume ? ` · from bar ${resume.bar}` : ''}`;
 
   const running = await startAudio();
   let piano = null;
@@ -1351,20 +1411,25 @@ async function startTransport(mode, opts = {}) {
 
   const { bpm: base, assumed } = pieceBpm(state.norm);
   const bpm = base * state.tempoPct / 100;   // read after the awaits: the slider may have moved
-  clock.configure({ bars: barNumbers(), meter: pattern });
+  if (F) clock.configure({ sequence: F.order, meter: pattern });   // the whole play order: the clock's seq is the position in it
+  else clock.configure({ bars: barNumbers(), meter: pattern });
   clock.setTempo(bpm);
   if (mode === 'playalong') timing.reset();   // BEFORE clock.start: with no count-in the first downbeat is inside the lookahead, so start() dispatches its notes — and registers their expectations — at once; a reset after it would drop them
-  const started = clock.start({ fromBar: range.from, toBar: range.to, startBar: L.startBar, loop: range.loop, countInBars: state.metro.countIn, items: transportItems(schedule) });
+  const started = clock.start(F
+    ? { fromSeq: F.fromSeq, toSeq: F.toSeq, startSeq: L.startSeq, loop: false, countInBars: state.metro.countIn, items: transportItems(schedule) }
+    : { fromBar: range.from, toBar: range.to, startBar: L.startBar, loop: range.loop, countInBars: state.metro.countIn, items: transportItems(schedule) });
   if (!started) { finishListen(); return false; }
   L.started = true;
   if (assumed) banner(`No tempo in this piece: playing at ${Math.round(bpm)} bpm (${state.tempoPct}% of an assumed ${DEFAULT_BPM}).`);
-  const detail = { from: range.from, to: range.to, loop: range.loop, startBar: started.start, resumed: !!resume, hands: state.hands, tempoPct: state.tempoPct, bpm, countInBars: state.metro.countIn, audioTime: started.barOneTime };
+  const detail = { from: range.from, to: range.to, loop: range.loop, startBar: started.start, resumed: !!resume, hands: state.hands, tempoPct: state.tempoPct, bpm, countInBars: state.metro.countIn, audioTime: started.barOneTime, ...formDetail(range), startSeq: L.startSeq };
   if (mode === 'playalong') {
     bus.emit('playalong:start', detail);
     openPass(1, started.barOneTime);
   } else bus.emit('listen:start', detail);
   return true;
 }
+/** What events and the timing log say about a range's form: { form: false }, or { form: true, fromSeq, toSeq, bars } for a run that follows the play order. */
+const formDetail = range => (range && range.form ? { form: true, fromSeq: range.form.fromSeq, toSeq: range.form.toSeq, bars: range.form.toSeq - range.form.fromSeq + 1 } : { form: false });
 const listen = (opts = {}) => startTransport('listen', opts);
 const playAlong = (opts = {}) => startTransport('playalong', opts);
 
@@ -1409,14 +1474,14 @@ function finishListen({ complete = false, endedAt, pause = false } = {}) {
   if (!L.active) return;
   const { mode, started, range } = L;
   const at = endedAt != null ? endedAt : contextNow();
-  const paused = pause && started ? { mode, range, bar: L.bar != null ? L.bar : (L.startBar != null ? L.startBar : range.from) } : null;
+  const paused = pause && started ? { mode, range, bar: L.bar != null ? L.bar : (L.startBar != null ? L.startBar : range.from), seq: L.bar != null && L.seq != null ? L.seq : L.startSeq } : null;   // seq: which time through that bar (a run following the form resumes there)
   L.active = false; L.token++;   // late callbacks of this run are dropped
   clock.stop();        // nothing more is dispatched; pending due callbacks go with it
   metronome.stop();    // clicks already queued
   releaseGuide();
   if (started) {
     if (mode === 'playalong') closeAllPasses(at, complete);
-    bus.emit(mode === 'playalong' ? 'playalong:stop' : 'listen:stop', { from: range.from, to: range.to, loop: range.loop, complete, paused: !!paused, bar: paused ? paused.bar : null, audioTime: at });
+    bus.emit(mode === 'playalong' ? 'playalong:stop' : 'listen:stop', { from: range.from, to: range.to, loop: range.loop, complete, paused: !!paused, bar: paused ? paused.bar : null, seq: paused && paused.seq != null ? paused.seq : null, form: !!range.form, audioTime: at });
   }
   for (const t of L.flash.values()) clearTimeout(t);
   L.flash.clear(); L.sounding.clear(); L.missed.clear(); L.guideOn.clear(); playingKeys.clear();
@@ -1446,7 +1511,7 @@ function releaseGuide() {
 async function listenTurnTo(index, token, { animate = true } = {}) {
   const L = state.listen;
   if (!state.lines[index] || !(L.active || L.paused)) return;
-  const result = await drawLine(index, { animate, loop: transportLoop() });
+  const result = await drawLine(index, { animate, loop: transportLoop(), form: transportForm() });
   if (!result || !(L.active || L.paused) || L.token !== token) return;
   repaintTransport();
 }
@@ -1462,7 +1527,7 @@ clock.on('bar', pos => {
   const L = state.listen;
   if (!L.active) return;
   const line = lineOf(pos.bar);
-  if (line >= 0 && line !== L.drawn) { L.drawn = line; listenTurnTo(line, L.token); }
+  if (line >= 0 && line !== L.drawn) { L.drawn = line; if (L.range && L.range.form) L.drawnSeq = pos.seq; listenTurnTo(line, L.token); }   // drawnSeq: the line under it is the one played after THIS time through
 });
 clock.on('item', pos => {
   const L = state.listen;
@@ -1483,8 +1548,9 @@ clock.on('item', pos => {
     guideCount.set(note.midi, (guideCount.get(note.midi) || 0) + 1);
   }
   if (L.mode !== 'playalong' || !isMine(note)) return;
-  const r = timing.expect({ pitch: note.midi, hand: note.hand, bar: note.bar, beat: note.onset, audioTime: pos.audioTime, ref: note }, pos.pass);
-  bus.emit('note:expected', { pitch: note.midi, hand: note.hand, bar: note.bar, beat: note.onset, audioTime: pos.audioTime, offsetMs: null, pass: pos.pass, anchor: isAnchor(note.bar, note.onset) });
+  const seq = note.seq != null ? note.seq : pos.seq;   // the played index of the note's bar: which time through it this is
+  const r = timing.expect({ pitch: note.midi, hand: note.hand, bar: note.bar, beat: note.onset, audioTime: pos.audioTime, seq, ref: note }, pos.pass);
+  bus.emit('note:expected', { pitch: note.midi, hand: note.hand, bar: note.bar, seq, beat: note.onset, audioTime: pos.audioTime, offsetMs: null, pass: pos.pass, anchor: isAnchor(note.bar, note.onset) });
   if (r.hit) onHit(r.entry, r.hit);   // already played, a little early
   clock.at(pos.audioTime + HIT_WINDOW_S + SETTLE_S, sweepTiming);
 });
@@ -1506,9 +1572,29 @@ clock.onDue('item', pos => { if (state.listen.active) lightNote(pos.item.note, p
 clock.onDue('bar', pos => {
   const L = state.listen;
   if (!L.active) return;
-  L.bar = pos.bar;
+  L.bar = pos.bar; L.seq = pos.seq;
+  if (L.range && L.range.form) clearStaleMissed(pos);
   if (inDrawnRange(pos.bar)) staff.setBarMarker(pos.bar);
 });
+/**
+ * Following the form, a bar comes round again inside one pass: the notes
+ * missed an earlier time through must not still be faint. As the clock
+ * enters a bar, the greying of that bar from earlier seqs goes — and, when
+ * the bar begins a new visit to its line (another line before it, or a
+ * jump into it), the greying of the whole line from earlier visits, so the
+ * line is clean before its later bars are reached.
+ */
+function clearStaleMissed(pos) {
+  const L = state.listen, line = lineOf(pos.bar);
+  const newVisit = line !== L.visitLine || isJump(L.range.form.order, pos.seq, barNumbers());
+  L.visitLine = line;
+  let dropped = false;
+  for (const note of [...L.missed]) {
+    if (note.seq == null || note.seq >= pos.seq) continue;
+    if (note.bar === pos.bar || (newVisit && lineOf(note.bar) === line)) { L.missed.delete(note); dropped = true; }
+  }
+  if (dropped) applyMissed();
+}
 clock.onDue('loopWrap', pos => {   // a new pass: last pass's missed notes are no longer grey
   const L = state.listen;
   if (!L.active) return;
@@ -1591,8 +1677,8 @@ function clockProbe(seconds = 20) {
 function openPass(pass, startedAt) {
   const L = state.listen, { range } = L;
   const startBar = pass === 1 ? L.startBar : range.from;   // a resumed run's first pass begins inside the range
-  timing.open(pass, { mode: 'playalong', piece: state.piece, run: L.run, from: range.from, to: range.to, startBar, loop: range.loop, hands: state.hands, tempoPct: state.tempoPct, bpm: clock.tempo, startedAt, windowMs: HIT_WINDOW_MS, timeSource, timebase: { start: clockSample(), end: null, drift: null } });
-  bus.emit('pass:start', { pass, from: range.from, to: range.to, startBar, loop: range.loop, hands: state.hands, audioTime: startedAt });
+  timing.open(pass, { mode: 'playalong', piece: state.piece, run: L.run, from: range.from, to: range.to, startBar, loop: range.loop, hands: state.hands, tempoPct: state.tempoPct, bpm: clock.tempo, startedAt, windowMs: HIT_WINDOW_MS, timeSource, ...formDetail(range), startSeq: pass === 1 ? L.startSeq : null, timebase: { start: clockSample(), end: null, drift: null } });
+  bus.emit('pass:start', { pass, from: range.from, to: range.to, startBar, loop: range.loop, hands: state.hands, audioTime: startedAt, ...formDetail(range) });
 }
 function closePass(pass, endedAt, complete) {
   const r = timing.close(pass, { endedAt, complete });
@@ -1612,7 +1698,7 @@ function closeAllPasses(at, complete) {
 }
 /** A note of yours that was played: green flash; the event carries the actual time and the offset. */
 function onHit(expected, played) {
-  bus.emit('note:played', { pitch: played.pitch, hand: expected.hand, bar: expected.bar, beat: expected.beat, audioTime: played.audioTime, expectedAt: expected.audioTime, offsetMs: expected.offsetMs, matched: true, extra: false, pass: expected.pass, anchor: isAnchor(expected.bar, expected.beat) });
+  bus.emit('note:played', { pitch: played.pitch, hand: expected.hand, bar: expected.bar, seq: expected.seq ?? null, beat: expected.beat, audioTime: played.audioTime, expectedAt: expected.audioTime, offsetMs: expected.offsetMs, matched: true, extra: false, pass: expected.pass, anchor: isAnchor(expected.bar, expected.beat) });
   flashNote(expected.ref);
 }
 /** Notes whose window has passed: expected ones are missed (grey for the rest of their pass), played ones that paired with nothing are extras (logged, never shown). */
@@ -1620,11 +1706,11 @@ function reportSettled(missed, extras) {
   const L = state.listen;
   let grey = false;
   for (const e of missed) {
-    bus.emit('note:missed', { pitch: e.pitch, hand: e.hand, bar: e.bar, beat: e.beat, audioTime: e.audioTime, offsetMs: null, pass: e.pass, anchor: isAnchor(e.bar, e.beat) });
+    bus.emit('note:missed', { pitch: e.pitch, hand: e.hand, bar: e.bar, seq: e.seq ?? null, beat: e.beat, audioTime: e.audioTime, offsetMs: null, pass: e.pass, anchor: isAnchor(e.bar, e.beat) });
     if (L.active && e.pass === L.pass && e.ref) { L.missed.add(e.ref); grey = true; }
   }
   if (grey) applyMissed();
-  for (const e of extras) bus.emit('note:played', { pitch: e.pitch, hand: null, bar: e.bar, beat: e.beat, audioTime: e.audioTime, expectedAt: null, offsetMs: null, matched: false, extra: true, pass: e.pass, anchor: false });   // an extra is nobody's anchor
+  for (const e of extras) bus.emit('note:played', { pitch: e.pitch, hand: null, bar: e.bar, seq: e.seq ?? null, beat: e.beat, audioTime: e.audioTime, expectedAt: null, offsetMs: null, matched: false, extra: true, pass: e.pass, anchor: false });   // an extra is nobody's anchor
 }
 function sweepTiming() {
   const r = timing.sweep(audioTimeOf(performance.now()));
@@ -1764,6 +1850,27 @@ els.viewLines.addEventListener('click', e => {
   setLines(b.dataset.lines); b.blur();
 });
 
+// ── Form (Mode card): an un-looped Listen / play-along follows the play order, or plays the bars as written (remembered) ──
+
+/** 'repeats' (follow form.playOrder; the default) or 'written'. A transport under way or paused is stopped: its range was built for the other setting. */
+function setForm(v, { save = true } = {}) {
+  const want = v === 'written' ? 'written' : FORM_DEFAULT;
+  if (want !== state.form) stopListen();
+  state.form = want;
+  for (const b of els.form.querySelectorAll('[data-form]')) b.setAttribute('aria-pressed', String(b.dataset.form === state.form));
+  if (save) saveRack(FORM_KEY, state.form);
+  return state.form;
+}
+/** The Form row shows only for a piece that has a play order (load / unload). */
+function syncForm() {
+  els.formRow.hidden = !(Array.isArray(state.order) && state.order.length);
+}
+els.form.addEventListener('click', e => {
+  const b = e.target instanceof Element ? e.target.closest('[data-form]') : null;
+  if (!b) return;
+  setForm(b.dataset.form); b.blur();
+});
+
 /** The strip's settings summary: "100% · metronome off · count-in 1 · both hands [· No stress] [· loop bars 2–3]" + MIDI dot and device. */
 function syncSummary() {
   const parts = [
@@ -1785,6 +1892,7 @@ function syncSummary() {
 
 setRackAuto(readRack(RACK_AUTO_KEY) !== '0', { save: false });
 setLines(readRack(LINES_KEY) ?? LINES_DEFAULT, { save: false });
+setForm(readRack(FORM_KEY) ?? FORM_DEFAULT, { save: false });
 setRackOpen(state.rack.auto ? false : readRack(RACK_OPEN_KEY) !== '0', { save: false, animate: false });   // auto on: closed; off: as remembered (open at first)
 syncSummary();
 
@@ -2027,6 +2135,7 @@ function unload() {
   stopListen();
   showNotes(null, null);
   state.norm = null; state.bar = null; state.steps = []; state.follower = null; state.wrong = 0;
+  state.order = null; syncForm();
   state.lines = []; state.lineWarnings = []; state.line = -1;
   cancelPending(); clearTrouble(); recorder.cancel();
   updateBarNav(); staff.clear(); state.shown = ''; clearKeys(); syncLoop(); syncListen();
@@ -2047,6 +2156,7 @@ async function load(name) {
     }
     const norm = await res.json();
     state.piece = name; state.norm = norm; state.wrong = 0;
+    state.order = playOrderOf(norm); syncForm();   // null: the piece has no play order and plays as written
     showHeader(name, norm);
     showNotes(name, norm);
     const bars = barNumbers();
@@ -2176,6 +2286,7 @@ window.__player = {
   metronome, setMetronome, setMetroVolume, setCountIn, get metro() { return state.metro; },
   setRackOpen, setRackAuto, get rack() { return state.rack; },
   setLines, viewFor, nextLine, get lines() { return state.viewLines; },
+  setForm, transportForm, get form() { return state.form; }, get order() { return state.order; },
   get trouble() { return state.trouble; }, get practice() { return state.practice; }, loopCounts, passHistory, get recorder() { return recorder; }, thresholds: THRESHOLDS,
   get keyboard() { return keyboard; }, get input() { return input; }, get follower() { return state.follower; }, get steps() { return state.steps; },
   noteOn: onMidiNoteOn, noteOff: onMidiNoteOff, pedal: onPedal,

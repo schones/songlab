@@ -26,6 +26,17 @@
  *       (Listen only; buildSteps makes no step for it). Rests and grace events are
  *       skipped. Every note ends at the range end at the latest; nothing starts
  *       before `from`.
+ *   listenSchedule(norm, { sequence: [bar, …], seqFrom = 0, bpm }) → the same, for bars in PLAYED order
+ *       (player-form.js: a piece's form.playOrder, or a stretch of it) instead of a
+ *       written range: slot i of the sequence is the bar with that NUMBER, at i bar
+ *       lengths from the start, as often as it is listed. A number the norm does not
+ *       have is a silent bar that keeps its place (an accompaniment a bar short stays
+ *       in step). Notes and `bars` carry `seq` = seqFrom + i, the slot they are played
+ *       in; `sequence` is on the result; from / to are its first and last bar.
+ *       Tie guard: a tie only continues from the bar WRITTEN right before it. When
+ *       the slot before is any other bar (a repeat back, a jump to the coda) nothing
+ *       is held over: a continuation there sounds as a fresh attack, as at a range
+ *       start. A written range never jumps, so it behaves as it always has.
  *   pieceBpm(norm)            → { bpm, assumed }: norm.tempo, else DEFAULT_BPM with assumed: true
  *   tempoLabel(pct, bpm)      → '60% · 49 bpm' (quarter-note bpm at that percentage, rounded)
  *   selfTest()                → console report, { passed, total }
@@ -60,24 +71,31 @@ function tempoLabel(pct, bpm) {
  * @param {object} norm
  * @param {{ from: number, to?: number, bpm: number }} options  bar range (inclusive) and quarter-note bpm
  */
-function listenSchedule(norm, { from, to = from, bpm } = {}) {
-  const a = Math.min(from, to), b = Math.max(from, to);
+function listenSchedule(norm, { from, to = from, bpm, sequence = null, seqFrom = 0 } = {}) {
+  const played = Array.isArray(sequence) ? sequence : null;
+  const a = played ? played[0] : Math.min(from, to), b = played ? played[played.length - 1] : Math.max(from, to);
   const tempo = typeof bpm === 'number' && bpm > 0 ? bpm : DEFAULT_BPM;
   const secPerQuarter = 60 / tempo;
   const barQuarters = meterLevels(norm && norm.time, norm && norm.beatsPerBar).bar;
   const barSeconds = barQuarters * secPerQuarter;
-  const bars = (Array.isArray(norm && norm.bars) ? norm.bars : [])
-    .filter(x => x && typeof x.bar === 'number' && x.bar >= a && x.bar <= b)
-    .slice().sort((x, y) => x.bar - y.bar);
+  const written = (Array.isArray(norm && norm.bars) ? norm.bars : []).filter(x => x && typeof x.bar === 'number').slice().sort((x, y) => x.bar - y.bar);
+  const byNumber = new Map(written.map(x => [x.bar, x]));
+  const before = new Map(written.map((x, i) => [x.bar, i > 0 ? written[i - 1].bar : null]));   // bar → the bar written right before it
+  // The slots to play: a written range, or the played sequence looked up by bar number (an unknown number: a silent slot).
+  const bars = played
+    ? played.map(n => byNumber.get(n) || { bar: n })
+    : written.filter(x => x.bar >= a && x.bar <= b);
 
   const notes = [];
   const barTimes = [];
-  const lastAttack = {};   // `${hand}:${midi}` → note, for tie continuations
+  let lastAttack = {};   // `${hand}:${midi}` → note, for tie continuations
   const end = bars.length * barSeconds;
 
   bars.forEach((barData, i) => {
     const barStart = i * barSeconds;
-    barTimes.push({ bar: barData.bar, time: round(barStart) });
+    const seq = played ? seqFrom + i : null;
+    barTimes.push(played ? { bar: barData.bar, time: round(barStart), seq } : { bar: barData.bar, time: round(barStart) });
+    if (played && i > 0 && before.get(barData.bar) !== bars[i - 1].bar) lastAttack = {};   // tie guard: this bar was not reached from the bar written before it
     const events = [];
     for (const hand of HANDS) {
       for (const ev of Array.isArray(barData[hand]) ? barData[hand] : []) {
@@ -102,6 +120,7 @@ function listenSchedule(norm, { from, to = from, bpm } = {}) {
           continue;
         }
         const note = { time: round(start), duration: 0, midi, role: ROLE[hand], bar: barData.bar, hand, onset: ev.onset, spans: [{ bar: barData.bar, onset: ev.onset }], _end: stop };
+        if (played) note.seq = seq;
         notes.push(note);
         lastAttack[key] = note;
       }
@@ -109,7 +128,9 @@ function listenSchedule(norm, { from, to = from, bpm } = {}) {
   });
   for (const n of notes) { n.duration = round(Math.max(0, n._end - n.time)); delete n._end; }
   notes.sort((x, y) => (x.time - y.time) || (x.midi - y.midi) || HANDS.indexOf(x.hand) - HANDS.indexOf(y.hand));
-  return { notes, duration: round(end), bars: barTimes, from: a, to: b, bpm: tempo, secPerQuarter, barQuarters };
+  const out = { notes, duration: round(end), bars: barTimes, from: a, to: b, bpm: tempo, secPerQuarter, barQuarters };
+  if (played) out.sequence = played.slice();
+  return out;
 }
 
 export { listenSchedule, pieceBpm, tempoLabel, DEFAULT_BPM, selfTest };
@@ -188,6 +209,20 @@ async function selfTest() {
   assert('no tie on the lh G2: re-attacked in bar 3', four.notes.filter(n => n.midi === 43).map(n => n.time), [4, 8]);
   assert('an empty range / unknown bars → nothing', [listenSchedule(FOUR, { from: 9, bpm: 60 }).notes.length, listenSchedule({ bars: [] }, { from: 1, bpm: 60 }).duration], [0, 0]);
   assert('a reversed range is swapped', [listenSchedule(FOUR, { from: 3, to: 1, bpm: 60 }).from, listenSchedule(FOUR, { from: 3, to: 1, bpm: 60 }).to], [1, 3]);
+
+  // ── a played sequence (player-form.js): bars by number, in played order ──
+  const seqA = listenSchedule(FOUR, { sequence: [1, 2, 1, 3], seqFrom: 10, bpm: 60 });
+  assert('sequence 1 2 1 3: four slots of 4 s, each bar where it is played, seq = seqFrom + slot', [seqA.duration, seqA.bars, seqA.sequence, seqA.from, seqA.to], [16, [{ bar: 1, time: 0, seq: 10 }, { bar: 2, time: 4, seq: 11 }, { bar: 1, time: 8, seq: 12 }, { bar: 3, time: 12, seq: 13 }], [1, 2, 1, 3], 1, 3]);
+  assert('bar 1 sounds twice, as two sets of notes with their own seq and the written bar', seqA.notes.filter(n => n.bar === 1).map(n => [n.midi, n.time, n.seq]), [[48, 0, 10], [72, 1, 10], [76, 1, 10], [48, 8, 12], [72, 9, 12], [76, 9, 12]]);
+  assert('tie guard: bar 2\'s D5 is cut by the jump back (4 s, two spans, not held through the repeat of bar 1)', seqA.notes.filter(n => n.midi === D5 && n.bar === 2).map(n => [n.time, n.duration, n.spans.length]), [[4, 4, 2]]);
+  assert('…and bar 3\'s tied D5, reached from bar 1, is a fresh attack at its own time, not an extension of the old one', seqA.notes.filter(n => n.midi === D5 && n.bar === 3).map(n => [n.time, n.duration, n.spans, n.seq]), [[12, 4, [{ bar: 3, onset: 0 }], 13]]);
+  const seqB = listenSchedule(FOUR, { sequence: [2, 3, 2, 3], bpm: 60 });
+  assert('a tie still continues from the written predecessor, each time it is played: two D5s of 8 s', seqB.notes.filter(n => n.midi === D5).map(n => [n.time, n.duration, n.spans.length, n.seq]), [[0, 8, 3, 0], [8, 8, 3, 2]]);
+  const seqC = listenSchedule(CAROL, { sequence: [1, 2, 10, 11], bpm: 120 });
+  assert('neighbours in the piece with a gap in their numbers (2 → 10) are written order: no guard, the tie 10 → 11 holds', [seqC.notes.filter(n => n.midi === D5 && n.bar === 10).map(n => [n.duration, n.spans.length]), seqC.notes.filter(n => n.bar === 11).map(n => n.midi)], [[[0.75, 2]], [A3]]);
+  const seqD = listenSchedule(FOUR, { sequence: [1, 7, 3], bpm: 60 });
+  assert('a bar number the norm does not have is a silent slot that keeps its place: bar 3 still at 8 s', [seqD.duration, seqD.bars.map(x => [x.bar, x.time]), seqD.notes.filter(n => n.bar === 3).map(n => n.time), seqD.notes.some(n => n.bar === 7)], [12, [[1, 0], [7, 4], [3, 8]], [8, 8], false]);
+  assert('a written range is untouched by all this: no seq on its notes or bars, no sequence on the result', [four.notes.some(n => 'seq' in n), four.bars.some(x => 'seq' in x), 'sequence' in four], [false, false, false]);
 
   const passed = results.filter(Boolean).length;
   console.log(`\n─── ${passed}/${results.length} passed ───\n`);

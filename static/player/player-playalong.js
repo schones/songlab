@@ -39,6 +39,11 @@
  *                             Call it BEFORE the clock starts: a start with no count-in
  *                             registers the first downbeat's expectations at once.
  *
+ *   seq (player-form.js): the played index of the bar a note falls in — which time
+ *   through a repeated bar it is. Optional: an expected note given with `seq` keeps
+ *   it, a played note takes its pair's (an extra: the clock position's, pos.seq).
+ *   Entries made without one have no seq field at all.
+ *
  *   audioTimeFromStamp(perfMs, { contextTime, performanceTime }) → seconds
  *       the audio-clock time of a performance.now() instant, from an AudioContext
  *       output timestamp (the two clocks paired at the speaker). Take the stamp at
@@ -90,6 +95,7 @@ function createTimingLog({ windowMs = HIT_WINDOW_MS } = {}) {
     exp.offsetMs = round((play.audioTime - exp.audioTime) * 1000);
     exp.status = 'hit';
     Object.assign(play, { hand: exp.hand, bar: exp.bar, beat: exp.beat, expectedAt: exp.audioTime, offsetMs: exp.offsetMs, matched: true, pass: exp.pass });
+    if (exp.seq != null) play.seq = exp.seq; else delete play.seq;   // where the note belongs, not where the clock was when the key went down
     pending = pending.filter(e => e !== exp);
     loose = loose.filter(e => e !== play);
     passOf(exp.pass).played.push(play);
@@ -119,6 +125,7 @@ function createTimingLog({ windowMs = HIT_WINDOW_MS } = {}) {
     },
     expect(note, pass = 1) {
       const entry = { pitch: note.pitch, hand: note.hand ?? null, bar: note.bar ?? null, beat: note.beat ?? null, audioTime: note.audioTime, playedAt: null, offsetMs: null, status: 'pending', pass };
+      if (note.seq != null) entry.seq = note.seq;
       Object.defineProperty(entry, 'ref', { value: note.ref, enumerable: false });
       passOf(pass).expected.push(entry);
       pending.push(entry);
@@ -128,6 +135,7 @@ function createTimingLog({ windowMs = HIT_WINDOW_MS } = {}) {
     },
     played(pitch, audioTime, pos = null) {
       const entry = { pitch, hand: null, bar: pos && pos.bar != null ? pos.bar : null, beat: pos && pos.beat != null ? pos.beat : null, audioTime, expectedAt: null, offsetMs: null, matched: false, extra: false, pass: null };
+      if (pos && pos.seq != null) entry.seq = pos.seq;
       loose.push(entry);
       const hit = closest(pending, pitch, audioTime);
       if (hit) pair(hit, entry);
@@ -217,6 +225,23 @@ async function selfTest() {
     log.played(64, 12);
     assert('exactly on time: offset 0', [e3.entry.status, e3.entry.offsetMs], ['hit', 0]);
     assert('the entry keeps the page\'s ref out of JSON', (() => { const r = log.expect({ ...N(65, 13), ref: { big: true } }, 1); return [r.entry.ref, JSON.stringify(r.entry).includes('big')]; })(), [{ big: true }, false]);
+  }
+
+  // ── seq: which time through a repeated bar ──────────────────────
+  {
+    const log = createTimingLog();
+    log.open(1, { startedAt: 0 });
+    const first = log.expect({ ...N(67, 10, 9, 0), seq: 8 }, 1);
+    const again = log.expect({ ...N(67, 40, 9, 0), seq: 32 }, 1);
+    const hit = log.played(67, 40.03, { bar: 8, beat: 3.9, seq: 31 });
+    const extra = log.played(50, 41, { bar: 9, beat: 2, seq: 32 });
+    const r = log.close(1, { endedAt: 50 });
+    assert('two expectations of the same written bar keep their own seq; the played note takes its pair\'s (32), not the clock\'s (31)', [first.entry.seq, again.entry.seq, hit.hit === again.entry, hit.entry.seq, hit.entry.bar], [8, 32, true, 32, 9]);
+    assert('an extra keeps the seq the clock was in; the first time through bar 9 is the missed one', [extra.entry.seq, extra.entry.extra, r.missed.map(e => e.seq)], [32, true, [8]]);
+    assert('seq is in the JSON of both lists', [JSON.parse(JSON.stringify(r.pass.expected)).map(e => e.seq), JSON.parse(JSON.stringify(r.pass.played)).map(e => e.seq)], [[8, 32], [32, 32]]);
+    const plain = createTimingLog();
+    plain.open(1, { startedAt: 0 });
+    assert('without a seq the entries are as they always were: no seq field', ['seq' in plain.expect(N(60, 1), 1).entry, 'seq' in plain.played(60, 1.01, { bar: 1, beat: 0 }).entry], [false, false]);
   }
 
   // ── window, wrong pitch, pairing once ───────────────────────────
