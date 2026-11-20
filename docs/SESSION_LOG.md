@@ -2,6 +2,251 @@
 
 Reverse chronological. Quick capture after each session: what happened, what was decided, what's next.
 
+## 2026-11-20 — Player: the band, sampled drums, "Band slows down for me" as a steadiness score, dev tuning panel, rack regrouped by mode
+
+**Next: tuning run with Weston at the RD-2000. MacBook, /player?dev=1, Run Rudolph Run, 'Band slows down for me' ticked, tempo 100%, count-in 1. Watch the score meter, adjust sliders, then Copy settings and paste into chat.**
+
+On `dev`, four commits by commit date: `2d67a48` (the band, "Play
+repeats"), `4e9f526` (drums), `098c655` ("Band slows down for me", first
+version), `a6c737d` (the steadiness score, the dev panel, the rack).
+Verified by Node self-tests and the stub-DOM smoke test (19 scenarios,
+224 checks, all passing at the end of the day). **No Chrome or RD-2000
+check is recorded in the commits or the code for any of it.** Two things
+were reported from the page in use and fixed the same day (the guide
+volume slider looking broken in Listen; the Band volume row running over
+its card's padding); neither fix has been looked at since.
+
+### Landed
+- **The accompaniment piece as the band** (`2d67a48`;
+  `static/player/player-band.js`, new, 13/13; `player-mixer.js`, new,
+  11/11; `player.js`, `player-playalong.js`, `metronome.js`,
+  `templates/player.html`). A solo's norm names a second piece:
+  `"accompaniment": { "piece": "<slug>", "soloTranspose": 12 }`,
+  hand-written; the importer now keeps it across a re-import. The band's
+  norm is fetched after the piece and checked against it (`checkBand`: a
+  different time signature refuses it; another tempo, bar set or play
+  order warns and the solo's is used). With "Play with the band" ticked
+  (Band card, shown only for such a piece; off by default,
+  `songlab_player_band_on`; Band volume default 60,
+  `songlab_player_band_volume`) Listen and play-along schedule the band's
+  notes on the same clock, laid on the solo's played sequence by bar
+  number, so it follows the form, loops, tempo and pause as the solo
+  does. It sounds on a third piano of its own and is never lit, expected
+  or logged.
+- **Octave shift with the band** (same commit). While the band plays the
+  solo moves by `soloTranspose` (12 for Run Rudolph Run): the guide
+  sounds there, the on-screen keys light there, the timing log expects
+  that pitch and accepts the written one too, and "8va with the band"
+  shows over the staff, which is unchanged. Wait-for-me practice never
+  shifts.
+- **Mixer** (same commit; `player-mixer.js`). Guide, band, click and
+  drums levels on one slider-to-gain curve, `(level / 100) ^ 1.5`, each
+  remembered under its own key.
+- **"Play repeats" checkbox** (same commit) replaces yesterday's "Form:
+  with repeats | as written" control; stored under the same key
+  (`songlab_player_form`), shown only for a piece with a play order.
+- **Sampled drum groove** (`4e9f526`; `static/player/drums.js`, new,
+  34/34; `static/audio/drums/` with `CREDITS.txt`). "Click | Drums"
+  beside the Metronome checkbox (`songlab_player_metro_sound`, click by
+  default). Kick on 1 and 3, snare on 2 and 4, closed hi-hat on every
+  eighth, straight; 4/4 only — in any other meter the Drums button is
+  disabled, a note says why and the click plays. The hits are clock
+  items, so they follow tempo, loops, the form, pause and resume. The
+  count-in is stick clicks when Drums is in effect. Four one-shots from
+  Karoryfer Samples' Gogodze Phu Vol II (CC0 1.0), mono FLAC; each has a
+  synthesized stand-in that plays while the samples load or if a file
+  fails.
+- **"Band slows down for me", first version** (`098c655`;
+  `static/player/player-steady.js`, new). Notches: two bad bars dropped
+  the tempo slider 10 points (floor 50 %, four bars between drops), two
+  silent bars paused the band at the barline. Replaced the same day; only
+  the auto-pause survives as built.
+- **"Band slows down for me" as a running steadiness score** (`a6c737d`;
+  `player-steady.js` rewritten, 38/38; `player.js`). A score S from 0 to
+  1, 1 at every start: each expected note moves it, a hit toward 1 and a
+  miss toward 0, as a moving average with a half-life in notes. At each
+  barline the band's tempo moves toward what S asks for, as a share of
+  the tempo slider's value: 100 % at or above the comfort level, falling
+  in a straight line to the floor at the bottom level. It moves by whole
+  points, at most 5 slower or 3 faster per bar, eased across the bar, and
+  never above the learner's speed. **The band no longer moves the slider
+  or its saved value.** A bar with no expected notes, the grace bar after
+  a start or resume, and a bar in which no key was pressed all leave the
+  tempo alone; the last of these feeds no misses into S either. A stop
+  puts the band back at the learner's speed; a pause keeps where it was.
+  After the band's own pause a resume lifts S to the comfort level if it
+  is below it. `STEADY` defaults: half-life 12 notes, comfort 0.8, bottom
+  0.35, floor 0.5, 5 points slower and 3 faster per bar, 2 silent bars,
+  1 grace bar.
+- **What the learner sees** (same commit; `player-staff.js`,
+  `templates/player.html`). A small tempo badge beside the 8va label
+  ("85%", only while the band is below the learner's speed); the status
+  line "playing at 85% of your speed"; a pill over the staff for the
+  moments only — "Easing off" (coral), "Back to your speed" (green
+  #4CAF50), "Paused. Press P to carry on". A note not played in
+  play-along is drawn in soft coral for the rest of its pass
+  (`pl-note--missed`), where it used to stay faint.
+- **Log and bus** (same commit). Each tempo change is on the pass as
+  `{ type: 'tempo', S, from, to, seq, bar, … }` in `pass.steady` and
+  emitted as `band:tempo`; `band:stopped` is kept; `band:slowed` is gone.
+  `from` / `to` are percentages of the learner's speed (`fromBpm` /
+  `toBpm` alongside).
+- **Dev tuning panel** (same commit; `static/player/player-dev.js`, new).
+  Fetched only with `?dev=1`; without it nothing is loaded, drawn or read
+  from storage. A slider for every `STEADY` value and each drum level,
+  written straight into the live objects; a Judge section with a live
+  score meter (comfort and bottom levels marked) and a row per barline
+  (seq, bar, expected, hit, missed, S, desired tempo, actual tempo);
+  Copy settings (JSON) and Reset to defaults. Values under
+  `songlab_player_dev`, the panel's place under `songlab_player_dev_ui`.
+- **Guide volume locked in Listen** (same commit). While Listen runs or
+  is paused the slider is disabled and dimmed with "Listen plays the
+  piece at full volume" under it; live again when Listen stops and
+  during play-along. Display only: neither mode's sound and nothing
+  stored changes.
+- **Rack regrouped by mode** (same commit; `templates/player.html` only,
+  every control keeps its id, key and default). The Listen card is
+  "Listen & play along": Tempo, the Metronome row with Count-in, then a
+  "Play along" group (hint, Guide volume, "Band slows down for me"). The
+  Mode card has "Practice" (hint, No stress) and "Everywhere" (Play
+  repeats, Lines, "Auto-hide controls", which was "Hide controls while
+  playing").
+- **Band volume row** (same commit): kept inside the Band card's padding
+  (it inherited a 10em minimum width meant for the Listen card).
+- **Smoke test**: 19 scenarios, 224 checks (≈ 2 min). New since
+  2026-11-18: `form`, `form-none`, `band`, `band-none`, `drums`,
+  `drums-fallback`, `steady`, `steady-stop`, `dev`, `dev-off`,
+  `mode-card` (the last reads the template as text; the harness has no
+  real DOM).
+
+### Diagnosed / decided
+- **Notches replaced by a score the same day.** The notch version moved
+  the tempo slider itself and never came back up. The score version
+  keeps the slider as the learner's chosen speed and lets the band
+  return to it.
+- **A silent bar does not count against the learner.** The first score
+  version fed a silent bar's misses into S, so the bar before an
+  auto-pause eased the band and S was low on resume: the band kept
+  slowing for a bar or two while the learner played cleanly. Now a bar's
+  misses are held back until something is played in it, and dropped if
+  nothing is.
+- **A key that hits the next bar's downbeat a little early** still counts
+  as a key down for the auto-pause but not as "something played" in the
+  silent bar for the score. Without it, coming back in slightly ahead of
+  the beat would release that bar's misses.
+- **With the defaults it takes about four misses close together before
+  the tempo moves** (two in one bar are absorbed; the first drop is one
+  point), and the tempo lags the score both ways: it can drop once more
+  in the first clean bar. Arithmetic and self-tests, not ears.
+- **`MESSAGE_MS` removed**: the status line now holds for as long as the
+  band is below the learner's speed.
+- **"Play along" settings moved to the Listen card.** Three sub-headings
+  and two hints in the Mode card were estimated to add 135–155 px to a
+  column 130–165 px wide inside. Estimated from the CSS, not measured.
+- **Guide volume label**: "Guide (play along)" for a few hours (the
+  longer "Guide volume (play along)" was estimated not to fit), then back
+  to "Guide volume" once it sat under the "Play along" heading.
+- **The Listen note is laid over the foot of the slider's box**, out of
+  the flow, so the card does not grow and the staff does not move when
+  Listen starts. Not seen in a browser.
+- **"Auto-hide controls"**: "Hide controls while playing" was estimated
+  at about 215 px against a column of 130–165 px.
+
+### Setup for next session
+- Working tree clean after `a6c737d` apart from these docs.
+- The tuning run needs nothing built: `?dev=1`, then Copy settings gives
+  the JSON to paste. Reset to defaults clears `songlab_player_dev`.
+- The drum samples are tracked (four FLAC files, about 43 kB together);
+  the kit's download is not in the repo, its URL is in `CREDITS.txt`.
+
+### Calibration notes
+- Three layout decisions today rest on estimated text widths (the font
+  is a web font and no browser was run). They are marked as estimates
+  above; one look at the page settles each.
+- A smoke check that sampled the score when the barline sounded was
+  timing-dependent (the robot's next downbeat could land first). Sampling
+  when the barline is scheduled, the judge's own moment, is stable.
+- The stub DOM cannot see structure, so "each control under the right
+  heading" is checked by reading the template as text.
+
+### Flagged for later
+- **Not seen in a browser** (all from `a6c737d`): the tempo badge beside
+  the 8va label, and the 8va label on its own still centred; slot height
+  unchanged by the badge; the green pill and its border tint
+  (`color-mix`); the dev panel's meter and its two marks; how the ease
+  sounds going up as well as down; the score meter holding still through
+  a silent bar; the Listen note's position under the disabled slider,
+  now just above "Band slows down for me", and whether it wraps at
+  narrow widths; "Listen & play along" on one line at every width; the
+  Listen card's height against the Hands + Mode column; the Mode card at
+  the 1180 px and 600 px breakpoints; "Auto-hide controls" on one line;
+  the Band volume row inside its padding.
+- **Not checked on the RD-2000**: the band and the octave shift, the
+  drums against the click, the steadiness score with a real player.
+- `STEADY` defaults are first guesses (the tuning run is next).
+- Stale comments in `player.js`, found while writing this: the header's
+  "Events + controller" paragraph still lists `band:slowed`; the "Form"
+  paragraph still says "Form: with repeats | as written" in the Mode
+  card; the `TEMPO_KEY` comment says 25–110 step 5 where the constants
+  are 25–200 step 1.
+- Drums in meters other than 4/4.
+
+### Out of scope / deferred
+- Reading the timing log or S for scoring or a coach: nothing consumes
+  `band:tempo` yet.
+- Giving the Listen note its own line (about 16 px of card height all
+  the time) if the overlay does not sit well.
+
+## 2026-11-19 — Player: Listen and play-along follow the form (repeats, D.S. al Coda)
+
+On `dev`, one commit: `5da8d9e` (it also carries the 2026-11-18 docs).
+Verified by Node self-tests and the stub-DOM smoke test. **No Chrome or
+RD-2000 check is recorded in the commit or the code.**
+
+### Landed
+- **`static/player/player-form.js`** (new, pure, 19/19): the played
+  sequence of a piece. `playOrderOf(norm)` reads `form.playOrder` (null
+  when absent or naming a bar the piece lacks); a position in the played
+  order is a `seq`, a 0-based index. Run Rudolph Run has 36 written bars
+  and 68 seqs; written bar 9 is seq 8, 32 and 56. Also `playedSequence`,
+  `barAtSeq`, `firstSeqOf`, `isJump`, `nextLineAt` / `prevLineAt`,
+  `jumpLabel`.
+- **The clock runs over a played sequence** (`beat-clock.js`; 66/66 as it
+  stands): `configure({ sequence })` and `start({ fromSeq, toSeq,
+  startSeq })` beside the written-bar form; every position carries `seq`.
+- **Un-looped Listen and play-along follow the play order** (`player.js`,
+  `player-listen.js`): from the first time the current bar is played to
+  the end of the order. A loop, an explicit `{ from, to }` range and a
+  piece with no play order play the written bars as before. Wait-for-me
+  practice never follows the form.
+- **The two-line view previews the line really played next**, tagged
+  "↩ bar 9" or "→ Coda" when that is a jump (`player-staff.js` takes a
+  label); at the end of the form the line just played stays on top and
+  the last line is active below.
+- **Pause and resume by seq**: a pause in the second time through a bar
+  resumes the second time through it.
+- **Timing log and events carry `seq`** (`player-playalong.js`); a pass
+  is one trip through the form. Missed-note colouring is dropped when its
+  line is entered again.
+- **A Form setting in the Mode card** ("with repeats | as written",
+  `songlab_player_form`, shown only for a piece with a play order). It
+  became the "Play repeats" checkbox on 2026-11-20.
+- Smoke scenarios `form` and `form-none`. `tools/pieces/README.md`: the
+  player reads `form.playOrder`.
+
+### Diagnosed / decided
+- **Bars stay as written; only the order is followed.** Nothing is
+  unrolled in the data, so the follower, its step counter, trouble spots
+  and pass recording still walk the written bars.
+- **`seq`, not the bar number, names a position in a run**, because the
+  same written bar is played more than once.
+
+### Flagged for later
+- Chrome checks: the jump tags on the previewed line, the page turning
+  back at a repeat and on to the coda under the clock, a pause and
+  resume inside a repeat.
+- The Chrome items left open on 2026-11-18 are still open.
+
 ## 2026-11-18 — Player: two-line view, MusicXML importer, repeats and navigation marks, keyboard minimum
 
 **Next: read-and-report for playback following the form (form.playOrder), then the duet part as the band.**

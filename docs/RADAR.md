@@ -17,6 +17,28 @@ out of awareness.
 
 ## Active threads
 
+- **[2026-11-20] The dev tuning panel is the player's only, and only
+  for two things.** `/player?dev=1` (`static/player/player-dev.js`) has
+  sliders for the `STEADY` values and the drum levels, with Copy
+  settings as the way a tuned value gets back into the code. The
+  player's other hand-tuned constants are still tuned from the console:
+  the trouble-spot thresholds (`__player.thresholds`, waiting on real
+  `console.table` rows). A section is one entry in the panel's
+  `SECTIONS`; decide whether trouble spots join it,
+  and whether the panel belongs in `static/shared/` before a second
+  page wants one.
+  See: `static/player/player-dev.js` header; `docs/STATUS.md` player "In progress".
+
+- **[2026-11-20] Layout decided from estimated text widths.** The site
+  font is a web font and Claude Code does not run a browser, so the
+  player rack's 2026-11-20 choices ("Auto-hide controls", "Listen & play
+  along", the Play along group moved to the Listen card, the Listen note
+  laid over the slider) rest on arithmetic from the CSS. The same will
+  recur on any layout prompt. Until each is looked at in Chrome it is
+  listed in STATUS; a way to measure text in Node with the real font
+  would end the guessing.
+  See: `docs/STATUS.md` player "Open / deferred"; SESSION_LOG 2026-11-20.
+
 - **[2026-10-28] Unnamed tones: letter-based labels vs Levine T5/T6.**
   The engine now gives a tone the chord type names the type's degree
   name (A over Cdim7 is ♭♭7, F over C7sus4 is 4, A over C6 is 6).
@@ -93,6 +115,10 @@ out of awareness.
   Move private pieces to a non-static folder (and point `voicings_data` and
   `voicings_pieces` there) before any shared deploy.
   See: `app.py` `voicings_data`, `voicings_pieces`; `.gitignore`.
+  **Update 2026-11-20:** the same holds for the player's pieces under
+  `static/private/pieces/` (Carol, Run Rudolph Run and its duet part,
+  which the player now also fetches as the band by its slug). The move
+  has to cover `/player/data/<name>` and `/player/pieces` too.
 
 - **[2026-10-19] Late-bar bass notes never become comp events.** Rag bars 16
   and 17: the real left-hand octave on beat 1.5 (E♭2, A2) lands in
@@ -323,6 +349,10 @@ out of awareness.
   section and remains valid reference material.
   See: `docs/active-plans/chord-melody-build-plan.md` (on
   `archive/chord-melody-research`) backburner section.
+  **Update 2026-11-20:** the follow-along player adds two more: its own
+  beat clock (`static/player/beat-clock.js`, since 2026-11-13) and, on
+  top of the tempo slider, the band's share of it under "Band slows down
+  for me" (`bandPct` in `player.js`).
 
 - **[2026-05-11] OQ namespace collision across design docs.**
   Multiple design docs each have their own OQ1, OQ2, etc., with no
