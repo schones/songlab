@@ -7,8 +7,8 @@
  * fixture is built in harness.mjs). It is not a substitute for the Chrome /
  * RD-2000 check: nothing is drawn and nothing sounds.
  *
- *   node tests/player/smoke.mjs            every scenario, each in its own process (≈ 25 s: the clock is real time)
- *   node tests/player/smoke.mjs pause      one scenario: form | form-none | band | band-none | pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars | two-lines | drums-fallback | drums
+ *   node tests/player/smoke.mjs            every scenario, each in its own process (≈ 2 min: the clock is real time)
+ *   node tests/player/smoke.mjs pause      one scenario: form | form-none | band | band-none | pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars | two-lines | drums-fallback | drums | steady | steady-stop
  *
  * Add a scenario: a function in SCENARIOS that boots the harness, checks,
  * and ends with h.done().
@@ -29,6 +29,24 @@ const flat = n => (typeof n === 'string' ? n : (n.tag === 'strong' ? `<b>${n.tex
 const FORM_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 3, 4, 5, 6, 7, 8, 3, 4, 15, 16];
 const FORM_PIECE = { piece: 'smoke-form', title: 'Smoke form', tempo: 240, lines: [1, 3, 5, 7, 9, 11, 13, 15], repeats: { start: [3], end: [8] }, marks: { segno: [3], toCoda: [4], dsAlCoda: [8], coda: [15] }, form: { playOrder: FORM_ORDER } };
 
+/**
+ * A learner for play-along: plays the expected notes `plays(detail)` says yes to, each at the instant it is heard
+ * (its audio time + the fake context's 20 ms output latency), so a played note reads ≈ 0 ms. robot.plays can be
+ * swapped while it runs. The fixture's bar is D6 and G4 on beat 1, B♭4, D5, and a second D6 an eighth before the
+ * barline — that last one is still inside its hit window when the barline is judged.
+ */
+function robot(h, plays = () => true) {
+  const r = { plays };
+  h.C.on('note:expected', d => {
+    if (!r.plays(d)) return;
+    setTimeout(() => { h.P.noteOn(d.pitch, performance.now()); h.P.noteOff(d.pitch); }, Math.max(0, (d.audioTime + 0.02 - h.now()) * 1000));
+  });
+  return r;
+}
+const CLEAN = () => true, SILENT = () => false;
+const ONE_MISS = d => d.pitch !== 70;                 // the B♭4 is left out: one missed note
+const BAD = d => d.pitch === 86 && d.beat === 0;      // only the downbeat D6: G4, B♭4 and D5 are missed (and the last D6, once its window closes)
+
 const SCENARIOS = {
   /** Listen and play-along follow form.playOrder: the played sequence, the two-line view at the jumps, pause / resume by seq, seq in the log, the Form setting. */
   async form() {
@@ -39,6 +57,7 @@ const SCENARIOS = {
     const shown = from => S.shows.slice(from).map(v => [v.top, v.bottom, v.active, v.label]);
     const started = type => h.events.filter(e => e[0] === type).slice(-1)[0][1];
     P.setCountIn(0); P.tempo = 200;   // 480 bpm, 3/4: a bar is 0.375 s
+    P.setSteady(false);               // nobody plays in this scenario: with "Band slows down for me" on, the band would stop after three bars (steady-stop covers that)
     check('a piece with a play order: 18 played bars, Form shown and "with repeats"; practice shows lines 1 and 2 as ever', [P.order.length, P.form, el('pl-form-row').hidden, shown(-1)], [18, 'repeats', false, [[[1, 2], [3, 4], 0, '']]]);
 
     // ── Listen through the whole form ──
@@ -571,6 +590,145 @@ const SCENARIOS = {
     check('in 3/4 the count-in and every beat are the metronome\'s click, three to the bar; no drum, no stick', [of('drum').length, of('click').slice(0, 6).map(s => Math.round((s[1] - w0) / beat34)), el('pl-summary-text').children.map(c => c.textContent).includes('metronome on')], [0, [-3, -2, -1, 0, 1, 2], true]);
     await P.load('smoke-44'); await sleep(60);
     check('back in 4/4 the remembered Drums is in effect again', [el('pl-beat-drums').disabled, pressed(), el('pl-beat-note').hidden, P.drumsOn()], [false, ['false', 'true'], true, true]);
+    h.done();
+  },
+
+  /** "Band slows down for me", the drops: one missed note and one bad bar do nothing; two bad bars drop a notch, eased; the slider and the saved tempo move and stay; four bars between drops; a loop; the floor. */
+  async steady() {
+    const h = await boot({ norm: fixtureNorm({ tempo: 200 }), pieces: { 'smoke-fast': fixtureNorm({ piece: 'smoke-fast', title: 'Smoke fast', tempo: 360 }) } });
+    const { P, C, L, el, check, sleep, storage } = h;
+    const until = async (f, ms = 15000) => { const t = Date.now(); while (!f() && Date.now() - t < ms) await sleep(5); return f(); };
+    const of = type => h.events.filter(e => e[0] === type).map(e => e[1]);
+    const slowed = () => of('band:slowed');
+    const brief = d => [d.fromPct, d.toPct, Math.round(d.from), Math.round(d.to), d.seq, d.bar, d.pass];
+    P.setCountIn(0); P.STEADY.MESSAGE_MS = 500;   // 200 bpm, 3/4: a bar is 0.9 s
+    check('"Band slows down for me" is on by default, with every threshold in one place', [P.steadyOn, el('pl-steady').checked, [P.STEADY.JUDGE_BARS, P.STEADY.STRUGGLE_MISSED, P.STEADY.STOP_BARS, P.STEADY.GRACE_BARS, P.STEADY.DROP_PCT, P.STEADY.FLOOR_PCT, P.STEADY.MIN_BARS_BETWEEN_DROPS, P.STEADY.EASE_BARS]], [true, true, [2, 0.5, 2, 1, 10, 50, 4, 1]]);
+
+    // ── a whole run: bar 2 one missed note, bar 4 a bad bar on its own, bars 6–11 bad, then clean ──
+    const kinds = { 2: ONE_MISS, 4: BAD, 6: BAD, 7: BAD, 8: BAD, 9: BAD, 10: BAD, 11: BAD };
+    robot(h, d => (kinds[d.bar] || CLEAN)(d));
+    const beats = [];
+    P.clock.onDue('beat', p => { if (L.active) beats.push([p.bar, P.clock.tempo, P.tempo]); });
+    await C.playAlong();
+    await until(() => L.seq === 5);
+    const p1 = C.getCurrentPass();
+    check('one missed note (bar 2) and one bad bar (bar 4, with clean bars either side) do nothing: 100 %, still playing', [P.tempo, P.clock.tempo, slowed().length, L.active, p1.expected.filter(e => e.status === 'missed').map(e => e.bar).filter((b, i, a) => a.indexOf(b) === i), p1.steady], [100, 200, 0, true, [2, 4], []]);
+    await until(() => slowed().length === 1);
+    check('two bad bars (6 and 7): one notch down at the barline into bar 8, said calmly on the status line', [brief(slowed()[0]), el('pl-status').textContent, L.active], [[100, 90, 200, 180, 7, 8, 1], 'slowed to 90% to keep it steady', true]);
+    await until(() => L.seq === 8);
+    const eased = beats.filter(b => b[0] === 8).map(b => b[1]);
+    check('eased in over bar 8 on the clock\'s live tempo: part-way during the bar, 180 bpm by the next barline', [eased.some(t => t < 200 && t > 180), eased.every((t, i) => i === 0 || t <= eased[i - 1]), P.clock.tempo], [true, true, 180]);
+    check('the tempo slider, its readout and the saved value moved with it', [P.tempo, el('pl-tempo').value, el('pl-tempo-readout').textContent, storage.songlab_player_tempo_pct], [90, '90', '90% · 180 bpm', '90']);
+    check('…and the status line is the usual one again, with the new percentage', el('pl-status').textContent, 'Playing along · bars 1–16 · 90%');
+    await until(() => L.seq === 10);
+    check('bars 8–10 are bad too: no second drop within four bars', [slowed().length, P.tempo], [1, 90]);
+    await until(() => slowed().length === 2);
+    check('the next drop comes four bars after the first (the barline into bar 12)', slowed().map(brief), [[100, 90, 200, 180, 7, 8, 1], [90, 80, 180, 160, 11, 12, 1]]);
+    await until(() => L.seq === 13);
+    check('clean bars after it: nothing raises the tempo — it never went up at any beat of the run', [P.tempo, P.clock.tempo, beats.every((b, i) => i === 0 || b[1] <= beats[i - 1][1]), slowed().length], [80, 160, true, 2]);
+    C.stop(); await sleep(40);
+    const lp = C.getLastPass();
+    check('each drop is in the pass\'s timing log', lp.steady.map(e => [e.type, e.fromPct, e.toPct, e.seq, e.bar, typeof e.audioTime]), [['slowed', 100, 90, 7, 8, 'number'], ['slowed', 90, 80, 11, 12, 'number']]);
+    check('after the run the slower tempo stays: slider, saved value', [P.tempo, el('pl-tempo').value, storage.songlab_player_tempo_pct], [80, '80', '80']);
+    h.events.length = 0;
+    await C.playAlong(); await sleep(60);
+    check('…and the next run starts there (a fresh run\'s status line is the plain one)', [of('playalong:start')[0].tempoPct, of('playalong:start')[0].bpm, el('pl-status').textContent], [80, 160, 'Playing along · bars 1–16']);
+    C.stop(); await sleep(40);
+    P.tempo = 100;
+    check('the learner raises it: the slider is theirs', [P.tempo, storage.songlab_player_tempo_pct], [100, '100']);
+
+    // ── a loop, near the floor: 55 % → 50 %, then never lower ──
+    await P.load('smoke-fast'); await sleep(100);   // 360 bpm: at 55 % a bar is 0.91 s
+    P.tempo = 55; P.setLoop(2, 3); await sleep(40);
+    h.events.length = 0; beats.length = 0;
+    for (const b of [2, 3]) kinds[b] = BAD;   // the same robot plays this piece: every bar of the loop is bad
+    await C.playAlong();
+    await until(() => slowed().length === 1);
+    check('in a loop: bar 3 of pass 1 and bar 2 of pass 2 are bad — the drop is at the next barline, to the floor (55 → 50)', [brief(slowed()[0]), el('pl-status').textContent], [[55, 50, 198, 180, 2, 3, 2], 'slowed to 50% to keep it steady']);
+    const at = beats.length;
+    await until(() => beats.length - at >= 6 * 3 + 3);   // six more bars, all bad
+    check('at the floor nothing lower: six more bad bars, no second drop, no event, and the loop plays on at 50 %', [slowed().length, P.tempo, P.clock.tempo, el('pl-tempo').value, storage.songlab_player_tempo_pct, L.active, el('pl-status').textContent], [1, 50, 180, '50', '50', true, 'Playing along · bars 2–3 · looping · 50%']);
+    C.stop(); await sleep(40);
+    check('the drop is on the loop pass it happened in', C.getPasses().filter(p => p.loop && p.steady && p.steady.length).map(p => [p.pass, p.loop, p.steady.map(e => [e.type, e.toPct])]), [[2, true, [['slowed', 50]]]]);
+    h.done();
+  },
+
+  /** "Band slows down for me", the stop: two silent bars pause the band at the barline, inside a repeat, and P carries on from there; rest bars count for neither; the box unticked is play-along as it was. */
+  async 'steady-stop'() {
+    const ev = (onset, dur, pitches) => ({ onset, dur, pitches, rest: !pitches.length, tie: null });
+    const RESTS = new Set([3, 5, 6, 7, 9]);
+    const rests = fixtureNorm({ piece: 'smoke-rests', title: 'Smoke rests', tempo: 240 });
+    rests.bars = rests.bars.map(b => (RESTS.has(b.bar) ? { bar: b.bar, voice: [], rh: [ev(0, 3, [])], lh: [ev(0, 3, [])] } : b));
+    const h = await boot({ norm: fixtureNorm(FORM_PIECE), pieces: { 'smoke-rests': rests } });
+    const { P, C, L, el, key, check, sleep, storage } = h;
+    const until = async (f, ms = 15000) => { const t = Date.now(); while (!f() && Date.now() - t < ms) await sleep(5); return f(); };
+    const of = type => h.events.filter(e => e[0] === type).map(e => e[1]);
+    const R = robot(h);
+    const bars = [];
+    P.clock.onDue('bar', p => { bars.push([p.bar, p.seq]); });
+    P.setCountIn(0); P.setMetronome(true);   // 240 bpm, 3/4: a bar is 0.75 s. The click is on: it must stop with the band
+
+    // ── the form, from bar 5 (seq 4): one silent bar is nothing; silent the second time through bars 4 and 5 → paused at the barline into bar 6 (seq 11) ──
+    P.stepLine(1); P.stepLine(1); await sleep(40);
+    const quiet = new Set([5, 9, 10]);
+    R.plays = d => !quiet.has(d.seq);
+    await C.playAlong();
+    await until(() => L.seq === 7);
+    check('one silent bar (seq 5) does nothing: still playing, no drop, no stop', [L.active, of('band:stopped').length, of('band:slowed').length], [true, 0, 0]);
+    await until(() => !L.active);
+    await sleep(60);
+    const stop = of('band:stopped')[0];
+    check('two silent bars in a row: band:stopped at the barline into bar 6, the second time through (seq 11)', [of('band:stopped').length, stop.bar, stop.seq, stop.pass], [1, 6, 11, 1]);
+    check('paused there as Space would, keeping the seq; the status says how to carry on', [C.paused && [C.paused.mode, C.paused.bar, C.paused.seq], P.clock.running, el('pl-playalong').textContent, P.staff.marker, el('pl-status').textContent], [['playalong', 6, 11], false, '▶ Resume', 6, 'paused: play along stopped. P to carry on']);
+    check('the clock never reached that barline\'s bar; the tempo was not dropped for the silent bars', [bars[bars.length - 1], P.tempo, of('band:slowed').length, storage.songlab_player_tempo_pct ?? null], [[5, 10], 100, 0, null]);
+    const last = h.sounds.filter(s => s[0] === 'on').map(s => s[2]), clicks = h.sounds.filter(s => s[0] === 'click').map(s => s[1]);
+    check('nothing of the bar after the barline was sounded or clicked, and the band played right up to it', [last.filter(t => t >= stop.audioTime - 0.001).length, clicks.filter(t => t >= stop.audioTime - 0.001).length, last.some(t => t > stop.audioTime - 0.75), clicks.some(t => t > stop.audioTime - 0.3)], [0, 0, true, true]);
+    const lp = C.getPasses().slice(-1)[0];
+    check('the auto-pause is in the pass\'s timing log; the pass ends at the barline, with nothing expected beyond it', [lp.steady.map(e => [e.type, e.seq, e.bar]), lp.complete, lp.endedAt === stop.audioTime, lp.expected.some(e => e.seq >= 11), lp.expected.filter(e => e.seq >= 9).every(e => e.status === 'missed')], [[['stopped', 11, 6]], false, true, false, true]);
+    check('playalong:stop says paused at that bar and seq', (d => [d.paused, d.bar, d.seq, d.complete])(of('playalong:stop').slice(-1)[0]), [true, 6, 11, false]);
+
+    // ── P carries on from that barline; the first bar after a resume is not judged ──
+    h.events.length = 0; bars.length = 0;
+    R.plays = SILENT;
+    key('p');
+    await until(() => bars.length >= 2);
+    check('P resumes at bar 6 the second time through (seq 11), then bar 7', [bars.slice(0, 2), (d => [d.resumed, d.startBar, d.startSeq])(of('playalong:start')[0])], [[[6, 11], [7, 12]], [true, 6, 11]]);
+    await until(() => !L.active);
+    await sleep(60);
+    check('still silent: the resumed bar is not judged, so the band plays three bars before it stops again (the barline into seq 14)', [bars, of('band:stopped').map(d => [d.bar, d.seq]), C.paused && C.paused.seq], [[[6, 11], [7, 12], [8, 13]], [[3, 14]], 14]);
+    C.stop(); await sleep(40);
+
+    // ── rest bars count for neither: bad, rest, bad is a drop; silent, rest, silent is a stop; rests alone are nothing ──
+    await P.load('smoke-rests'); await sleep(100);
+    h.events.length = 0; bars.length = 0;
+    const kinds = { 2: BAD, 4: BAD, 8: SILENT, 10: SILENT };
+    R.plays = d => (kinds[d.bar] || CLEAN)(d);
+    await C.playAlong();
+    await until(() => of('band:slowed').length === 1);
+    check('bad bar 2, rest bar 3, bad bar 4: the rest is skipped — a drop at the barline into bar 5', of('band:slowed').map(d => [d.fromPct, d.toPct, d.seq, d.bar]), [[100, 90, 4, 5]]);
+    await until(() => L.seq === 7);
+    check('three bars of rests (5–7) with nothing played: no stop, no second drop', [L.active, of('band:stopped').length, of('band:slowed').length], [true, 0, 1]);
+    await until(() => !L.active);
+    await sleep(60);
+    check('silent bar 8, rest bar 9, silent bar 10: two silent bars in a row — stopped at the barline into bar 11, the tempo as it was', [of('band:stopped').map(d => [d.bar, d.seq]), C.paused && C.paused.bar, of('band:slowed').length, P.tempo], [[[11, 10]], 11, 1, 90]);
+    check('the drop and the stop are both on that pass', C.getPasses().slice(-1)[0].steady.map(e => e.type), ['slowed', 'stopped']);
+    C.stop(); await sleep(40);
+
+    // ── the box unticked: play-along as it was ──
+    el('pl-steady').checked = false; el('pl-steady').fire('change');
+    check('unticking is remembered', [P.steadyOn, storage.songlab_player_band_follow], [false, '0']);
+    P.tempo = 100;
+    h.events.length = 0; bars.length = 0;
+    const off = { 1: BAD, 2: BAD, 4: BAD };
+    R.plays = d => (off[d.bar] || SILENT)(d);   // bad bars, then silence (bar 3 is a rest): a drop and a stop if it were on
+    await C.playAlong();
+    await until(() => bars.length >= 13);
+    check('off: bad bars, then nine bars of silence — it plays on at 100 %, no event, no message, nothing on the pass', [L.active, P.tempo, P.clock.tempo, h.events.filter(e => e[0].startsWith('band:')).length, el('pl-status').textContent, 'steady' in C.getCurrentPass(), bars[bars.length - 1]], [true, 100, 240, 0, 'Playing along · bars 1–16', false, [13, 12]]);
+    key(' ');
+    check('…and Space pauses with its own status line, as ever', [C.paused && C.paused.bar, /^Paused · play-along · bar 13/.test(el('pl-status').textContent)], [13, true]);
+    C.stop(); await sleep(40);
+    el('pl-steady').checked = true; el('pl-steady').fire('change');
+    check('ticked again: on, remembered', [P.steadyOn, storage.songlab_player_band_follow], [true, '1']);
     h.done();
   },
 };

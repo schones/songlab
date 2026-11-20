@@ -409,6 +409,8 @@
         <section class="pl-card pl-card--mode" aria-labelledby="pl-h-mode">
           <h3 class="pl-card__title" id="pl-h-mode">Mode</h3>
           <label class="pl-check" title="Wrong notes don't block, aren't shown and aren't counted; the player just follows along"><input type="checkbox" id="pl-no-stress"> No stress</label>
+          <!-- Band slows down for me (player.js setSteady, player-steady.js): in play-along the tempo drops a notch when the learner is struggling and the band pauses when the learner stops. Remembered; on by default. -->
+          <label class="pl-check" title="Play along: the band slows down a notch when you are struggling and pauses when you stop. It never speeds up by itself: move the tempo slider to go faster."><input type="checkbox" id="pl-steady" checked> Band slows down for me</label>
           <!-- Auto-collapse (player.js autoCollapse): the rack closes on the first MIDI note or Listen start after it was opened -->
           <label class="pl-check" title="Close the controls on the first note played or when Listen / Play along starts; off: they only open and close with ⚙ Controls"><input type="checkbox" id="pl-rack-auto" checked> Hide controls while playing</label>
           <!-- Play repeats (player.js setForm): Listen and play-along follow the piece's repeats and jumps (form.playOrder); unticked, every bar is played once. Remembered. Shown only for a piece that has a play order. -->
