@@ -5,13 +5,16 @@
  * (top-level DOM wiring, one piece loaded at import), so each scenario
  * runs in its own process — see smoke.mjs.
  *
- *   const h = await boot({ norm });   // norm: the piece the fake /player/data serves
+ *   const h = await boot({ norm, pieces });   // norm: the piece the fake /player/data serves;
+ *                        pieces: { name: norm | null } served by name at /player/data/<name> (null: 404) — any other name gets `norm`.
+ *                        h.pieces is that map, live: change it and load again.
  *   h.P / h.C / h.L      window.__player, window.songlabPlayer, state.listen
  *   h.el(id)             the stub element for an id (textContent, hidden, getAttribute, children, fire('click'))
  *   h.key(' ')           a document keydown; h.key(' ', { target: h.focusOn('button') }) with focus on a control (→ whether it was preventDefault-ed)
  *   h.focusOn(tag)       a stand-in focused element of that tag (answers closest() for selectors naming the tag)
  *   h.events             every bus event as [type, detail]
- *   h.sounds             ['click', t] / ['on', note, t] / ['releaseAll'] from the fake audio
+ *   h.sounds             ['click', t] / ['on', note, t, id] / ['releaseAll', id] from the fake audio; id: which fake
+ *                        Sampler played it, numbered from 1 in the order they were made (sampler.id)
  *   h.now()              the fake AudioContext's currentTime (real seconds since boot)
  *   h.check(label, actual, expected), h.done()   → prints, exits non-zero on a failure
  */
@@ -60,7 +63,7 @@ function fixtureNorm(extra = {}) {
   return { piece: 'smoke-fixture', title: 'Smoke fixture', reader: 'test', key: 'G minor', time: '3/4', beatsPerBar: 3, tempo: 82, lines: [1, 5, 9, 13], ...extra, bars };
 }
 
-async function boot({ norm = fixtureNorm() } = {}) {
+async function boot({ norm = fixtureNorm(), pieces = {} } = {}) {
   const elsById = {}, docListeners = {}, storage = {};
   globalThis.window = globalThis;
   globalThis.Node = class {}; globalThis.Element = class {};
@@ -77,12 +80,19 @@ async function boot({ norm = fixtureNorm() } = {}) {
   globalThis.addEventListener = () => {}; globalThis.removeEventListener = () => {};
   globalThis.requestAnimationFrame = f => setTimeout(f, 0);
   globalThis.matchMedia = () => ({ matches: false, addEventListener() {} });
-  globalThis.fetch = async url => ({ ok: true, status: 200, json: async () => (String(url).includes('/pieces') ? [{ name: norm.piece, title: norm.title }] : norm) });
+  globalThis.fetch = async url => {
+    const u = String(url);
+    if (u.includes('/pieces')) return { ok: true, status: 200, json: async () => [{ name: norm.piece, title: norm.title }] };
+    const name = decodeURIComponent(u.split('?')[0].split('/').pop());
+    if (name in pieces && pieces[name] == null) return { ok: false, status: 404, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => (name in pieces ? pieces[name] : norm) };
+  };
 
   // A fake Tone whose context runs on real time: the beat clock's own setInterval scheduler drives everything.
   const t0 = performance.now();
   const now = () => (performance.now() - t0) / 1000;
   const sounds = [];
+  let samplers = 0;
   const LATENCY = 0.02;
   const param = () => ({ value: 1, rampTo() {}, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {}, cancelScheduledValues() {} });
   class FakeNode { constructor() { this.gain = param(); } connect() { return this; } toDestination() { return this; } disconnect() {} }
@@ -96,8 +106,8 @@ async function boot({ norm = fixtureNorm() } = {}) {
     start: async () => {}, immediate: () => now(), now: () => now() + 0.1, connect() {},
     Gain: FakeNode, Volume: FakeNode,
     Sampler: class extends FakeNode {
-      constructor(o) { super(); setTimeout(() => o.onload && o.onload(), 0); }
-      triggerAttack(note, t) { sounds.push(['on', note, t]); } triggerRelease() {} releaseAll() { sounds.push(['releaseAll']); }
+      constructor(o) { super(); this.id = ++samplers; setTimeout(() => o.onload && o.onload(), 0); }
+      triggerAttack(note, t) { sounds.push(['on', note, t, this.id]); } triggerRelease() {} releaseAll() { sounds.push(['releaseAll', this.id]); }
     },
   };
 
@@ -121,7 +131,7 @@ async function boot({ norm = fixtureNorm() } = {}) {
     process.exit(passed === results.length ? 0 : 1);   // exit: the page's timers would keep the process alive
   };
   return {
-    P, C, L: P.state.listen, norm, events, sounds, now, sleep, check, done,
+    P, C, L: P.state.listen, norm, pieces, events, sounds, now, sleep, check, done,
     el: id => elsById[id],
     /** Dispatch a keydown to the document listeners; returns whether one of them called preventDefault. */
     key: (k, extra = {}) => { const e = { key: k, target: null, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra }; (docListeners.keydown || []).forEach(f => f(e)); return e.defaultPrevented; },

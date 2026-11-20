@@ -8,7 +8,7 @@
  * RD-2000 check: nothing is drawn and nothing sounds.
  *
  *   node tests/player/smoke.mjs            every scenario, each in its own process (≈ 25 s: the clock is real time)
- *   node tests/player/smoke.mjs pause      one scenario: form | form-none | pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars | two-lines
+ *   node tests/player/smoke.mjs pause      one scenario: form | form-none | band | band-none | pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars | two-lines
  *
  * Add a scenario: a function in SCENARIOS that boots the harness, checks,
  * and ends with h.done().
@@ -92,13 +92,113 @@ const SCENARIOS = {
     P.clearLoop(); await sleep(40);
     P.restart(); await sleep(40);
     await C.listen(); await sleep(40);
-    check('Form "as written" stops a transport under way and is remembered', [P.setForm('written'), L.active, storage.songlab_player_form], ['written', false, 'written']);
+    el('pl-form').checked = false; el('pl-form').fire('change');
+    check('"Play repeats" unticked stops a transport under way and is remembered under the old key', [P.form, L.active, storage.songlab_player_form], ['written', false, 'written']);
     bars.length = 0;
     await C.listen();
     await until(() => bars.length >= 9);
-    check('…and Listen is today\'s: bars 1–16 straight through (bar 9 after bar 8)', [el('pl-status').textContent, started('listen:start').form, bars.slice(7, 9).map(b => b[0])], ['Listening · bars 1–16', false, [8, 9]]);
+    check('…and Listen is today\'s: bars 1–16 straight through (bar 9 after bar 8)', [el('pl-status').textContent, started('listen:start').form, bars.slice(7, 9).map(b => b[0])], ['Listening · straight through · 16 bars', false, [8, 9]]);
     C.stop(); await sleep(40);
-    check('wait-for-me practice is untouched by all this: 16 written bars of steps', [P.steps.length, P.steps[P.steps.length - 1].bar, P.setForm('repeats')], [16 * 4, 16, 'repeats']);
+    P.stepLine(1); P.stepLine(1); await sleep(40);
+    await C.listen(); await sleep(40);
+    check('…from a later bar it says where from', el('pl-status').textContent, 'Listening · from bar 5 · straight through · 12 bars');
+    C.stop(); await sleep(40);
+    check('wait-for-me practice is untouched by all this: 16 written bars of steps', [P.steps.length, P.steps[P.steps.length - 1].bar, P.setForm('repeats'), el('pl-form').checked], [16 * 4, 16, 'repeats', true]);
+    h.done();
+  },
+
+  /** The accompaniment as the band: loaded after the piece, laid on the played sequence by bar number, its own sampler; the solo an octave up while it plays. */
+  async band() {
+    const ev = (onset, dur, pitches) => ({ onset, dur, pitches, rest: false, tie: null });
+    // The band part: one G2 on every downbeat, bar 5 missing, another tempo.
+    const band = fixtureNorm({ ...FORM_PIECE, piece: 'smoke-band', title: 'Smoke band', tempo: 120 });
+    band.bars = band.bars.filter(b => b.bar !== 5).map(b => ({ bar: b.bar, voice: [], rh: [], lh: [ev(0, 1, ['G2'])] }));
+    const solo = fixtureNorm({ ...FORM_PIECE, accompaniment: { piece: 'smoke-band', soloTranspose: 12 } });
+    const h = await boot({ norm: solo, pieces: { 'smoke-band': band } });
+    const { P, C, L, el, check, sleep, storage } = h;
+    const until = async (f, ms = 12000) => { const t = Date.now(); while (!f() && Date.now() - t < ms) await sleep(5); return f(); };
+    const started = type => h.events.filter(e => e[0] === type).slice(-1)[0][1];
+    const ons = () => h.sounds.filter(s => s[0] === 'on');
+    P.setCountIn(0); P.tempo = 200;
+    check('the band part loaded after the piece: the card shows, its controls are live, off by default; what differs is said', [P.band.status, el('pl-band-card').hidden, el('pl-band-on').disabled, el('pl-band-on').checked, P.bandOn(), P.band.warnings], ['ready', false, false, false, false, ['its tempo is 120, the piece\'s 240: playing at the piece\'s', 'it has no bar 5: silent there']]);
+    check('the keyboard reaches the shifted octave (D6 → D7 = 98)', [P.pieceRange(solo).high >= 98, P.pieceRange({ ...solo, accompaniment: undefined }).high < 98], [true, true]);
+
+    // ── off: nothing changes ──
+    await C.listen(); await until(() => L.seq === 2);
+    C.stop(); await sleep(40);
+    check('band off: only the guide piano plays, at written pitch; no label', [[...new Set(ons().map(s => s[1]))].sort(), [...new Set(ons().map(s => s[3]))].length, started('listen:start').band, el('pl-band-8va').hidden], [['A#4', 'D5', 'D6', 'G4'], 1, false, true]);
+
+    // ── on: Listen plays the band under the solo, which moves up an octave ──
+    el('pl-band-on').checked = true; el('pl-band-on').fire('change');
+    check('ticking the box is remembered', [P.bandOn(), storage.songlab_player_band_on, el('pl-summary') && true], [true, '1', true]);
+    h.sounds.length = 0;
+    const bars = [], lit = [];
+    P.clock.onDue('bar', p => { bars.push([p.bar, p.seq, p.audioTime]); });
+    await C.listen(); await sleep(60);
+    check('Listen with the band: says so, and the label is over the staff', [(d => [d.band, d.transpose, d.form])(started('listen:start')), el('pl-band-8va').textContent, el('pl-band-8va').hidden], [[true, 12, true], '8va with the band', false]);
+    await until(() => L.seq === 9);
+    C.stop(); await sleep(40);
+    const bandId = P.bandPiano.id, guideId = P.guidePiano.id;
+    const g2 = ons().filter(s => s[1] === 'G2'), soloOns = ons().filter(s => s[1] !== 'G2');
+    check('the band sounds on its own sampler, the solo on the guide\'s an octave up', [bandId !== guideId, g2.every(s => s[3] === bandId), soloOns.every(s => s[3] === guideId), [...new Set(soloOns.map(s => s[1]))].sort()], [true, true, true, ['A#5', 'D6', 'D7', 'G5']]);
+    const near = (t, list) => list.some(s => Math.abs(s[2] - t) < 0.01);
+    const played = bars.filter(b => b[1] <= 8);
+    check('laid on the played sequence by bar number: a G2 on every downbeat but bar 5\'s (silent), and on bar 3 the second time (seq 8)', played.map(b => [b[0], b[1], near(b[2], g2)]), [[1, 0, true], [2, 1, true], [3, 2, true], [4, 3, true], [5, 4, false], [6, 5, true], [7, 6, true], [8, 7, true], [3, 8, true]]);
+    check('one stop path: both pianos were released, and the label went', [h.sounds.filter(s => s[0] === 'releaseAll').map(s => s[1]).sort(), el('pl-band-8va').hidden, L.bandNotes.size], [[guideId, bandId].sort(), true, 0]);
+
+    // ── play-along: expected an octave up, the written octave accepted; the band is never expected or lit ──
+    h.events.length = 0; h.sounds.length = 0;
+    await C.playAlong(); await sleep(130);
+    P.noteOn(86, performance.now()); P.noteOff(86);      // D6 as written: the low octave
+    await until(() => L.seq === 1); await sleep(130);
+    P.noteOn(98, performance.now()); P.noteOff(98);      // D7: where the band has it
+    await until(() => L.seq === 2);
+    C.pause(); await sleep(40);
+    check('paused with the band: the label stays', [el('pl-band-8va').hidden, C.paused && C.paused.mode], [false, 'playalong']);
+    C.stop(); await sleep(40);
+    const lp = C.getLastPass();
+    const d7 = lp.expected.filter(e => e.pitch === 98 && e.beat === 0);
+    check('the solo is expected at the shifted pitch, never the band\'s notes', [[...new Set(lp.expected.map(e => e.pitch))].sort((a, b) => a - b), lp.expected.some(e => e.pitch === 43), h.events.filter(e => e[0] === 'note:expected').every(e => e[1].written === e[1].pitch - 12)], [[79, 82, 86, 98], false, true]);
+    check('the written octave is a hit, and so is the shifted one; the log keeps what was played', [d7.slice(0, 2).map(e => [e.status, e.accept]), lp.played.map(e => [e.pitch, e.matched])], [[['hit', [86]], ['hit', [86]]], [[86, true], [98, true]]]);
+    check('wait-for-me practice stays at written pitch', [P.steps[0].notes.map(n => n.midi).sort((a, b) => a - b), L.shift, el('pl-band-8va').hidden], [[67, 86], 12, true]);
+
+    // ── a loop: the band loops with it, as written ──
+    P.setLoop(7, 8); await sleep(40);
+    h.sounds.length = 0; bars.length = 0;
+    await C.listen();
+    await until(() => bars.length >= 5);
+    C.stop(); await sleep(40);
+    check('a loop of bars 7–8: the band is on every downbeat, round and round', [bars.slice(0, 5).map(b => b[0]), bars.slice(0, 4).every(b => near(b[2], h.sounds.filter(s => s[1] === 'G2')))], [[7, 8, 7, 8, 7], true]);
+    P.clearLoop(); await sleep(40);
+
+    // ── the volume is live and remembered; unticking stops a transport ──
+    el('pl-band-volume').value = '25'; el('pl-band-volume').fire('input');
+    check('band volume: remembered, on the mixer\'s curve', [storage.songlab_player_band_volume, el('pl-band-readout').textContent, Math.round(P.mixer.gain('band') * 1000)], ['25', '25', 125]);
+    await C.listen(); await sleep(40);
+    el('pl-band-on').checked = false; el('pl-band-on').fire('change');
+    check('unticking the box stops the transport and is remembered', [L.active, P.bandOn(), storage.songlab_player_band_on], [false, false, '0']);
+    h.done();
+  },
+
+  /** No accompaniment named: no Band card. One that will not load, or is in another meter: a banner, the control disabled, and the piece plays alone. */
+  async 'band-none'() {
+    const solo = fixtureNorm({ accompaniment: { piece: 'smoke-band', soloTranspose: 12 } });
+    const h = await boot({ norm: solo, pieces: { 'smoke-band': null } });
+    const { P, C, L, el, check, sleep, storage } = h;
+    P.setCountIn(0); P.tempo = 200;
+    check('the band part is not there: the card shows with its control disabled, and the banner says why', [P.band.status, el('pl-band-card').hidden, el('pl-band-on').disabled, el('pl-band-volume').disabled, el('pl-banner').textContent.includes('No band: the band part “smoke-band” did not load (HTTP 404)'), el('pl-band-note').textContent], ['failed', false, true, true, true, 'No band: the band part “smoke-band” did not load (HTTP 404).']);
+    storage.songlab_player_band_on = '1'; P.setBandOn(true);
+    await C.listen(); await sleep(200);
+    check('ticked or not, the piece plays alone at written pitch', [P.bandOn(), el('pl-band-on').checked, (d => [d.band, d.transpose])(h.events.find(e => e[0] === 'listen:start')[1]), [...new Set(h.sounds.filter(s => s[0] === 'on').map(s => s[3]))].length, L.shift], [false, false, [false, 0], 1, 0]);
+    C.stop(); await sleep(40);
+    h.pieces['smoke-band'] = fixtureNorm({ piece: 'smoke-band', title: 'Smoke band', time: '4/4', beatsPerBar: 4 });
+    await P.loadBand(solo);
+    check('another time signature refuses the band, with a banner', [P.band.status, el('pl-band-on').disabled, el('pl-banner').textContent.includes('No band: “Smoke band” cannot play with this piece — it is in 4/4, the piece in 3/4.')], ['refused', true, true]);
+    h.pieces['smoke-band'] = fixtureNorm({ piece: 'smoke-band', title: 'Smoke band' });
+    await P.loadBand(solo);
+    check('a part that fits: ready, and the remembered tick takes effect', [P.band.status, P.band.warnings, el('pl-band-on').disabled, P.bandOn(), el('pl-band-note').textContent], ['ready', [], false, true, 'Smoke band · you play 8va with the band']);
+    await P.loadBand({ ...solo, accompaniment: undefined });
+    check('a piece that names no accompaniment has no Band card', [P.band, el('pl-band-card').hidden], [null, true]);
     h.done();
   },
 

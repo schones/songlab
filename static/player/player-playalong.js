@@ -44,6 +44,12 @@
  *   it, a played note takes its pair's (an extra: the clock position's, pos.seq).
  *   Entries made without one have no seq field at all.
  *
+ *   accept: an expected note given with `accept: [pitch, …]` also pairs with a
+ *   played note of one of those pitches (the solo written an octave below where
+ *   it is played with the band: a learner who stays low is hit, not missed). The
+ *   expected entry keeps its own pitch and the list; the played entry keeps the
+ *   pitch that was played, so the log shows which one it was.
+ *
  *   audioTimeFromStamp(perfMs, { contextTime, performanceTime }) → seconds
  *       the audio-clock time of a performance.now() instant, from an AudioContext
  *       output timestamp (the two clocks paired at the speaker). Take the stamp at
@@ -100,10 +106,11 @@ function createTimingLog({ windowMs = HIT_WINDOW_MS } = {}) {
     loose = loose.filter(e => e !== play);
     passOf(exp.pass).played.push(play);
   }
-  const closest = (list, pitch, time) => {
+  /** The entry of `list` nearest in time that `matches`, within the window. */
+  const closest = (list, matches, time) => {
     let best = null;
     for (const e of list) {
-      if (e.pitch !== pitch) continue;
+      if (!matches(e)) continue;
       const d = Math.abs(e.audioTime - time);
       if (d <= win + 1e-9 && (!best || d < Math.abs(best.audioTime - time))) best = e;
     }
@@ -126,10 +133,12 @@ function createTimingLog({ windowMs = HIT_WINDOW_MS } = {}) {
     expect(note, pass = 1) {
       const entry = { pitch: note.pitch, hand: note.hand ?? null, bar: note.bar ?? null, beat: note.beat ?? null, audioTime: note.audioTime, playedAt: null, offsetMs: null, status: 'pending', pass };
       if (note.seq != null) entry.seq = note.seq;
+      const accept = Array.isArray(note.accept) ? note.accept.filter(p => typeof p === 'number' && p !== note.pitch) : [];
+      if (accept.length) entry.accept = accept;
       Object.defineProperty(entry, 'ref', { value: note.ref, enumerable: false });
       passOf(pass).expected.push(entry);
       pending.push(entry);
-      const hit = closest(loose, entry.pitch, entry.audioTime);
+      const hit = closest(loose, e => e.pitch === entry.pitch || accept.includes(e.pitch), entry.audioTime);
       if (hit) pair(entry, hit);
       return { entry, hit };
     },
@@ -137,7 +146,7 @@ function createTimingLog({ windowMs = HIT_WINDOW_MS } = {}) {
       const entry = { pitch, hand: null, bar: pos && pos.bar != null ? pos.bar : null, beat: pos && pos.beat != null ? pos.beat : null, audioTime, expectedAt: null, offsetMs: null, matched: false, extra: false, pass: null };
       if (pos && pos.seq != null) entry.seq = pos.seq;
       loose.push(entry);
-      const hit = closest(pending, pitch, audioTime);
+      const hit = closest(pending, e => e.pitch === pitch || (!!e.accept && e.accept.includes(pitch)), audioTime);
       if (hit) pair(hit, entry);
       return { entry, hit };
     },
@@ -242,6 +251,26 @@ async function selfTest() {
     const plain = createTimingLog();
     plain.open(1, { startedAt: 0 });
     assert('without a seq the entries are as they always were: no seq field', ['seq' in plain.expect(N(60, 1), 1).entry, 'seq' in plain.played(60, 1.01, { bar: 1, beat: 0 }).entry], [false, false]);
+  }
+
+  // ── accept: another pitch that also counts (the written octave under the band) ──
+  {
+    const log = createTimingLog();
+    log.open(1, { startedAt: 0 });
+    const high = log.expect({ ...N(79, 10), accept: [67] }, 1);
+    const p1 = log.played(67, 10.03);
+    assert('an expected G5 that accepts G4: the written octave is a hit, +30; the played entry keeps the pitch played', [p1.hit === high.entry, high.entry.status, high.entry.offsetMs, high.entry.pitch, high.entry.accept, p1.entry.pitch, p1.entry.matched], [true, 'hit', 30, 79, [67], 67, true]);
+    const e2 = log.expect({ ...N(79, 11), accept: [67] }, 1);
+    const p2 = log.played(79, 11.01);
+    assert('…and the shifted octave is a hit as ever', [p2.hit === e2.entry, p2.entry.pitch, e2.entry.offsetMs], [true, 79, 10]);
+    const early = log.played(67, 11.9);
+    const e3 = log.expect({ ...N(79, 12), accept: [67] }, 1);
+    assert('a low note played early is claimed by the expectation registered after it', [e3.hit === early.entry, e3.entry.offsetMs], [true, -100]);
+    const e4 = log.expect({ ...N(79, 13), accept: [67] }, 1);
+    const p4 = log.played(55, 13);
+    assert('two octaves down is not accepted', [p4.hit, e4.entry.status], [null, 'pending']);
+    const e5 = log.expect({ ...N(60, 14), accept: [60] }, 1);
+    assert('accept with nothing but the note\'s own pitch adds no field', ['accept' in e5.entry, 'accept' in log.expect(N(62, 15), 1).entry], [false, false]);
   }
 
   // ── window, wrong pitch, pairing once ───────────────────────────

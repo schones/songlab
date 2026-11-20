@@ -68,6 +68,7 @@
   .pl-check:has(input:disabled) { opacity: 0.5; cursor: default; }
   .pl-hint { margin: 0; font-size: 0.9rem; color: var(--text-muted); }
   .pl-hint[hidden] { display: none; }
+  .pl-check[hidden], .pl-card[hidden] { display: none; }   /* "Play repeats" and the Band card: only for a piece that has them */
   .pl-audio-hint { color: var(--accent-blue); }
 
   /* Buttons: real <button>s, ≥44px tall; variants per card */
@@ -256,7 +257,11 @@
   }
 
   /* ── Hosts: staff and keyboard ─────────────────────────────── */
-  .pl-panel { background: #FFFFFF; border: 1px solid var(--pl-border); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+  .pl-panel { position: relative; background: #FFFFFF; border: 1px solid var(--pl-border); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+  /* "8va with the band": laid over the top of the staff panel, out of the flow, so the staff and its slots keep their size. */
+  .pl-band-8va { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); z-index: 2; padding: 2px 10px; border: 1px solid var(--accent-blue); border-radius: 999px; background: #FFFFFF; color: var(--accent-blue); font-size: 0.8rem; font-weight: 600; line-height: 1.2; white-space: nowrap; pointer-events: none; }
+  .pl-band-8va[hidden] { display: none; }
+  .pl-band-note { font-size: 13px; line-height: 1.35; margin: 0; }
   .pl-panel__label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: 0 0 0.5rem; }
   .pl-staff-host { min-height: 220px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
   .pl-staff-host > .pl-staff-wrap { align-self: stretch; }
@@ -393,20 +398,14 @@
           <label class="pl-check" title="Wrong notes don't block, aren't shown and aren't counted; the player just follows along"><input type="checkbox" id="pl-no-stress"> No stress</label>
           <!-- Auto-collapse (player.js autoCollapse): the rack closes on the first MIDI note or Listen start after it was opened -->
           <label class="pl-check" title="Close the controls on the first note played or when Listen / Play along starts; off: they only open and close with ⚙ Controls"><input type="checkbox" id="pl-rack-auto" checked> Hide controls while playing</label>
+          <!-- Play repeats (player.js setForm): Listen and play-along follow the piece's repeats and jumps (form.playOrder); unticked, every bar is played once. Remembered. Shown only for a piece that has a play order. -->
+          <label class="pl-check" id="pl-form-row" hidden title="Listen and Play along follow the repeats and jumps; unticked, every bar is played once. A loop always plays its bars as written."><input type="checkbox" id="pl-form" checked> Play repeats</label>
           <!-- Lines (player.js setLines): one line on the staff, or the current line with the next one under it. Remembered. -->
           <div class="pl-seg">
             <span class="pl-seg__label" id="pl-lines-label">Lines</span>
             <div class="pl-seg__group" role="group" aria-labelledby="pl-lines-label" id="pl-lines" title="Lines of music on the staff: the current line alone, or with the next line under it">
               <button type="button" class="pl-seg__btn" data-lines="1" aria-pressed="false" aria-label="Show one line">1</button>
               <button type="button" class="pl-seg__btn" data-lines="2" aria-pressed="true" aria-label="Show two lines: the current line and the next">2</button>
-            </div>
-          </div>
-          <!-- Form (player.js setForm): Listen and play-along follow the piece's repeats and jumps (form.playOrder), or play the bars once as written. Remembered. Shown only for a piece that has a play order. -->
-          <div class="pl-seg" id="pl-form-row" hidden>
-            <span class="pl-seg__label" id="pl-form-label">Form</span>
-            <div class="pl-seg__group" role="group" aria-labelledby="pl-form-label" id="pl-form" title="Listen and Play along: follow the repeats and jumps, or play every bar once as written. A loop always plays as written.">
-              <button type="button" class="pl-seg__btn" data-form="repeats" aria-pressed="true" aria-label="Play with repeats and jumps">with repeats</button>
-              <button type="button" class="pl-seg__btn" data-form="written" aria-pressed="false" aria-label="Play the bars once, as written">as written</button>
             </div>
           </div>
         </section>
@@ -434,6 +433,7 @@
       </section>
 
       <!-- Piece: key, time, base tempo (norm.tempo, not the slider) with its marking (norm.tempoMarking, else derived in player.js) -->
+      <div class="pl-stack">
       <section class="pl-card pl-card--piece" aria-labelledby="pl-h-piece">
         <h3 class="pl-card__title" id="pl-h-piece">Piece</h3>
         <dl class="pl-info">
@@ -445,6 +445,20 @@
           <dd class="pl-info__feel" id="pl-info-feel-row" hidden><span id="pl-info-feel"></span></dd>
         </dl>
       </section>
+      <!-- Band (player.js loadBand / setBandOn; player-band.js): shown only for a piece whose norm names an accompaniment. Listen and play-along then play it underneath, and the solo moves by its soloTranspose. Both remembered. -->
+      <section class="pl-card pl-card--band" id="pl-band-card" aria-labelledby="pl-h-band" hidden>
+        <h3 class="pl-card__title" id="pl-h-band">Band</h3>
+        <label class="pl-check" title="Listen and Play along also play the accompaniment part, in time with the piece"><input type="checkbox" id="pl-band-on" disabled> Play with the band</label>
+        <div class="pl-tempo pl-band-vol">
+          <div class="pl-tempo__top">
+            <label for="pl-band-volume">Band volume</label>
+            <span class="pl-tempo__readout" id="pl-band-readout">60</span>
+          </div>
+          <input type="range" id="pl-band-volume" min="0" max="100" step="1" value="60" aria-label="Band volume, 0 to 100" disabled>
+        </div>
+        <p class="pl-hint pl-band-note" id="pl-band-note" role="status"></p>
+      </section>
+      </div>
 
     </div>
     </div>
@@ -492,6 +506,8 @@
     <section class="pl-panel" aria-label="Staff">
       <!-- Trouble spots (player-trouble.js): filled by player.js at the end of a pass; "Loop these" starts a loop on that range -->
       <div class="pl-trouble" id="pl-trouble" hidden role="status" aria-live="polite"></div>
+      <!-- With the band the solo is played shifted (accompaniment.soloTranspose); the staff stays as written and this says so while Listen / play-along runs -->
+      <div class="pl-band-8va" id="pl-band-8va" hidden role="status"></div>
       <div class="pl-staff-host" id="pl-staff">Staff loads with the piece.</div>
     </section>
   </div>

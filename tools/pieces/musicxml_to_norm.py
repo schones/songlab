@@ -69,7 +69,8 @@ Importer rules
  10. Left out: lyrics, fermatas, dynamics, double barlines, slurs,
      articulations, pedal, chord symbols.
  11. Re-import. When the output file exists, its hand-written fields — feel,
-     anchors, songNotes, feelNote, syncopation, and tempo / tempoMarking when
+     anchors, songNotes, feelNote, syncopation, accompaniment, and tempo /
+     tempoMarking when
      they differ and no flag set them — are kept and listed; --fresh drops
      them.
 
@@ -103,7 +104,7 @@ from mxl_to_norm import ACC, midi_of                                            
 
 REPO = Path(__file__).resolve().parents[2]
 HANDS = {1: 'rh', 2: 'lh'}
-KEPT_FIELDS = ('feel', 'anchors', 'songNotes', 'feelNote', 'syncopation')
+KEPT_FIELDS = ('feel', 'anchors', 'songNotes', 'feelNote', 'syncopation', 'accompaniment')
 BEAT_UNITS = {'whole': 4, 'half': 2, 'quarter': 1, 'eighth': Fraction(1, 2), '16th': Fraction(1, 4), '32nd': Fraction(1, 8)}
 FIFTHS_MAJOR = {v: k for k, v in MAJOR_FIFTHS.items()}
 FIFTHS_MINOR = {v: k for k, v in MINOR_FIFTHS.items()}

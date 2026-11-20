@@ -33,6 +33,9 @@
  *         clicks not yet sounding are re-spaced from the last one that is, at the
  *         new tempo (count-in included).
  *     setVolume(0–100)   immediately; remembered for the next click
+ *     setGain(gain)      the click's output gain itself, in place of setVolume's own
+ *                        curve — how the player's mixer (player-mixer.js) sets the click
+ *                        level, so every channel shares one slider curve
  *     countIn(bars, bpm, meter, { at } = {}) → the audio time bar 1 starts
  *         `bars` bars of clicks from `at` (default: right away), then nothing —
  *         start() the click at the returned time for the piece itself. A count-in
@@ -119,17 +122,17 @@ const gainOf = v => Math.pow(clampVolume(v) / 100, 2) * 0.9;
  * the page's Tone.start gesture, so no context is created early).
  */
 function toneAudio() {
-  let volume = null, level = DEFAULT_VOLUME;
+  let volume = null, level = DEFAULT_VOLUME, direct = null;   // direct: a gain given by setGain, in place of gainOf(level)
   const T = () => (typeof window !== 'undefined' ? window.Tone : null);
-  const ensureVolume = Tone => volume || (volume = new Tone.Gain(gainOf(level)).toDestination());
+  const current = () => (direct != null ? direct : gainOf(level));
+  const push = () => { if (volume) { try { volume.gain.rampTo(current(), 0.02); } catch (_) { volume.gain.value = current(); } } };
+  const ensureVolume = Tone => volume || (volume = new Tone.Gain(current()).toDestination());
   return {
     ready: () => !!(T() && T().context),
     now: () => T().context.currentTime,
     muted: () => !!(typeof window !== 'undefined' && window.AudioToggle && window.AudioToggle.isMuted()),
-    setVolume(v) {
-      level = clampVolume(v);
-      if (volume) { try { volume.gain.rampTo(gainOf(level), 0.02); } catch (_) { volume.gain.value = gainOf(level); } }
-    },
+    setVolume(v) { level = clampVolume(v); direct = null; push(); },
+    setGain(g) { direct = Math.max(0, Number(g) || 0); push(); },
     click({ time, freq, gain }) {
       const Tone = T();
       const ctx = Tone.context;
@@ -263,6 +266,7 @@ function createMetronome({ audio = toneAudio(), timer = realTimer() } = {}) {
       tick();
     },
     setVolume(v) { audio.setVolume(clampVolume(v)); },
+    setGain(g) { if (typeof audio.setGain === 'function') audio.setGain(Math.max(0, Number(g) || 0)); },
     countIn(bars, bpm, meter, { at } = {}) {
       const pattern = toPattern(meter);
       const n = Math.max(0, Math.round(Number(bars) || 0));
@@ -418,6 +422,11 @@ async function selfTest() {
     assert('120 → 30 bpm at t = 3.0: the queued 3.1 is cancelled, the next click is 2 s after 2.6', [cancelled, audio.sounding().slice(-2)], [[3.1], [2.6, 4.6]]);
     m.stop();
     assert('setVolume reaches the adapter, clamped to 0–100', [m.setVolume(150), audio.volume], [undefined, 100]);
+    const got = [];
+    audio.setGain = g => got.push(g);
+    m.setGain(0.44); m.setGain(-2); m.setGain('x');
+    delete audio.setGain;
+    assert('setGain hands the adapter a gain as given, never negative; an adapter without it is left alone', [got, m.setGain(0.5)], [[0.44, 0, 0], undefined]);
   }
 
   // click(): single clicks for an outside clock (beat-clock.js)

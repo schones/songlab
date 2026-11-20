@@ -68,6 +68,30 @@
  * Wait-for-me practice never follows the form: the follower, its step
  * counter, trouble spots and pass recording walk the written bars.
  *
+ * The band (player-band.js; state.band, state.bandOn, BAND_ON_KEY, the
+ * "Band" card, shown only for a piece whose norm names an `accompaniment`):
+ * the accompaniment's own norm is fetched after the piece (loadBand; never
+ * in the way of the first paint) and checked against it (checkBand: another
+ * time signature refuses it; another tempo, bar set or play order warns and
+ * the piece's is used). With "Play with the band" ticked, Listen and
+ * play-along also schedule the band's notes on the same clock, laid on the
+ * solo's played sequence by bar number (runSequence → listenSchedule
+ * ({ sequence })), so the band follows the form, loops, the tempo and a
+ * pause exactly as the solo does and a bar it lacks is silent. They are
+ * clock items of part 'band' (ITEM_PARTS routes items by part: solo | band
+ * | drums): sounded on the band's own piano (loadBandPiano) through the
+ * mixer's band gain, never lit, expected or logged. While the band plays
+ * the solo is shifted by accompaniment.soloTranspose (L.shift; 12 for Run
+ * Rudolph Run): the guide sounds there, the on-screen keys light there,
+ * the timing log expects that pitch and accepts the written one too, and
+ * "8va with the band" shows over the staff, which itself is unchanged.
+ * Wait-for-me practice never shifts. Ticking or unticking the box stops a
+ * transport under way (its items and shift were built for the other
+ * setting); the band volume is live.
+ *
+ * Mixer (player-mixer.js, `mixer`): the guide, band and click levels — one
+ * slider-to-gain curve, each remembered under its own key.
+ *
  * Loop for practice (state.loop mirrors follower.loop()): "Repeat bar" /
  * "Repeat line" toggles act on the current bar / drawn line; tapping two
  * bars on the staff loops that range (state.pendingBar between the taps);
@@ -233,6 +257,8 @@ import { metronome, patternFor, DEFAULT_VOLUME as METRO_VOLUME_DEFAULT } from '.
 import { createBeatClock, LOOKAHEAD } from './beat-clock.js';
 import { createTimingLog, audioTimeFromStamp, HIT_WINDOW_MS } from './player-playalong.js';
 import { playOrderOf, playedSequence, firstSeqOf, isJump, nextLineAt, prevLineAt, jumpLabel } from './player-form.js';
+import { accompanimentOf, checkBand, runSequence, shiftRange, transposeLabel } from './player-band.js';
+import { createMixer } from './player-mixer.js';
 
 const DEVICE_KEY = 'songlab_player_midi_device';   // createShellInput has a fixed key; mapped through its injectable storage
 const SOUND_KEY = 'songlab_player_midi_sound';     // "Sound for MIDI notes" checkbox; off by default
@@ -251,7 +277,11 @@ const RACK_AUTO_KEY = 'songlab_player_rack_auto';     // "Hide controls while pl
 const RACK_MS = 150;                                   // the rack's open / close animation (player.html .pl-rack-shell)
 const LINES_KEY = 'songlab_player_lines';             // "Lines: 1 | 2" (Mode card): one line on the staff, or the current line + the next; default 2
 const LINES_DEFAULT = 2;
-const FORM_KEY = 'songlab_player_form';               // "Form: with repeats | as written" (Mode card): 'repeats' — Listen / play-along follow form.playOrder — or 'written'; default 'repeats'
+const FORM_KEY = 'songlab_player_form';               // "Play repeats" checkbox (Mode card): 'repeats' — Listen / play-along follow form.playOrder — or 'written' (unticked: each bar once); default 'repeats'
+const BAND_ON_KEY = 'songlab_player_band_on';         // "Play with the band" checkbox (Band card): '1' / '0'; off by default
+const BAND_VOLUME_KEY = 'songlab_player_band_volume'; // band volume 0–100; default 60
+const BAND_DEFAULT = 60;
+const CLICK_CEILING = 0.75;                            // the click's gain at 100 on the mixer's curve: at the default 70 it is the level it always was (0.44)
 const FORM_DEFAULT = 'repeats';
 const GUIDE_KEY = 'songlab_player_guide_volume';      // play-along "Guide volume" 0–100 (0 = click only); default 35
 const GUIDE_DEFAULT = 35;
@@ -294,7 +324,9 @@ const els = {
   metro: $('pl-metro'), metroVolume: $('pl-metro-volume'), countIn: $('pl-count-in'),   // Listen card, bottom row (2b)
   trouble: $('pl-trouble'),
   viewLines: $('pl-lines'),   // Mode card: "Lines" 1 | 2 (segmented)
-  form: $('pl-form'), formRow: $('pl-form-row'),   // Mode card: "Form" with repeats | as written (segmented; the row is hidden for a piece with no play order)
+  form: $('pl-form'), formRow: $('pl-form-row'),   // Mode card: "Play repeats" checkbox and its label (hidden for a piece with no play order)
+  bandCard: $('pl-band-card'), bandOn: $('pl-band-on'), bandVolume: $('pl-band-volume'), bandReadout: $('pl-band-readout'), bandNote: $('pl-band-note'),   // Band card (shown only for a piece with an accompaniment)
+  bandLabel: $('pl-band-8va'),   // "8va with the band", over the staff panel while a transport plays the solo shifted
   rackShell: $('pl-rack'), rackToggle: $('pl-rack-toggle'), rackAuto: $('pl-rack-auto'),   // collapsible rack + ⚙ Controls (strip) + "Hide controls while playing" (Mode card)
   summary: $('pl-summary'), summaryText: $('pl-summary-text'), summaryDot: $('pl-summary-dot'), summaryDevice: $('pl-summary-device'),   // strip settings summary
   staffHost: $('pl-staff'),
@@ -308,6 +340,9 @@ const state = {
   viewLines: LINES_DEFAULT,      // lines on the staff: 1, or 2 = the current line + the one played next (LINES_KEY)
   order: null,                   // the piece's play order (player-form playOrderOf: form.playOrder), or null when it has none
   form: FORM_DEFAULT,            // 'repeats': an un-looped Listen / play-along follows state.order; 'written': bars once, in written order (FORM_KEY)
+  band: null,                    // the piece's accompaniment: { piece, transpose, norm, title, status: 'loading' | 'ready' | 'refused' | 'failed', message, warnings } or null when the norm names none (loadBand)
+  bandOn: false,                 // "Play with the band" (BAND_ON_KEY); the band plays only when it is also ready (bandOn())
+  bandVolume: BAND_DEFAULT,      // band volume 0–100 (BAND_VOLUME_KEY; the mixer's 'band' level)
   shown: '',                     // the view last asked of the staff (viewKey): '' when nothing is drawn
   bar: null,                     // the active bar within the drawn line
   hands: 'both',
@@ -319,7 +354,7 @@ const state = {
   trouble: null,          // the last scored pass: { pass, score, number, suggested } (console / debug)
   practice: null,         // { playedMs } active time in either mode (set below; practice-log hook)
   tempoPct: TEMPO_DEFAULT,   // Listen tempo, percent of the piece's tempo (TEMPO_KEY)
-  listen: { active: false, started: false, paused: null, startBar: null, run: 0, mode: null, token: 0, range: null, schedule: null, bar: null, seq: null, startSeq: null, drawnSeq: null, visitLine: null, pass: 1, drawn: -1, sounding: new Set(), flash: new Map(), missed: new Set(), guideOn: new Set() },   // the transport (Listen or play-along) under way; see the header. mode: 'listen' | 'playalong'; range: { from, to, loop }; paused: { mode, range, bar } while a transport is paused (else null); startBar: the bar this start began at (a resume: the paused bar); run: counts fresh starts (a resume keeps it); bar / pass: where the clock is; seq: the played index of that bar (the clock's; with range.form it tells the times through a repeated bar apart), startSeq / drawnSeq: the seq this start began at / the line on the staff was turned to (form runs only, else null); visitLine: the line the clock is on (missed-note clearing); drawn: the line on the staff; flash / missed: play-along feedback
+  listen: { active: false, started: false, paused: null, startBar: null, run: 0, mode: null, token: 0, range: null, schedule: null, bar: null, seq: null, startSeq: null, drawnSeq: null, visitLine: null, pass: 1, drawn: -1, shift: 0, band: false, bandNotes: new Set(), sounding: new Set(), flash: new Map(), missed: new Set(), guideOn: new Set() },   // the transport (Listen or play-along) under way; see the header. mode: 'listen' | 'playalong'; range: { from, to, loop }; paused: { mode, range, bar } while a transport is paused (else null); startBar: the bar this start began at (a resume: the paused bar); run: counts fresh starts (a resume keeps it); bar / pass: where the clock is; seq: the played index of that bar (the clock's; with range.form it tells the times through a repeated bar apart), startSeq / drawnSeq: the seq this start began at / the line on the staff was turned to (form runs only, else null); visitLine: the line the clock is on (missed-note clearing); shift: semitones the solo sounds / is expected / lights above where it is written (the band's soloTranspose while it plays, else 0); band: this run plays the band; bandNotes: band notes sounding; drawn: the line on the staff; flash / missed: play-along feedback
   guide: GUIDE_DEFAULT,      // play-along guide volume 0–100 (GUIDE_KEY)
   metro: { on: false, volume: METRO_VOLUME_DEFAULT, countIn: COUNT_IN_DEFAULT },   // Metronome row (METRO_KEY, METRO_VOLUME_KEY, COUNT_IN_KEY)
   rack: { open: false, auto: true, armed: false, pointer: false },   // control rack: open; auto-collapse on; armed = opened since the last auto-collapse; pointer = a drag inside it is under way (RACK_OPEN_KEY, RACK_AUTO_KEY)
@@ -353,11 +388,19 @@ let input = null;
 let sampler = null;
 let guidePiano = null;   // Listen / play-along guide: its own Tone.Sampler (loadGuidePiano)
 let guideOut = null;     // …and the Tone.Gain it plays through (Guide volume)
+let bandPiano = null;    // the band: a third Tone.Sampler (loadBandPiano) through the mixer's band gain
 
 /** The one musical clock: Listen, play-along, the metronome and the page turns all run off it (beat-clock.js). */
 const clock = createBeatClock();
 /** Play-along's quiet timing log (player-playalong.js): one entry per expected and per played note, per pass. */
 const timing = createTimingLog();
+/** The mixer (player-mixer.js): one slider-to-gain curve for every named level, each remembered under its own key. Outputs are attached as they come to exist. */
+const mixer = createMixer({
+  guide: { key: GUIDE_KEY, level: GUIDE_DEFAULT },
+  band: { key: BAND_VOLUME_KEY, level: BAND_DEFAULT },
+  click: { key: METRO_VOLUME_KEY, level: METRO_VOLUME_DEFAULT, ceiling: CLICK_CEILING },
+});
+mixer.attach('click', g => metronome.setGain(g));
 /**
  * The player's event bus — the hook for the future scoring and coach
  * (window.songlabPlayer.on). Events: 'playalong:start' / 'playalong:stop',
@@ -411,10 +454,24 @@ let _guidePiano = null;
 /** The piano Listen and the play-along guide play on: a second sampler (the browser caches the files) through its own gain, so the Guide volume and a stop never touch live notes. */
 function loadGuidePiano() {
   if (!_guidePiano) {
-    _guidePiano = makePiano(Tone => { guideOut = new Tone.Gain(1).connect(new Tone.Volume(-6).toDestination()); return guideOut; })
-      .catch(err => { _guidePiano = null; guideOut = null; throw err; });
+    _guidePiano = makePiano(Tone => { guideOut = new Tone.Gain(1).connect(new Tone.Volume(-6).toDestination()); mixer.attach('guide', guideOut); applyGuideGain(); return guideOut; })
+      .catch(err => { _guidePiano = null; guideOut = null; mixer.attach('guide', null); throw err; });
   }
   return _guidePiano;
+}
+let _bandPiano = null;
+/**
+ * The band's piano: a third sampler of its own (its own decode of the same
+ * cached files) through the mixer's band gain, so its volume, and a
+ * release of a pitch the guide is also holding, never touch the guide.
+ */
+function loadBandPiano() {
+  if (!_bandPiano) {
+    _bandPiano = makePiano(Tone => { const out = new Tone.Gain(mixer.gain('band')).connect(new Tone.Volume(-6).toDestination()); mixer.attach('band', out); return out; })
+      .then(s => { bandPiano = s; return s; })
+      .catch(err => { _bandPiano = null; bandPiano = null; mixer.attach('band', null); throw err; });
+  }
+  return _bandPiano;
 }
 async function ensureSampler() {
   if (sampler) return sampler;
@@ -465,6 +522,7 @@ function onAudioRunning() {
   state.audioStarted = true;
   ensureSampler();                   // preload the echo piano; not awaited
   loadGuidePiano().catch(() => {});  // and Listen's / the guide's (the samples are shared by the browser cache)
+  if (bandOn()) loadBandPiano().catch(() => {});   // and the band's, when it is going to play
 }
 /** A pending Tone.start() (no activation yet) resolves on the next gesture anywhere, even one our own listener misses: follow the context's state. */
 let _watching = false;
@@ -555,6 +613,8 @@ function pieceRange(norm) {
   let lo = Infinity, hi = -Infinity;
   for (const s of buildSteps(norm, { hands: 'both' })) for (const n of s.notes) { lo = Math.min(lo, n.midi); hi = Math.max(hi, n.midi); }
   if (!isFinite(lo)) { lo = 48; hi = 83; }
+  const acc = accompanimentOf(norm);
+  if (acc) ({ lo, hi } = shiftRange(lo, hi, acc.soloTranspose));   // with the band the solo is played shifted: those keys are on the keyboard too
   lo -= KEY_MARGIN; hi += KEY_MARGIN;
   while (BLACK_PCS.has(lo % 12)) lo--;
   while (BLACK_PCS.has(hi % 12)) hi++;
@@ -973,7 +1033,7 @@ async function showLine(index, { bar, keep = false, animate = true } = {}) {
   const token = ++showToken;
   const result = await drawLine(index, { animate });
   if (!result || token !== showToken) return;   // superseded by a later draw, or failed (the staff shows why)
-  const warnings = [...state.lineWarnings, ...result.warnings.map(w => `line ${index + 1}: ${w}`)];
+  const warnings = [...state.lineWarnings, ...result.warnings.map(w => `line ${index + 1}: ${w}`), ...bandNotices()];
   banner(warnings.join('; '));
   attachIds(state.steps, result.hits);
   if (state.listen.active || state.listen.paused) repaintTransport();   // a transport started (or paused) while this render was under way (Listen → Play along): its paint, not the follower's
@@ -1192,6 +1252,7 @@ document.addEventListener('keydown', e => {
 let hitIndex = new Map();        // `${bar}|${hand}|${midi}|${onset}` → [id] from staff.hits, rebuilt after every render while the transport runs
 const playingKeys = new Map();   // midi → number of sounding notes (a pitch doubled in both hands keeps its key lit until the last ends)
 const guideCount = new Map();    // midi → guide notes sounding on the sampler (released when the last one ends)
+const bandCount = new Map();     // the same for the band's sampler
 const hitKey = (bar, hand, midi, onset) => `${bar}|${hand}|${midi}|${Math.round(onset * 1000)}`;
 const contextNow = () => (window.Tone && window.Tone.context ? window.Tone.context.currentTime : 0);
 
@@ -1220,9 +1281,10 @@ function lightNote(note, on) {
   if (on === L.sounding.has(note)) return;   // an 'off' with no 'on' (a seek), or a doubled 'on'
   if (on) L.sounding.add(note); else L.sounding.delete(note);
   paintNote(note);
-  const n = (playingKeys.get(note.midi) || 0) + (on ? 1 : -1);
-  if (n > 0) playingKeys.set(note.midi, n); else playingKeys.delete(note.midi);
-  setKey(note.midi, 'playing', n > 0);
+  const key = note.midi + L.shift;   // the key it is played on: shifted while the band plays
+  const n = (playingKeys.get(key) || 0) + (on ? 1 : -1);
+  if (n > 0) playingKeys.set(key, n); else playingKeys.delete(key);
+  setKey(key, 'playing', n > 0);
 }
 /** Play-along: the expected notes not played this pass, drawn faint (the staff's dim class) until the pass ends. */
 function applyMissed() {
@@ -1231,13 +1293,13 @@ function applyMissed() {
   staff.setDimmed(ids);
 }
 /** Play-along: a note you hit goes green for a moment, on the staff and the key. */
-function flashNote(note) {
+function flashNote(note, key = null) {   // key: the key that was played (with the band: the shifted octave, or the written one)
   const L = state.listen;
   if (!L.active || !note) return;
   clearTimeout(L.flash.get(note));
   L.flash.set(note, setTimeout(() => { L.flash.delete(note); if (L.active) paintNote(note); }, CORRECT_FLASH_MS));
   paintNote(note);
-  flashKey(note.midi, 'correct', CORRECT_FLASH_MS);
+  flashKey(key != null ? key : note.midi + L.shift, 'correct', CORRECT_FLASH_MS);
 }
 /** After a page turn: sounding and flashing notes, the missed ones and the bar marker go back on the new line. */
 function repaintTransport() {
@@ -1268,26 +1330,110 @@ els.tempo.addEventListener('input', () => setTempoPct(els.tempo.value));
 els.tempo.addEventListener('change', () => els.tempo.blur());   // so Space / arrows go back to the page
 
 // ── Guide volume (play-along: how loud the piece plays underneath; 0 = click only; remembered) ──
-const clampGuide = v => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : GUIDE_DEFAULT; };
-/** Slider 0–100 → gain on the guide piano (Listen itself plays at 1). Tune here. */
-const guideGainOf = v => Math.pow(clampGuide(v) / 100, 1.5);
+/** The guide piano's gain: its mixer level under play-along, full under Listen (the mixer's curve: player-mixer.js sliderGain). */
 function applyGuideGain() {
-  if (!guideOut) return;
   const L = state.listen;
-  const g = L.active && L.mode === 'playalong' ? guideGainOf(state.guide) : 1;
-  try { guideOut.gain.rampTo(g, 0.03); } catch (_) { guideOut.gain.value = g; }
+  mixer.apply('guide', L.active && L.mode === 'playalong' ? {} : { gain: 1 });
 }
 function setGuideVolume(v, { save = true } = {}) {
-  state.guide = clampGuide(v);
+  state.guide = mixer.set('guide', v, { save });
   els.guide.value = String(state.guide);
   els.guideReadout.textContent = state.guide === 0 ? 'click only' : String(state.guide);
-  if (save) { try { localStorage.setItem(GUIDE_KEY, String(state.guide)); } catch (_) { /* storage unavailable */ } }
   applyGuideGain();
   return state.guide;
 }
-try { setGuideVolume(localStorage.getItem(GUIDE_KEY) ?? GUIDE_DEFAULT, { save: false }); } catch (_) { setGuideVolume(GUIDE_DEFAULT, { save: false }); }
+setGuideVolume(mixer.restore('guide'), { save: false });
 els.guide.addEventListener('input', () => setGuideVolume(els.guide.value));
 els.guide.addEventListener('change', () => els.guide.blur());
+
+// ── The band (Band card): "Play with the band" + its volume (remembered); see the header ──
+
+function bandReady() { return !!(state.band && state.band.status === 'ready'); }
+/** The band plays in the next Listen / play-along: the piece has one, it loaded and fits, and the box is ticked. (A declaration: syncSummary runs before this point at start-up.) */
+function bandOn() { return bandReady() && state.bandOn; }
+/** "Play with the band" on / off. A transport under way or paused is stopped: its items and its shift were built for the other setting. */
+function setBandOn(on, { save = true } = {}) {
+  const want = !!on;
+  if (want !== state.bandOn) stopListen();
+  state.bandOn = want;
+  if (save) { try { localStorage.setItem(BAND_ON_KEY, want ? '1' : '0'); } catch (_) { /* storage unavailable */ } }
+  if (bandOn() && state.audioStarted) loadBandPiano().catch(() => {});
+  syncBand();
+  return state.bandOn;
+}
+function setBandVolume(v, { save = true } = {}) {
+  state.bandVolume = mixer.set('band', v, { save });   // live: the band's gain follows at once
+  els.bandVolume.value = String(state.bandVolume);
+  els.bandReadout.textContent = String(state.bandVolume);
+  return state.bandVolume;
+}
+/** What the Band card says under its controls: the part and where the solo is played with it, what differs, or why there is no band. */
+function bandNote() {
+  const B = state.band;
+  if (!B) return '';
+  if (B.status === 'loading') return 'Loading the band part…';
+  if (B.status !== 'ready') return B.message;
+  const where = transposeLabel(B.transpose);
+  return [`${B.title}${where ? ` · you play ${where}` : ''}`, ...B.warnings.map(w => `Note: ${w}.`)].join(' ');
+}
+/** What the banner keeps saying about the band while the piece is up (showLine rebuilds the banner on every draw): why there is none, or what differs. */
+function bandNotices() {
+  const B = state.band;
+  if (!B || B.status === 'loading') return [];
+  if (B.status !== 'ready') return [B.message];
+  return B.warnings.length ? [`Band part: ${B.warnings.join('; ')}`] : [];
+}
+/** The Band card follows the piece: shown when it names an accompaniment, its controls live once that is loaded and fits. */
+function syncBand() {
+  const ready = bandReady();
+  els.bandCard.hidden = !state.band;
+  els.bandOn.disabled = !ready; els.bandVolume.disabled = !ready;
+  els.bandOn.checked = bandOn();   // a band that is not there shows unticked; the choice itself is kept
+  els.bandNote.textContent = bandNote();
+  syncSummary();
+}
+/** "8va with the band" over the staff while a transport plays (or is paused with) the solo shifted. */
+function syncBandLabel() {
+  const L = state.listen;
+  const text = (L.active || L.paused) && L.shift ? transposeLabel(L.shift) : '';
+  els.bandLabel.textContent = text;
+  els.bandLabel.hidden = !text;
+}
+/**
+ * Fetch and check the piece's accompaniment (norm.accompaniment), after the
+ * piece itself and never in its way. Ready: the Band card's controls come
+ * alive. Not found, unreadable or refused (another meter): a banner, and
+ * the card stays up with its controls disabled. A piece loaded meanwhile
+ * wins (state.band is then another object).
+ */
+async function loadBand(norm) {
+  const acc = accompanimentOf(norm);
+  const B = state.band = acc ? { piece: acc.piece, transpose: acc.soloTranspose, norm: null, title: acc.piece, status: 'loading', message: '', warnings: [] } : null;
+  syncBand();
+  if (!B) return;
+  try {
+    const res = await fetch(`/player/data/${encodeURIComponent(B.piece)}`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const band = await res.json();
+    if (state.band !== B) return;
+    if (band && typeof band.title === 'string' && band.title.trim()) B.title = band.title.trim();
+    const c = checkBand(norm, band);
+    if (!c.ok) { B.status = 'refused'; B.message = `No band: “${B.title}” cannot play with this piece — ${c.refused}.`; }
+    else { B.norm = band; B.warnings = c.warnings; B.status = 'ready'; }
+  } catch (err) {
+    if (state.band !== B) return;
+    B.status = 'failed'; B.message = `No band: the band part “${B.piece}” did not load (${err.message}).`;
+  }
+  syncBand();
+  const notices = bandNotices();
+  if (notices.length) banner([...state.lineWarnings, ...notices].join('; '), B.status !== 'ready');
+  if (bandOn() && state.audioStarted) loadBandPiano().catch(() => {});
+}
+try { state.bandOn = localStorage.getItem(BAND_ON_KEY) === '1'; } catch (_) { state.bandOn = false; }
+setBandVolume(mixer.restore('band'), { save: false });
+els.bandOn.addEventListener('change', () => { setBandOn(els.bandOn.checked); els.bandOn.blur(); });
+els.bandVolume.addEventListener('input', () => setBandVolume(els.bandVolume.value));
+els.bandVolume.addEventListener('change', () => els.bandVolume.blur());
 
 /** Buttons + readout follow the loaded piece (load / unload). */
 function syncListen() {
@@ -1306,6 +1452,7 @@ function syncTransportButtons() {
   els.playAlong.textContent = along ? '❚❚ Pause' : pausedMode === 'playalong' ? '▶ Resume' : '♪ Play along';
   els.playAlong.setAttribute('aria-pressed', String(along));
   els.playAlong.setAttribute('aria-label', along ? 'Pause play-along' : pausedMode === 'playalong' ? `Resume play-along from bar ${L.paused.bar}` : 'Play along');
+  syncBandLabel();
 }
 
 /**
@@ -1330,22 +1477,34 @@ function transportRange({ from, to, loop } = {}) {
     const order = state.order, fromSeq = firstSeqOf(order, start);
     if (fromSeq >= 0) return { from: start, to: order[order.length - 1], loop: false, form: { order, fromSeq, toSeq: order.length - 1 } };
   }
-  return { from: start, to: last, loop: !!loop };
+  const straight = !loop && Array.isArray(state.order) && state.order.length > 0;   // a piece with repeats, "Play repeats" unticked: each bar once
+  return straight ? { from: start, to: last, loop: false, straight: true } : { from: start, to: last, loop: !!loop };
 }
-/** A transport range in words: "bars 5–8", or for a run that follows the form "whole song · 68 bars" / "from bar 20 · 49 bars with repeats". */
+/**
+ * A transport range in words: "bars 5–8"; for a run that follows the form
+ * "whole song · 68 bars" / "from bar 20 · 49 bars with repeats"; for a
+ * piece with repeats played without them "straight through · 36 bars" (the
+ * piece's own bar count) / "from bar 20 · straight through · 17 bars".
+ */
 function rangeText(range) {
   const F = range.form;
-  if (!F) return barsText(range.from, range.to);
-  const n = F.toSeq - F.fromSeq + 1;
-  return F.fromSeq === 0 ? `whole song · ${n} bars` : `from bar ${range.from} · ${n} bars with repeats`;
+  if (F) {
+    const n = F.toSeq - F.fromSeq + 1;
+    return F.fromSeq === 0 ? `whole song · ${n} bars` : `from bar ${range.from} · ${n} bars with repeats`;
+  }
+  if (range.straight) {
+    const bars = barNumbers(), n = bars.filter(b => b >= range.from && b <= range.to).length;
+    return range.from === bars[0] ? `straight through · ${n} bars` : `from bar ${range.from} · straight through · ${n} bars`;
+  }
+  return barsText(range.from, range.to);
 }
 
 /** Clock items for a range: every note of both hands as an 'on' and an 'off' by quarter position (listenSchedule at 60 bpm: a second is a quarter). Offs sort before ons at one position. */
-function transportItems(schedule) {
+function transportItems(schedule, part = 'solo') {   // part: who plays it — 'solo' (the piece) | 'band' (its accompaniment); see ITEM_PARTS
   const items = [];
   for (const note of schedule.notes) {
     if (!(note.duration > 0)) continue;
-    items.push({ q: note.time, kind: 'on', note }, { q: note.time + note.duration, kind: 'off', note });
+    items.push({ q: note.time, kind: 'on', note, part }, { q: note.time + note.duration, kind: 'off', note, part });
   }
   // Positions closer than SNAP are one position (rounding in the schedule must not put a note's end after the next attack of its pitch).
   const SNAP = 1e-5;
@@ -1382,14 +1541,17 @@ async function startTransport(mode, opts = {}) {
     ? listenSchedule(state.norm, { sequence: playedSequence(F.order, { fromSeq: F.fromSeq, toSeq: F.toSeq }), seqFrom: F.fromSeq, bpm: 60 })
     : listenSchedule(state.norm, { from: range.from, to: range.to, bpm: 60 });   // seconds at 60 bpm = quarters
   if (!schedule.notes.length) { banner(`Nothing to play in ${rangeText(range)}.`); return false; }
+  const band = bandOn() ? state.band : null;   // the accompaniment plays in this run
+  let items = transportItems(schedule);
+  if (band) items = items.concat(transportItems(listenSchedule(band.norm, { sequence: runSequence(state.norm, range), bpm: 60 }), 'band'));   // on the solo's played sequence, by bar number: in step whatever the solo does
   const pattern = patternFor(state.norm.time, state.norm.beatsPerBar);   // the same grid as the schedule's bar length
   cancelPending();
   const token = ++L.token;
   const startSeq = F ? (resume && resume.seq != null ? resume.seq : F.fromSeq) : null;
-  Object.assign(L, { active: true, started: false, paused: null, mode, range, schedule, bar: resume ? resume.bar : null, startBar: resume ? resume.bar : range.from, seq: resume && resume.seq != null ? resume.seq : null, startSeq, drawnSeq: F ? (resume && L.drawnSeq != null ? L.drawnSeq : startSeq) : null, visitLine: null, pass: 1, drawn: resume ? L.drawn : state.line });
+  Object.assign(L, { active: true, started: false, paused: null, mode, range, schedule, bar: resume ? resume.bar : null, startBar: resume ? resume.bar : range.from, seq: resume && resume.seq != null ? resume.seq : null, startSeq, drawnSeq: F ? (resume && L.drawnSeq != null ? L.drawnSeq : startSeq) : null, visitLine: null, pass: 1, drawn: resume ? L.drawn : state.line, shift: band ? band.transpose : 0, band: !!band });
   if (!resume) L.run += 1;
-  L.sounding = new Set(); L.flash = new Map(); L.missed = new Set(); L.guideOn = new Set();
-  playingKeys.clear(); guideCount.clear();
+  L.sounding = new Set(); L.flash = new Map(); L.missed = new Set(); L.guideOn = new Set(); L.bandNotes = new Set();
+  playingKeys.clear(); guideCount.clear(); bandCount.clear();
   autoCollapse();   // a transport starting closes an opened rack, as the first MIDI note does
   // The follower's paint goes; held keys stay. paintStates() brings it back in finishListen.
   staff.clearStates(); staff.setDimmed([]); clearKeys(['expected', 'correct', 'wrong']);
@@ -1403,11 +1565,14 @@ async function startTransport(mode, opts = {}) {
   const running = await startAudio();
   let piano = null;
   if (running) { try { piano = await loadGuidePiano(); } catch (err) { console.warn('[player] piano unavailable:', err); } }
+  let bandFailed = false;
+  if (running && band) { try { await loadBandPiano(); } catch (err) { bandFailed = true; console.warn('[player] band piano unavailable:', err); } }
   if (L.token !== token || !L.active) return false;   // stopped (or restarted) while loading: already restored
   if (!running) { finishListen(); banner(`The browser blocked audio: click the page, then press ${label} again.`); return false; }
   if (!piano && mode === 'listen') { finishListen(); banner('Piano samples did not load; Listen is unavailable.', true); return false; }
   guidePiano = piano;
   applyGuideGain();
+  if (bandFailed) banner('The band\'s piano did not load: playing without the band.', true);
 
   const { bpm: base, assumed } = pieceBpm(state.norm);
   const bpm = base * state.tempoPct / 100;   // read after the awaits: the slider may have moved
@@ -1416,12 +1581,12 @@ async function startTransport(mode, opts = {}) {
   clock.setTempo(bpm);
   if (mode === 'playalong') timing.reset();   // BEFORE clock.start: with no count-in the first downbeat is inside the lookahead, so start() dispatches its notes — and registers their expectations — at once; a reset after it would drop them
   const started = clock.start(F
-    ? { fromSeq: F.fromSeq, toSeq: F.toSeq, startSeq: L.startSeq, loop: false, countInBars: state.metro.countIn, items: transportItems(schedule) }
-    : { fromBar: range.from, toBar: range.to, startBar: L.startBar, loop: range.loop, countInBars: state.metro.countIn, items: transportItems(schedule) });
+    ? { fromSeq: F.fromSeq, toSeq: F.toSeq, startSeq: L.startSeq, loop: false, countInBars: state.metro.countIn, items }
+    : { fromBar: range.from, toBar: range.to, startBar: L.startBar, loop: range.loop, countInBars: state.metro.countIn, items });
   if (!started) { finishListen(); return false; }
   L.started = true;
   if (assumed) banner(`No tempo in this piece: playing at ${Math.round(bpm)} bpm (${state.tempoPct}% of an assumed ${DEFAULT_BPM}).`);
-  const detail = { from: range.from, to: range.to, loop: range.loop, startBar: started.start, resumed: !!resume, hands: state.hands, tempoPct: state.tempoPct, bpm, countInBars: state.metro.countIn, audioTime: started.barOneTime, ...formDetail(range), startSeq: L.startSeq };
+  const detail = { from: range.from, to: range.to, loop: range.loop, startBar: started.start, resumed: !!resume, hands: state.hands, tempoPct: state.tempoPct, bpm, countInBars: state.metro.countIn, audioTime: started.barOneTime, ...formDetail(range), startSeq: L.startSeq, band: L.band, transpose: L.shift };
   if (mode === 'playalong') {
     bus.emit('playalong:start', detail);
     openPass(1, started.barOneTime);
@@ -1478,13 +1643,13 @@ function finishListen({ complete = false, endedAt, pause = false } = {}) {
   L.active = false; L.token++;   // late callbacks of this run are dropped
   clock.stop();        // nothing more is dispatched; pending due callbacks go with it
   metronome.stop();    // clicks already queued
-  releaseGuide();
+  releaseSound();      // the guide and the band
   if (started) {
     if (mode === 'playalong') closeAllPasses(at, complete);
     bus.emit(mode === 'playalong' ? 'playalong:stop' : 'listen:stop', { from: range.from, to: range.to, loop: range.loop, complete, paused: !!paused, bar: paused ? paused.bar : null, seq: paused && paused.seq != null ? paused.seq : null, form: !!range.form, audioTime: at });
   }
   for (const t of L.flash.values()) clearTimeout(t);
-  L.flash.clear(); L.sounding.clear(); L.missed.clear(); L.guideOn.clear(); playingKeys.clear();
+  L.flash.clear(); L.sounding.clear(); L.missed.clear(); L.guideOn.clear(); L.bandNotes.clear(); playingKeys.clear();
   staff.clearStates(); staff.setDimmed([]); clearKeys(['playing']);
   applyGuideGain();
   L.paused = paused;
@@ -1499,6 +1664,16 @@ function finishListen({ complete = false, endedAt, pause = false } = {}) {
 function releaseGuide() {
   if (guidePiano) { try { guidePiano.releaseAll(); } catch (_) { /* nothing sounding */ } }
   guideCount.clear();
+}
+/** The band's notes off now, as releaseGuide. */
+function releaseBand() {
+  if (bandPiano) { try { bandPiano.releaseAll(); } catch (_) { /* nothing sounding */ } }
+  bandCount.clear();
+}
+/** The one stop path for everything a transport sounds through the clock's items: finishListen calls this, and a new part (drums) releases here too. */
+function releaseSound() {
+  releaseGuide();
+  releaseBand();
 }
 
 /**
@@ -1529,31 +1704,74 @@ clock.on('bar', pos => {
   const line = lineOf(pos.bar);
   if (line >= 0 && line !== L.drawn) { L.drawn = line; if (L.range && L.range.form) L.drawnSeq = pos.seq; listenTurnTo(line, L.token); }   // drawnSeq: the line under it is the one played after THIS time through
 });
+/**
+ * The clock's items by part — who plays the note. Each part has an `ahead`
+ * handler (the item is scheduled, up to the lookahead early, with its exact
+ * audio time: make the sound) and a `due` one (the audio clock is there:
+ * paint), either of which may be missing. An item with no part is the
+ * solo's. A new part (drums) is an entry here and a release in releaseSound.
+ *   solo   the piece itself: the guide piano, the lit notes and keys, and in play-along the expected notes
+ *   band   the accompaniment: its own piano; never lit, expected or logged
+ *   drums  (reserved)
+ */
+const ITEM_PARTS = {
+  solo: { ahead: soloItem, due: pos => lightNote(pos.item.note, pos.item.kind === 'on') },
+  band: { ahead: bandItem, due: null },
+  drums: { ahead: null, due: null },
+};
+const partOf = item => ITEM_PARTS[(item && item.part) || 'solo'] || null;
 clock.on('item', pos => {
   const L = state.listen;
   if (!L.active) return;
+  const part = partOf(pos.item);
+  if (part && part.ahead) part.ahead(pos, L);
+});
+/** A note of the piece: sounded on the guide piano, and in play-along expected of the learner — at L.shift above where it is written while the band plays. */
+function soloItem(pos, L) {
   const { kind, note } = pos.item;
-  const name = noteName(note.midi);
+  const pitch = note.midi + L.shift;
+  const name = noteName(pitch);
   if (kind === 'off') {
     if (!L.guideOn.delete(note)) return;
-    const n = (guideCount.get(note.midi) || 1) - 1;
-    if (n > 0) { guideCount.set(note.midi, n); return; }   // the same pitch still sounds in the other hand
-    guideCount.delete(note.midi);
+    const n = (guideCount.get(pitch) || 1) - 1;
+    if (n > 0) { guideCount.set(pitch, n); return; }   // the same pitch still sounds in the other hand
+    guideCount.delete(pitch);
     if (guidePiano) guidePiano.triggerRelease(name, pos.audioTime);
     return;
   }
   if (guidePiano && !muted() && (L.mode === 'listen' || state.guide > 0)) {
     guidePiano.triggerAttack(name, pos.audioTime, GUIDE_VELOCITY[note.hand] || 0.7);
     L.guideOn.add(note);
-    guideCount.set(note.midi, (guideCount.get(note.midi) || 0) + 1);
+    guideCount.set(pitch, (guideCount.get(pitch) || 0) + 1);
   }
   if (L.mode !== 'playalong' || !isMine(note)) return;
   const seq = note.seq != null ? note.seq : pos.seq;   // the played index of the note's bar: which time through it this is
-  const r = timing.expect({ pitch: note.midi, hand: note.hand, bar: note.bar, beat: note.onset, audioTime: pos.audioTime, seq, ref: note }, pos.pass);
-  bus.emit('note:expected', { pitch: note.midi, hand: note.hand, bar: note.bar, seq, beat: note.onset, audioTime: pos.audioTime, offsetMs: null, pass: pos.pass, anchor: isAnchor(note.bar, note.onset) });
+  const expected = { pitch, hand: note.hand, bar: note.bar, beat: note.onset, audioTime: pos.audioTime, seq, ref: note };
+  if (L.shift) expected.accept = [note.midi];   // with the band: the written octave counts too, so a learner who stays low is not missed on every note
+  const r = timing.expect(expected, pos.pass);
+  const detail = { pitch, hand: note.hand, bar: note.bar, seq, beat: note.onset, audioTime: pos.audioTime, offsetMs: null, pass: pos.pass, anchor: isAnchor(note.bar, note.onset) };
+  if (L.shift) detail.written = note.midi;
+  bus.emit('note:expected', detail);
   if (r.hit) onHit(r.entry, r.hit);   // already played, a little early
   clock.at(pos.audioTime + HIT_WINDOW_S + SETTLE_S, sweepTiming);
-});
+}
+/** A note of the band: sound only, on the band's piano, at its written pitch. */
+function bandItem(pos, L) {
+  const { kind, note } = pos.item;
+  const name = noteName(note.midi);
+  if (kind === 'off') {
+    if (!L.bandNotes.delete(note)) return;
+    const n = (bandCount.get(note.midi) || 1) - 1;
+    if (n > 0) { bandCount.set(note.midi, n); return; }   // the same pitch still sounds in its other hand
+    bandCount.delete(note.midi);
+    if (bandPiano) bandPiano.triggerRelease(name, pos.audioTime);
+    return;
+  }
+  if (!bandPiano || muted()) return;
+  bandPiano.triggerAttack(name, pos.audioTime, GUIDE_VELOCITY[note.hand] || 0.7);
+  L.bandNotes.add(note);
+  bandCount.set(note.midi, (bandCount.get(note.midi) || 0) + 1);
+}
 clock.on('loopWrap', pos => {
   const L = state.listen;
   if (!L.active || L.mode !== 'playalong') return;
@@ -1568,7 +1786,11 @@ clock.on('ended', pos => {
   const tail = L.mode === 'playalong' ? HIT_WINDOW_S + SETTLE_S : END_TAIL_S;
   clock.at(pos.audioTime + tail, () => { if (L.active && L.token === token) finishListen({ complete: true, endedAt: pos.audioTime }); });
 });
-clock.onDue('item', pos => { if (state.listen.active) lightNote(pos.item.note, pos.item.kind === 'on'); });
+clock.onDue('item', pos => {
+  if (!state.listen.active) return;
+  const part = partOf(pos.item);
+  if (part && part.due) part.due(pos);
+});
 clock.onDue('bar', pos => {
   const L = state.listen;
   if (!L.active) return;
@@ -1677,7 +1899,7 @@ function clockProbe(seconds = 20) {
 function openPass(pass, startedAt) {
   const L = state.listen, { range } = L;
   const startBar = pass === 1 ? L.startBar : range.from;   // a resumed run's first pass begins inside the range
-  timing.open(pass, { mode: 'playalong', piece: state.piece, run: L.run, from: range.from, to: range.to, startBar, loop: range.loop, hands: state.hands, tempoPct: state.tempoPct, bpm: clock.tempo, startedAt, windowMs: HIT_WINDOW_MS, timeSource, ...formDetail(range), startSeq: pass === 1 ? L.startSeq : null, timebase: { start: clockSample(), end: null, drift: null } });
+  timing.open(pass, { mode: 'playalong', piece: state.piece, run: L.run, from: range.from, to: range.to, startBar, loop: range.loop, hands: state.hands, tempoPct: state.tempoPct, bpm: clock.tempo, startedAt, windowMs: HIT_WINDOW_MS, timeSource, ...formDetail(range), startSeq: pass === 1 ? L.startSeq : null, band: L.band, transpose: L.shift, timebase: { start: clockSample(), end: null, drift: null } });
   bus.emit('pass:start', { pass, from: range.from, to: range.to, startBar, loop: range.loop, hands: state.hands, audioTime: startedAt, ...formDetail(range) });
 }
 function closePass(pass, endedAt, complete) {
@@ -1699,7 +1921,7 @@ function closeAllPasses(at, complete) {
 /** A note of yours that was played: green flash; the event carries the actual time and the offset. */
 function onHit(expected, played) {
   bus.emit('note:played', { pitch: played.pitch, hand: expected.hand, bar: expected.bar, seq: expected.seq ?? null, beat: expected.beat, audioTime: played.audioTime, expectedAt: expected.audioTime, offsetMs: expected.offsetMs, matched: true, extra: false, pass: expected.pass, anchor: isAnchor(expected.bar, expected.beat) });
-  flashNote(expected.ref);
+  flashNote(expected.ref, played.pitch);   // the key that was played: with the band, the shifted octave or the written one
 }
 /** Notes whose window has passed: expected ones are missed (grey for the rest of their pass), played ones that paired with nothing are extras (logged, never shown). */
 function reportSettled(missed, extras) {
@@ -1742,11 +1964,8 @@ function setMetronome(on, { save = true } = {}) {
   if (!state.metro.on) metronome.stop({ countIn: false });
 }
 function setMetroVolume(v, { save = true } = {}) {
-  const n = Number(v);
-  state.metro.volume = Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : METRO_VOLUME_DEFAULT;
+  state.metro.volume = mixer.set('click', v, { save });   // the mixer's click level: the shared curve, under CLICK_CEILING (attached to metronome.setGain)
   els.metroVolume.value = String(state.metro.volume);
-  metronome.setVolume(state.metro.volume);
-  if (save) saveMetro(METRO_VOLUME_KEY, state.metro.volume);
 }
 /** 0 / 1 / 2 bars before the first note of Listen / play-along (aria-pressed on the segment buttons); applies to the next start. */
 function setCountIn(bars, { save = true } = {}) {
@@ -1850,26 +2069,22 @@ els.viewLines.addEventListener('click', e => {
   setLines(b.dataset.lines); b.blur();
 });
 
-// ── Form (Mode card): an un-looped Listen / play-along follows the play order, or plays the bars as written (remembered) ──
+// ── "Play repeats" (Mode card): an un-looped Listen / play-along follows the play order, or — unticked — plays each bar once (remembered) ──
 
-/** 'repeats' (follow form.playOrder; the default) or 'written'. A transport under way or paused is stopped: its range was built for the other setting. */
+/** 'repeats' (ticked: follow form.playOrder; the default) or 'written' (unticked) — the values stored under FORM_KEY since the setting was a two-way switch. A transport under way or paused is stopped: its range was built for the other setting. */
 function setForm(v, { save = true } = {}) {
   const want = v === 'written' ? 'written' : FORM_DEFAULT;
   if (want !== state.form) stopListen();
   state.form = want;
-  for (const b of els.form.querySelectorAll('[data-form]')) b.setAttribute('aria-pressed', String(b.dataset.form === state.form));
+  els.form.checked = state.form === 'repeats';
   if (save) saveRack(FORM_KEY, state.form);
   return state.form;
 }
-/** The Form row shows only for a piece that has a play order (load / unload). */
+/** The "Play repeats" checkbox shows only for a piece that has a play order (load / unload). */
 function syncForm() {
   els.formRow.hidden = !(Array.isArray(state.order) && state.order.length);
 }
-els.form.addEventListener('click', e => {
-  const b = e.target instanceof Element ? e.target.closest('[data-form]') : null;
-  if (!b) return;
-  setForm(b.dataset.form); b.blur();
-});
+els.form.addEventListener('change', () => { setForm(els.form.checked ? 'repeats' : 'written'); els.form.blur(); });
 
 /** The strip's settings summary: "100% · metronome off · count-in 1 · both hands [· No stress] [· loop bars 2–3]" + MIDI dot and device. */
 function syncSummary() {
@@ -1880,6 +2095,7 @@ function syncSummary() {
     state.hands === 'both' ? 'both hands' : state.hands.toUpperCase(),
   ];
   if (state.noStress) parts.push('No stress');
+  if (bandOn()) parts.push('with the band');
   const L = state.loop;
   if (L) parts.push(`loop ${barsText(L.from, L.to)}`);
   const box = els.summaryText;
@@ -2136,6 +2352,7 @@ function unload() {
   showNotes(null, null);
   state.norm = null; state.bar = null; state.steps = []; state.follower = null; state.wrong = 0;
   state.order = null; syncForm();
+  state.band = null; syncBand();
   state.lines = []; state.lineWarnings = []; state.line = -1;
   cancelPending(); clearTrouble(); recorder.cancel();
   updateBarNav(); staff.clear(); state.shown = ''; clearKeys(); syncLoop(); syncListen();
@@ -2157,6 +2374,7 @@ async function load(name) {
     const norm = await res.json();
     state.piece = name; state.norm = norm; state.wrong = 0;
     state.order = playOrderOf(norm); syncForm();   // null: the piece has no play order and plays as written
+    state.band = null; syncBand();                  // the last piece's band goes now; this piece's is fetched once it is up (loadBand)
     showHeader(name, norm);
     showNotes(name, norm);
     const bars = barNumbers();
@@ -2179,6 +2397,7 @@ async function load(name) {
       const cur = state.follower.current();
       const bar = cur ? cur.bar : bars[0];
       showLine(Math.max(0, lineOf(bar)), { bar, keep: true });
+      loadBand(norm);         // the accompaniment, if the piece names one: not awaited — the piece is up first
     } else { unload(); banner('This piece has no bars.', true); }
     const url = new URL(window.location.href);
     url.searchParams.set('piece', name);
@@ -2287,6 +2506,7 @@ window.__player = {
   setRackOpen, setRackAuto, get rack() { return state.rack; },
   setLines, viewFor, nextLine, get lines() { return state.viewLines; },
   setForm, transportForm, get form() { return state.form; }, get order() { return state.order; },
+  setBandOn, setBandVolume, bandOn, loadBand, mixer, pieceRange, get band() { return state.band; }, get bandPiano() { return bandPiano; }, get guidePiano() { return guidePiano; },
   get trouble() { return state.trouble; }, get practice() { return state.practice; }, loopCounts, passHistory, get recorder() { return recorder; }, thresholds: THRESHOLDS,
   get keyboard() { return keyboard; }, get input() { return input; }, get follower() { return state.follower; }, get steps() { return state.steps; },
   noteOn: onMidiNoteOn, noteOff: onMidiNoteOff, pedal: onPedal,
