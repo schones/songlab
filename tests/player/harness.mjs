@@ -5,7 +5,8 @@
  * (top-level DOM wiring, one piece loaded at import), so each scenario
  * runs in its own process — see smoke.mjs.
  *
- *   const h = await boot({ norm, pieces, drumFiles });   // norm: the piece the fake /player/data serves;
+ *   const h = await boot({ norm, pieces, drumFiles, search, stored });   // norm: the piece the fake /player/data serves;
+ *                        search: the page's query string ('?dev=1'); stored: localStorage as it is before the page loads ({ key: string });
  *                        drumFiles: { hat: null } makes that drum's sample a 404 (drums.js then plays its synth);
  *                        pieces: { name: norm | null } served by name at /player/data/<name> (null: 404) — any other name gets `norm`.
  *                        h.pieces is that map, live: change it and load again.
@@ -67,8 +68,8 @@ function fixtureNorm(extra = {}) {
   return { piece: 'smoke-fixture', title: 'Smoke fixture', reader: 'test', key: 'G minor', time: '3/4', beatsPerBar: 3, tempo: 82, lines: [1, 5, 9, 13], ...extra, bars };
 }
 
-async function boot({ norm = fixtureNorm(), pieces = {}, drumFiles = {} } = {}) {
-  const elsById = {}, docListeners = {}, storage = {};
+async function boot({ norm = fixtureNorm(), pieces = {}, drumFiles = {}, search = '', stored = {} } = {}) {
+  const elsById = {}, docListeners = {}, storage = { ...stored };
   globalThis.window = globalThis;
   globalThis.Node = class {}; globalThis.Element = class {};
   globalThis.document = {
@@ -76,10 +77,10 @@ async function boot({ norm = fixtureNorm(), pieces = {}, drumFiles = {} } = {}) 
     addEventListener: (t, f) => { (docListeners[t] ||= []).push(f); },
     querySelector: () => null, querySelectorAll: () => [],
     createElement: tag => { const e = stubElement(tag); e.tag = tag; return e; },
-    body: stubElement('body'), documentElement: stubElement('html'), activeElement: null,
+    body: stubElement('body'), head: stubElement('head'), documentElement: stubElement('html'), activeElement: null,
   };
   globalThis.localStorage = { getItem: k => (k in storage ? storage[k] : null), setItem: (k, v) => { storage[k] = String(v); }, removeItem: k => { delete storage[k]; } };
-  globalThis.location = { search: '', href: 'http://localhost/player' };
+  globalThis.location = { search, href: `http://localhost/player${search}` };
   globalThis.history = { replaceState() {} };
   globalThis.addEventListener = () => {}; globalThis.removeEventListener = () => {};
   globalThis.requestAnimationFrame = f => setTimeout(f, 0);

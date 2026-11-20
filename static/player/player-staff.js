@@ -19,6 +19,7 @@
  *   staff.setNoteState('pl-b1-1-0', 'expected'); // 'expected' | 'correct' | 'wrong' | 'playing' | null — the active slot only
  *   staff.clearStates();
  *   staff.setDimmed(ids);                        // the other hand, drawn faint (pl-note--dim); [] clears — the active slot only
+ *   staff.setMissed(ids);                        // play-along: notes not played, in soft coral (pl-note--missed); [] clears — the active slot only
  *   staff.setBarMarker(6);                       // faint tint behind bar 6's measure, when it is in the active slot; null clears
  *   staff.setBarTint('loop', [6, 7]);            // 'loop' | 'pending' | 'trouble' tint behind those bars ([] clears), in both slots; kept across shows
  *   staff.setAnchors([1, 5, 9]);                 // anchor downbeats (norm.anchors): a small gold tick above beat 1 of those bars; 'downbeats': every
@@ -30,6 +31,10 @@
  *   staff.range                                  // { from, to } of the ACTIVE slot's bars, or null
  *   staff.ranges                                 // every slot's { from, to }, top first
  *   staff.active                                 // 0 (top) | 1 (bottom)
+ *   staff.setPill('Easing off', { holdMs: 2500 });       // a short message laid over the staff, in the gap between the two lines (one line: just under it);
+ *                                                //   fades in, holds holdMs, fades out. No holdMs: it stays until setPill(''). A new text while one shows
+ *                                                //   replaces it and restarts the hold. `color` (a CSS colour): this message's colour instead of the pill's coral. Out of the flow, never takes a click; announced politely (aria-live).
+ *   staff.pill                                   // the text showing, or ''
  *
  * Slots. The staff holds up to two slots, top and bottom, one line each.
  * One of them is ACTIVE — the line being played; hits, range, note states,
@@ -44,6 +49,8 @@
  * --playing); the CSS colours them blue / green / red / purple (playing: a note
  * sounding under Listen), as the keyboard does. pl-note--dim
  * is independent of the state (an unselected hand stays dim whatever happens).
+ * pl-note--missed (play-along: a note not played) is its own class too, and
+ * wins the colour over a state: soft coral, MISSED_OPACITY.
  *
  * Uniform lines, as in printed music. Every line is engraved as ONE system
  * justified to the same fixed page width (Verovio `breaks: 'encoded'` over
@@ -101,6 +108,11 @@ const MARKER_PAD = 0.12;              // marker / tint rects extend above / belo
 const ANCHOR_TITLE = 'Anchor: land this downbeat';
 const ANCHOR_TICK = 0.06;             // anchor tick length, as a fraction of the line's (padded) extent: it sits in the padding above the highest content
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const MISSED_COLOR = '#E87461';        // a missed note in play-along: the theme's coral (lighter than the page's --accent-coral of a wrong key)…
+const MISSED_OPACITY = 0.7;           // …softened, so a line with several misses does not look alarming. Tune here.
+const PILL_FADE_IN_MS = 120;          // the pill (setPill) fades in fast…
+const PILL_FADE_OUT_MS = 400;         // …and out more slowly
+const PILL_MAX_WIDTH_PCT = 50;        // the pill is one bar of the active line wide, at most this share of the staff (longer text widens it)
 
 const CSS = /* css */ `
 .pl-staff-wrap { position: relative; width: 100%; min-height: 200px; --pl-bar-marker: rgba(45, 95, 138, 0.10); --pl-bar-loop: rgba(214, 150, 20, 0.16); --pl-bar-pending: rgba(214, 150, 20, 0.08); --pl-bar-pending-stroke: rgba(176, 120, 10, 0.7); --pl-bar-trouble: rgba(185, 52, 31, 0.11); --pl-anchor: #B07A0A; }
@@ -122,6 +134,7 @@ const CSS = /* css */ `
 .pl-staff-svg g.note.pl-note--wrong    { color: var(--accent-coral, #B9341F); fill: var(--accent-coral, #B9341F); }
 .pl-staff-svg g.note.pl-note--playing  { color: var(--pl-playing, #6B4FBB); fill: var(--pl-playing, #6B4FBB); }
 .pl-staff-svg g.note.pl-note--dim      { opacity: 0.35; }
+.pl-staff-svg g.note.pl-note--missed   { color: ${MISSED_COLOR}; fill: ${MISSED_COLOR}; opacity: ${MISSED_OPACITY}; }
 .pl-staff-svg rect.pl-bar-marker       { fill: var(--pl-bar-marker); stroke: none; }
 .pl-staff-svg rect.pl-bar-loop         { fill: var(--pl-bar-loop); stroke: none; }
 .pl-staff-svg rect.pl-bar-pending      { fill: var(--pl-bar-pending); stroke: var(--pl-bar-pending-stroke); stroke-width: 6; stroke-dasharray: 24 14; }
@@ -133,7 +146,13 @@ const CSS = /* css */ `
 .pl-staff-wrap[data-state="ready"] .pl-staff-status { display: none; }
 .pl-staff-wrap[data-state="loading"] .pl-staff-svg, .pl-staff-wrap[data-state="error"] .pl-staff-svg { opacity: 0.3; }
 .pl-staff-wrap[data-state="error"] .pl-staff-status { color: var(--accent-coral, #B9341F); }
-@media (prefers-reduced-motion: reduce) { .pl-staff-slot { transition: none; } }
+/* The stage is the staff window and nothing else, so the pill can be placed against it without being clipped by it. */
+.pl-staff-stage { position: relative; width: 100%; }
+/* The pill (setPill): out of the flow, centred on the boundary between the two slots — the gap between the lines; with one slot, just under the line. It takes no click. */
+.pl-staff-pill { position: absolute; left: 50%; top: 50%; z-index: 1; box-sizing: border-box; min-width: 25%; max-width: 96%; transform: translate(-50%, -50%); padding: 0.3em 0.9em; border: 1px solid rgba(232, 116, 97, 0.4); border-color: color-mix(in srgb, currentColor 40%, transparent); border-radius: 999px; background: var(--pl-pill-bg, rgba(255, 255, 255, 0.8)); color: #E87461; font-family: inherit; font-size: clamp(1.4rem, 2.1vw, 2rem); font-weight: 800; line-height: 1.15; text-align: center; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity ${PILL_FADE_OUT_MS}ms ease; }
+.pl-staff-pill--on { opacity: 1; transition: opacity ${PILL_FADE_IN_MS}ms ease; }
+.pl-staff-stage[data-slots="1"] .pl-staff-pill { top: 100%; transform: translate(-50%, -75%); }
+@media (prefers-reduced-motion: reduce) { .pl-staff-slot, .pl-staff-pill, .pl-staff-pill--on { transition: none; } }
 `;
 
 const STATES = ['expected', 'correct', 'wrong', 'playing'];   // 'playing': sounding under Listen (purple)
@@ -228,6 +247,9 @@ class PlayerStaff {
     this._tints = { loop: [], pending: [], trouble: [] };   // tint → bars; re-applied to every slot as it is filled
     this._anchors = null;       // null | 'downbeats' | [bar]; re-applied to every slot as it is filled
     this._onBarTap = null;
+    this._pillText = '';        // the pill's text ('' : not showing)
+    this._pillTimer = 0;        // the end of its hold
+    this._pillClear = 0;        // its text is emptied once it has faded out
 
     if (!document.getElementById('pl-staff-styles')) {
       const st = document.createElement('style');
@@ -238,7 +260,9 @@ class PlayerStaff {
     this._wrap = document.createElement('div');
     this._wrap.className = 'pl-staff-wrap';
     this._wrap.dataset.state = 'empty';
-    this._wrap.innerHTML = '<div class="pl-staff-svg" role="img" aria-label="Staff notation"><div class="pl-staff-track"></div></div><div class="pl-staff-status"></div>';
+    this._wrap.innerHTML = '<div class="pl-staff-stage"><div class="pl-staff-svg" role="img" aria-label="Staff notation"><div class="pl-staff-track"></div></div><div class="pl-staff-pill" role="status" aria-live="polite"></div></div><div class="pl-staff-status"></div>';
+    this._stage = this._wrap.querySelector('.pl-staff-stage');
+    this._pill = this._wrap.querySelector('.pl-staff-pill');
     this._svgHost = this._wrap.querySelector('.pl-staff-svg');
     this._track = this._wrap.querySelector('.pl-staff-track');
     this._status = this._wrap.querySelector('.pl-staff-status');
@@ -484,7 +508,35 @@ class PlayerStaff {
   _layout() {
     const b = this._box, n = this._slots.length;
     this._svgHost.style.aspectRatio = b && n ? `${b.width} / ${(b.above + b.below) * n}` : '';
+    this._stage.dataset.slots = String(n);   // the pill: between two slots, or under the only one
+    const a = this._slots[this._active];
+    this._pill.style.minWidth = a ? `${Math.min(PILL_MAX_WIDTH_PCT, Math.round(100 / (a.range.to - a.range.from + 1)))}%` : '';   // about one bar of the active line
   }
+
+  /**
+   * The pill over the staff: `text` fades in, and with `holdMs` fades out
+   * again after that long; without it the text stays until setPill('').
+   * A new text while one shows replaces it and restarts the hold. '' / null
+   * fades it out. It is laid over the stage, so no slot moves or resizes.
+   * `color`: this message's text (and border) colour; without it, the
+   * pill's own coral.
+   */
+  setPill(text, { holdMs = 0, color = '' } = {}) {
+    clearTimeout(this._pillTimer); clearTimeout(this._pillClear);
+    this._pillTimer = this._pillClear = 0;
+    const was = this._pillText;
+    this._pillText = text ? String(text) : '';
+    if (!this._pillText) {
+      this._pill.classList.remove('pl-staff-pill--on');
+      if (was || this._pill.textContent) this._pillClear = setTimeout(() => { this._pillClear = 0; this._pill.textContent = ''; }, PILL_FADE_OUT_MS);   // the words stay while it fades
+      return;
+    }
+    if (this._pill.textContent !== this._pillText) this._pill.textContent = this._pillText;
+    this._pill.style.color = color || '';   // kept while it fades out; the next message sets its own
+    this._pill.classList.add('pl-staff-pill--on');
+    if (holdMs > 0) this._pillTimer = setTimeout(() => { this._pillTimer = 0; this.setPill(''); }, PILL_FADE_IN_MS + holdMs);
+  }
+  get pill() { return this._pillText; }
 
   /** Slide the track up by the leaving slot's height; it is removed when the shift ends. False when there is nothing to animate (not laid out). */
   _startShift(leaving) {
@@ -525,6 +577,7 @@ class PlayerStaff {
     for (const id of slot.states.keys()) { const el = this._find(id, slot); if (el) for (const s of STATES) el.classList.remove(`pl-note--${s}`); }
     slot.states = new Map();
     for (const el of slot.svg.querySelectorAll('g.note.pl-note--dim')) el.classList.remove('pl-note--dim');
+    for (const el of slot.svg.querySelectorAll('g.note.pl-note--missed')) el.classList.remove('pl-note--missed');
     for (const r of slot.svg.querySelectorAll('rect.pl-bar-marker')) r.remove();
     slot.markerBar = null;
   }
@@ -552,6 +605,15 @@ class PlayerStaff {
     if (!slot || !slot.svg) return;
     for (const el of slot.svg.querySelectorAll('g.note.pl-note--dim')) if (!want.has(el.id)) el.classList.remove('pl-note--dim');
     for (const id of want) { const el = this._find(id, slot); if (el) el.classList.add('pl-note--dim'); }
+  }
+
+  /** Draw exactly these notes as missed (pl-note--missed, soft coral); orthogonal to setNoteState and setDimmed. */
+  setMissed(ids) {
+    const slot = this._slots[this._active];
+    const want = new Set(ids || []);
+    if (!slot || !slot.svg) return;
+    for (const el of slot.svg.querySelectorAll('g.note.pl-note--missed')) if (!want.has(el.id)) el.classList.remove('pl-note--missed');
+    for (const id of want) { const el = this._find(id, slot); if (el) el.classList.add('pl-note--missed'); }
   }
 
   /** The active slot's note ids in document order, optionally for one bar / hand. */
@@ -772,7 +834,7 @@ class PlayerStaff {
     this._setState('empty', '');
   }
 
-  destroy() { this.clear(); this._wrap.remove(); }
+  destroy() { this.clear(); clearTimeout(this._pillTimer); clearTimeout(this._pillClear); this._wrap.remove(); }
 
   _find(id, slot = this._slots[this._active]) { return slot && slot.svg ? slot.svg.querySelector(`#${CSS_escape(id)}`) : null; }
 

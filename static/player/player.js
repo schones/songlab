@@ -62,7 +62,7 @@
  * transport's form: the first played bar ahead on another line), tagged
  * "↩ bar 9" / "→ Coda" when that is a jump; at the end of the form the
  * line just played stays on top and the last line is active below.
- * Missed-note greying is dropped when its line is entered again.
+ * Missed-note colouring is dropped when its line is entered again.
  * Timing-log entries and note events carry seq; a pass is one trip through
  * the form. A loop, an explicit { from, to } range, "as written" and a
  * piece with no play order all play the written bars in order, as before.
@@ -177,8 +177,8 @@
  * 35; 0 = click only: no notes are triggered). Hands decides which notes
  * are expected from you (isMine); the guide plays everything. Feedback is
  * light: a note of yours played within HIT_WINDOW_MS of its time flashes
- * green as it passes (flashNote); one you did not play is left faint for
- * the rest of that pass (L.missed, the staff's dim class). No counts, no
+ * green as it passes (flashNote); one you did not play is left coral for
+ * the rest of that pass (L.missed, the staff's missed class). No counts, no
  * stats. Every expected and every played note goes into the quiet timing
  * log (pitch, bar / beat, actual audio time — audioTimeOf maps the key's
  * performance.now() onto the audio clock — and the offset in ms, early
@@ -201,25 +201,36 @@
  * the practice page back, as it does for a playing one.
  *
  * Band slows down for me (player-steady.js; state.steady, STEADY_KEY, the
- * Mode card's checkbox, on by default; play-along only): the goal is a
- * steady rhythm. Every expected note's fate in the timing log is also
- * tallied per played bar (steady.expected / hit / missed, and steady.key
- * for any key down), and at each barline — when the clock schedules it,
- * up to the lookahead before it sounds — the judge gives a verdict
- * (the 'bar' listener; the thresholds are player-steady.js STEADY).
- * 'slow': the tempo drops one notch, eased over the next bar by moving
- * the tempo slider itself a point at a time (steadySlow → setTempoPct, so
- * the clock, the readout and the saved value all follow and the new tempo
- * stays for the rest of the run, the next loop pass and the next run);
- * the status line says "slowed to 90% to keep it steady" for a moment,
- * then the usual line with the percentage. Nothing ever raises the tempo
- * but the learner. 'stop': the transport pauses AT that barline
- * (steadyStop): nothing of the bar after it is sounded, expected or
- * clicked (L.hold gates the clock's listeners), and at the barline it
+ * checkbox in the Listen card's "Play along" group, on by default; play-along only): the goal is a
+ * steady rhythm. The judge keeps a running steadiness score S (0…1): every
+ * expected note's fate in the timing log moves it — a hit toward 1, a miss
+ * toward 0 (steady.hit / missed; an average with a half-life in notes) —
+ * and is tallied per played bar (with steady.key for any key down). A bar
+ * in which the learner played nothing feeds no misses into S and holds the
+ * tempo. S is 1 at every start and is kept across a pause; after the
+ * band's own pause (L.paused.auto) a resume lifts it to the comfort level. At each barline — when the
+ * clock schedules it, up to the lookahead before it sounds — the band's
+ * tempo moves toward what S asks for (the 'bar' listener; desiredPct,
+ * stepPct and the thresholds are player-steady.js STEADY): a share of the
+ * TARGET, which is the tempo slider's value, the learner's chosen speed.
+ * bandPct is that share in whole percent (100: at the target); it moves by
+ * a few points a bar at most, down and back up, never above the target,
+ * and each move is eased over the next bar a point at a time (steadyTempo
+ * → setBandLive → the clock's live tempo). The band never moves the slider
+ * or its saved value; the learner moving the slider moves the target under
+ * the band. A bar with no expected notes, and the grace bar after a start
+ * or a resume, leave the tempo where it is. While the band is below the
+ * target a small badge over the staff panel says "85%" (els.tempoBadge)
+ * and the status line "playing at 85% of your speed"; the pill over the
+ * staff speaks only at the moments: "Easing off" when it first drops below
+ * the target, "Back to your speed" when it returns. A stop (not a pause)
+ * puts the band back at the target. 'stop': the transport pauses AT that
+ * barline (steadyStop): nothing of the bar after it is sounded, expected
+ * or clicked (L.hold gates the clock's listeners), and at the barline it
  * pauses as Space would, at that bar and seq, with "paused: play along
- * stopped. P to carry on". No judging in the count-in or the first bar
- * after a start or a resume. Each drop and each auto-pause is kept on the
- * pass in the timing log (pass.steady) and emitted on the bus (band:slowed,
+ * stopped. P to carry on". Each tempo change and each auto-pause is kept
+ * on the pass in the timing log (pass.steady: { type: 'tempo', S, from,
+ * to, … } / { type: 'stopped', … }) and emitted on the bus (band:tempo,
  * band:stopped). Unticked: none of it acts, and play-along is as it was.
  *
  * Feel + Song notes (norm.feel / anchors / songNotes; tools/pieces/
@@ -288,7 +299,7 @@
  * Judging (practice and play-along) is by keys: state.held never includes
  * a pedalled note.
  *
- * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, setNoStress, setLines, viewFor, listen, playAlong, stopListen, tempo, clock, timing, bus, setSteady, steady, STEADY, metronome, trouble, practice, staff, keyboard, …).
+ * Debug handle: window.__player (state, load, showLine, stepLine, stepBar, setLoop, clearLoop, setNoStress, setLines, viewFor, listen, playAlong, stopListen, tempo, clock, timing, bus, setSteady, steady, STEADY, bandPct, metronome, trouble, practice, staff, keyboard, …).
  */
 
 import { PlayerStaff } from './player-staff.js';
@@ -300,13 +311,13 @@ import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
 import { loadTone, midiToNoteName, SALAMANDER_URLS, SALAMANDER_BASE } from '../shared/voicing-player.js';   // Tone + the piano samples only; VoicingPlayer itself is no longer used here (3)
 import { listenSchedule, pieceBpm, tempoLabel, DEFAULT_BPM } from './player-listen.js';
 import { metronome, patternFor, DEFAULT_VOLUME as METRO_VOLUME_DEFAULT } from './metronome.js';
-import { drums, drumsFor, grooveItems } from './drums.js';
+import { drums, drumsFor, grooveItems, DRUM_MIX, HAT_OFFBEAT } from './drums.js';
 import { createBeatClock, LOOKAHEAD } from './beat-clock.js';
 import { createTimingLog, audioTimeFromStamp, HIT_WINDOW_MS } from './player-playalong.js';
 import { playOrderOf, playedSequence, firstSeqOf, isJump, nextLineAt, prevLineAt, jumpLabel } from './player-form.js';
 import { accompanimentOf, checkBand, runSequence, shiftRange, transposeLabel } from './player-band.js';
 import { createMixer } from './player-mixer.js';
-import { STEADY, createSteadyJudge, nextPct, easeSteps } from './player-steady.js';
+import { STEADY, createSteadyJudge, desiredPct, stepPct, easeSteps } from './player-steady.js';
 
 const DEVICE_KEY = 'songlab_player_midi_device';   // createShellInput has a fixed key; mapped through its injectable storage
 const SOUND_KEY = 'songlab_player_midi_sound';     // "Sound for MIDI notes" checkbox; off by default
@@ -333,7 +344,7 @@ const BAND_DEFAULT = 60;
 const CLICK_CEILING = 0.75;                            // the click's gain at 100 on the mixer's curve: at the default 70 it is the level it always was (0.44)
 const DRUMS_CEILING = 0.6;                             // the kit's gain at 100 on the mixer's curve: 0.35 at the default 70, under the click's 0.44 — with the samples the kick peaks near 0.42, the snare 0.19, the on-beat hat 0.12; at 100 kick + snare + hat together peak at 0.76 (drums.js DRUM_SPECS)
 const FORM_DEFAULT = 'repeats';
-const STEADY_KEY = 'songlab_player_band_follow';      // "Band slows down for me" checkbox (Mode card): '1' / '0'; on by default. Its thresholds are player-steady.js STEADY
+const STEADY_KEY = 'songlab_player_band_follow';      // "Band slows down for me" checkbox (Listen card, "Play along" group): '1' / '0'; on by default. Its thresholds are player-steady.js STEADY
 const GUIDE_KEY = 'songlab_player_guide_volume';      // play-along "Guide volume" 0–100 (0 = click only); default 35
 const GUIDE_DEFAULT = 35;
 const NOTES_OPEN_KEY = 'songlab_player_notes_open';   // + ':<piece>' → '1' / '0': the Song notes panel open or closed, per piece; closed by default
@@ -372,13 +383,15 @@ const els = {
   loopBar: $('pl-loop-bar'), loopLine: $('pl-loop-line'), loopClear: $('pl-loop-clear'), loopExit: $('pl-loop-exit'), noStressHint: $('pl-no-stress-hint'),
   listen: $('pl-listen'), playAlong: $('pl-playalong'), tempo: $('pl-tempo'), tempoReadout: $('pl-tempo-readout'),
   guide: $('pl-guide'), guideReadout: $('pl-guide-readout'),   // Listen card: play-along guide volume
+  guideBox: $('pl-guide-box'), guideNote: $('pl-guide-note'),  // …its wrapper (dimmed) and the note under it while Listen has it disabled (syncGuideLock)
   metro: $('pl-metro'), metroVolume: $('pl-metro-volume'), countIn: $('pl-count-in'),   // Listen card, bottom row (2b)
   beatClick: $('pl-beat-click'), beatDrums: $('pl-beat-drums'), beatNote: $('pl-beat-note'),   // …its "Click | Drums" choice and the note for a meter the drums cannot play
   trouble: $('pl-trouble'),
   viewLines: $('pl-lines'),   // Mode card: "Lines" 1 | 2 (segmented)
-  steady: $('pl-steady'),     // Mode card: "Band slows down for me" (play-along)
+  steady: $('pl-steady'),     // Listen card, "Play along" group: "Band slows down for me"
   form: $('pl-form'), formRow: $('pl-form-row'),   // Mode card: "Play repeats" checkbox and its label (hidden for a piece with no play order)
   bandCard: $('pl-band-card'), bandOn: $('pl-band-on'), bandVolume: $('pl-band-volume'), bandReadout: $('pl-band-readout'), bandNote: $('pl-band-note'),   // Band card (shown only for a piece with an accompaniment)
+  tempoBadge: $('pl-band-tempo'), // "85%", beside it, while "Band slows down for me" has the band below the learner's speed (syncBandTempo)
   bandLabel: $('pl-band-8va'),   // "8va with the band", over the staff panel while a transport plays the solo shifted
   rackShell: $('pl-rack'), rackToggle: $('pl-rack-toggle'), rackAuto: $('pl-rack-auto'),   // collapsible rack + ⚙ Controls (strip) + "Hide controls while playing" (Mode card)
   summary: $('pl-summary'), summaryText: $('pl-summary-text'), summaryDot: $('pl-summary-dot'), summaryDevice: $('pl-summary-device'),   // strip settings summary
@@ -396,7 +409,7 @@ const state = {
   band: null,                    // the piece's accompaniment: { piece, transpose, norm, title, status: 'loading' | 'ready' | 'refused' | 'failed', message, warnings } or null when the norm names none (loadBand)
   bandOn: false,                 // "Play with the band" (BAND_ON_KEY); the band plays only when it is also ready (bandOn())
   bandVolume: BAND_DEFAULT,      // band volume 0–100 (BAND_VOLUME_KEY; the mixer's 'band' level)
-  steady: true,                  // "Band slows down for me" (STEADY_KEY): play-along slows when the learner struggles and pauses when the learner stops
+  steady: true,                  // "Band slows down for me" (STEADY_KEY): play-along's tempo follows the learner's steadiness and the band pauses when the learner stops
   shown: '',                     // the view last asked of the staff (viewKey): '' when nothing is drawn
   bar: null,                     // the active bar within the drawn line
   hands: 'both',
@@ -1348,11 +1361,11 @@ function lightNote(note, on) {
   if (n > 0) playingKeys.set(key, n); else playingKeys.delete(key);
   setKey(key, 'playing', n > 0);
 }
-/** Play-along: the expected notes not played this pass, drawn faint (the staff's dim class) until the pass ends. */
+/** Play-along: the expected notes not played this pass, drawn in soft coral (the staff's missed class) until the pass ends. */
 function applyMissed() {
   const ids = [];
   for (const note of state.listen.missed) ids.push(...noteIdsOf(note));
-  staff.setDimmed(ids);
+  staff.setMissed(ids);
 }
 /** Play-along: a note you hit goes green for a moment, on the staff and the key. */
 function flashNote(note, key = null) {   // key: the key that was played (with the band: the shifted octave, or the written one)
@@ -1373,20 +1386,22 @@ function repaintTransport() {
 }
 
 // ── Tempo slider (percent of the piece's tempo; remembered; live while the clock runs) ──
-let steadyEase = null;   // "Band slows down for me": the drop being eased in, { toPct }, or null (steadySlow)
-let steadyNote = 0;      // …and the timer that puts the usual status line back after its message
+let bandPct = 100;       // "Band slows down for me": the band's tempo as a whole percentage of the target (the slider's value). 100: at the learner's speed. Decided at each barline (steadyTempo)
+let bandLive = 100;      // …and the percentage on the clock right now: on its way to bandPct while a change eases in
+let steadyEase = null;   // the change being eased in (a token), or null
 function clampPct(v) {
   const n = Math.round(Number(v) / TEMPO_STEP) * TEMPO_STEP;
   return Number.isFinite(n) ? Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, n)) : TEMPO_DEFAULT;
 }
-/** Set the slider percentage (clamped, TEMPO_MIN–TEMPO_MAX) and its readout "60% · 49 bpm"; a running Listen / play-along follows at once (beat-clock setTempo). Any call but the ease's own (steady: true) ends an ease under way: the learner's hand on the slider wins. */
-function setTempoPct(pct, { save = true, steady: easing = false } = {}) {
-  if (!easing) steadyEase = null;
+/** The tempo the clock should be at: the piece's, at the slider's percentage (the learner's speed — the target), at the band's share of that. */
+const bandBpm = () => pieceBpm(state.norm).bpm * state.tempoPct / 100 * bandLive / 100;
+/** Set the slider percentage (clamped, TEMPO_MIN–TEMPO_MAX) and its readout "60% · 49 bpm"; a running Listen / play-along follows at once (beat-clock setTempo). Only the learner comes through here: "Band slows down for me" never moves the slider, it plays at a share of it (bandLive), which a move of the slider keeps. */
+function setTempoPct(pct, { save = true } = {}) {
   state.tempoPct = clampPct(pct);
   els.tempo.value = String(state.tempoPct);
   els.tempoReadout.textContent = state.norm ? tempoLabel(state.tempoPct, pieceBpm(state.norm).bpm) : `${state.tempoPct}%`;
   if (save) { try { localStorage.setItem(TEMPO_KEY, String(state.tempoPct)); } catch (_) { /* storage unavailable */ } }
-  if (state.norm && clock.running) clock.setTempo(pieceBpm(state.norm).bpm * state.tempoPct / 100);
+  if (state.norm && clock.running) clock.setTempo(bandBpm());
   syncSummary();
   return state.tempoPct;
 }
@@ -1410,6 +1425,15 @@ function setGuideVolume(v, { save = true } = {}) {
 setGuideVolume(mixer.restore('guide'), { save: false });
 els.guide.addEventListener('input', () => setGuideVolume(els.guide.value));
 els.guide.addEventListener('change', () => els.guide.blur());
+/** The guide volume is play-along's: Listen plays the piece at full volume whatever it says. While Listen runs or is paused the slider is disabled and dimmed and the note under it says why; at any other time (stopped, play-along) it is live. Display only: the value and what is stored are not touched. */
+function syncGuideLock() {
+  const L = state.listen;
+  const listen = L.active ? L.mode === 'listen' : !!L.paused && L.paused.mode === 'listen';
+  els.guide.disabled = listen;
+  els.guideBox.dataset.listen = String(listen);
+  els.guideNote.hidden = !listen;
+}
+syncGuideLock();
 
 // ── The band (Band card): "Play with the band" + its volume (remembered); see the header ──
 
@@ -1518,6 +1542,7 @@ function syncTransportButtons() {
   els.playAlong.setAttribute('aria-pressed', String(along));
   els.playAlong.setAttribute('aria-label', along ? 'Pause play-along' : pausedMode === 'playalong' ? `Resume play-along from bar ${L.paused.bar}` : 'Play along');
   syncBandLabel();
+  syncGuideLock();
 }
 
 /**
@@ -1612,15 +1637,17 @@ async function startTransport(mode, opts = {}) {
   const pattern = patternFor(state.norm.time, state.norm.beatsPerBar);   // the same grid as the schedule's bar length
   if (drumsOk()) items = items.concat(grooveItems(runSequence(state.norm, range).length, { barQuarters: pattern.bar }));   // the groove over every bar of the run, 4/4 only; sounded or not when each hit comes up (drumItem)
   cancelPending();
+  staff.setPill('');   // a resume: the auto-pause's pill goes as the band comes back in
   const token = ++L.token;
   const startSeq = F ? (resume && resume.seq != null ? resume.seq : F.fromSeq) : null;
-  Object.assign(L, { active: true, started: false, paused: null, mode, range, schedule, bar: resume ? resume.bar : null, startBar: resume ? resume.bar : range.from, seq: resume && resume.seq != null ? resume.seq : null, startSeq, drawnSeq: F ? (resume && L.drawnSeq != null ? L.drawnSeq : startSeq) : null, visitLine: null, pass: 1, drawn: resume ? L.drawn : state.line, shift: band ? band.transpose : 0, band: !!band, hold: null, slowed: !!resume && mode === 'playalong' && L.slowed, fromBar: resume ? resume.bar : null });
+  Object.assign(L, { active: true, started: false, paused: null, mode, range, schedule, bar: resume ? resume.bar : null, startBar: resume ? resume.bar : range.from, seq: resume && resume.seq != null ? resume.seq : null, startSeq, drawnSeq: F ? (resume && L.drawnSeq != null ? L.drawnSeq : startSeq) : null, visitLine: null, pass: 1, drawn: resume ? L.drawn : state.line, shift: band ? band.transpose : 0, band: !!band, hold: null, fromBar: resume ? resume.bar : null });
+  if (!resume) resetBandPct();   // a start is at the learner's speed; a resume carries on where "Band slows down for me" had the band
   if (!resume) L.run += 1;
   L.sounding = new Set(); L.flash = new Map(); L.missed = new Set(); L.guideOn = new Set(); L.bandNotes = new Set();
   playingKeys.clear(); guideCount.clear(); bandCount.clear();
   autoCollapse();   // a transport starting closes an opened rack, as the first MIDI note does
   // The follower's paint goes; held keys stay. paintStates() brings it back in finishListen.
-  staff.clearStates(); staff.setDimmed([]); clearKeys(['expected', 'correct', 'wrong']);
+  staff.clearStates(); staff.setDimmed([]); staff.setMissed([]); clearKeys(['expected', 'correct', 'wrong']);
   if (!resume) staff.setBarMarker(null);   // a resume keeps the marker on the bar it starts from
   indexHits();
   syncTransportButtons();
@@ -1641,11 +1668,11 @@ async function startTransport(mode, opts = {}) {
   if (bandFailed) banner('The band\'s piano did not load: playing without the band.', true);
 
   const { bpm: base, assumed } = pieceBpm(state.norm);
-  const bpm = base * state.tempoPct / 100;   // read after the awaits: the slider may have moved
+  const bpm = base * state.tempoPct / 100 * bandLive / 100;   // read after the awaits: the slider may have moved. bandLive: 100 at a start; after a pause, where "Band slows down for me" had the band
   if (F) clock.configure({ sequence: F.order, meter: pattern });   // the whole play order: the clock's seq is the position in it
   else clock.configure({ bars: barNumbers(), meter: pattern });
   clock.setTempo(bpm);
-  if (mode === 'playalong') steady.reset();   // a start or a resume: its first bar is not judged. Before clock.start, as the log's reset below and for the same reason
+  if (mode === 'playalong') { if (resume) steady.reset({ comfort: !!resume.auto }); else steady.clear(); steadyScored(); }   // a start: the score is 1 again; a resume keeps it — lifted to the comfort level after the band stopped by itself (paused.auto). Either way the first bar is not judged. Before clock.start, as the log's reset below and for the same reason
   if (mode === 'playalong') timing.reset();   // BEFORE clock.start: with no count-in the first downbeat is inside the lookahead, so start() dispatches its notes — and registers their expectations — at once; a reset after it would drop them
   const started = clock.start(F
     ? { fromSeq: F.fromSeq, toSeq: F.toSeq, startSeq: L.startSeq, loop: false, countInBars: state.metro.countIn, items }
@@ -1660,10 +1687,11 @@ async function startTransport(mode, opts = {}) {
   } else bus.emit('listen:start', detail);
   return true;
 }
-/** The status line while a transport runs: "Playing along · bars 5–8 · looping", "… · from bar 3" after a resume, and "… · 90%" once the band has slowed in this run. */
+/** The status line while a transport runs: "Playing along · bars 5–8 · looping", "… · from bar 3" after a resume; while "Band slows down for me" has the band below the learner's speed, "playing at 85% of your speed". */
 function transportStatus() {
   const L = state.listen, range = L.range;
-  return `${L.mode === 'playalong' ? 'Playing along' : 'Listening'} · ${rangeText(range)}${range.loop ? ' · looping' : ''}${L.fromBar != null ? ` · from bar ${L.fromBar}` : ''}${L.slowed ? ` · ${steadyEase ? steadyEase.toPct : state.tempoPct}%` : ''}`;   // a drop still easing in: the percentage it is going to
+  if (L.mode === 'playalong' && bandPct < 100) return `playing at ${bandPct}% of your speed`;
+  return `${L.mode === 'playalong' ? 'Playing along' : 'Listening'} · ${rangeText(range)}${range.loop ? ' · looping' : ''}${L.fromBar != null ? ` · from bar ${L.fromBar}` : ''}`;
 }
 /** What events and the timing log say about a range's form: { form: false }, or { form: true, fromSeq, toSeq, bars } for a run that follows the play order. */
 const formDetail = range => (range && range.form ? { form: true, fromSeq: range.form.fromSeq, toSeq: range.form.toSeq, bars: range.form.toSeq - range.form.fromSeq + 1 } : { form: false });
@@ -1674,7 +1702,7 @@ const playAlong = (opts = {}) => startTransport('playalong', opts);
 function stopListen() {
   const L = state.listen;
   if (L.active) finishListen();
-  else if (L.paused) { L.paused = null; syncTransportButtons(); restorePage(); }
+  else if (L.paused) { L.paused = null; staff.setPill(''); resetBandPct(); syncTransportButtons(); restorePage(); }   // the auto-pause's pill goes with the pause, and the band is back at the learner's speed
 }
 /** Pause whatever plays, in place: silent, the score and the bar marker stay where they are, the button reads "▶ Resume". A transport still loading (no clock yet) just stops. */
 function pauseListen() {
@@ -1714,7 +1742,9 @@ function finishListen({ complete = false, endedAt, pause = false } = {}) {
   const paused = pause && started ? { mode, range, bar: L.bar != null ? L.bar : (L.startBar != null ? L.startBar : range.from), seq: L.bar != null && L.seq != null ? L.seq : L.startSeq } : null;   // seq: which time through that bar (a run following the form resumes there)
   L.active = false; L.token++;   // late callbacks of this run are dropped
   clock.stop();        // nothing more is dispatched; pending due callbacks go with it
-  settleSteady();      // a tempo drop still easing in lands on its target; its message timer goes
+  settleSteady();      // a tempo change still easing in lands on its target…
+  if (!paused) resetBandPct();   // …and a stop or the end puts the band back at the learner's speed (a pause keeps where it was, for the resume)
+  staff.setPill('');   // the pill over the staff goes (an auto-pause puts its own up after this: steadyStop)
   metronome.stop();    // clicks already queued
   releaseSound();      // the guide and the band
   if (started) {
@@ -1723,7 +1753,7 @@ function finishListen({ complete = false, endedAt, pause = false } = {}) {
   }
   for (const t of L.flash.values()) clearTimeout(t);
   L.flash.clear(); L.sounding.clear(); L.missed.clear(); L.guideOn.clear(); L.bandNotes.clear(); playingKeys.clear();
-  staff.clearStates(); staff.setDimmed([]); clearKeys(['playing']);
+  staff.clearStates(); staff.setDimmed([]); staff.setMissed([]); clearKeys(['playing']);
   applyGuideGain();
   L.paused = paused;
   syncTransportButtons();
@@ -1853,31 +1883,69 @@ function bandItem(pos, L) {
 }
 /** A hit of the groove: sound only, while the Metronome checkbox is on and the drums are in effect — read per hit, so both join / leave at once. */
 function drumItem(pos) {
-  if (state.metro.on && drumsOn() && !held(pos)) drums.hit(pos.audioTime, pos.item.drum, { level: pos.item.level });   // level: the hit's velocity (the off-beat hats are a little softer)
+  if (state.metro.on && drumsOn() && !held(pos)) drums.hit(pos.audioTime, pos.item.drum, { level: pos.item.drum === 'hat' && pos.item.level === HAT_OFFBEAT ? DRUM_MIX.hatOffbeat : pos.item.level });   // level: the hit's velocity (the off-beat hats are a little softer)
 }
 
-// ── "Band slows down for me" (player-steady.js): the verdict at each barline, the eased drop, the pause at the barline ──
+// ── "Band slows down for me" (player-steady.js): the score, the tempo that follows it at each barline, the pause at the barline ──
 
 /** A played bar's name for the judge: the loop pass and the played index (the same bar the second time round is another bar). */
 const steadyKey = (pass, seq) => `${pass}:${seq}`;
 /** The band is stopping at a barline and this position is at or after it: nothing there is sounded, clicked or expected. */
 const held = pos => { const h = state.listen.hold; return !!h && pos.audioTime >= h.at - 1e-6; };
+const BACK_COLOR = '#4CAF50';   // "Back to your speed": the pill in green (its other messages are the pill's own coral)
+let steadyTap = null;        // the dev panel's Judge readout (player-dev.js, ?dev=1 only): called with every barline's reading. null on a normal visit
+let steadyScoreTap = null;   // …and its live score meter: called with S whenever a note moves it
+let steadyWas = null;        // the bar the last barline opened, { key, pass, seq, bar }: the written bar of the one that ends at the next
+/** The score may have moved (a note judged, a start): the dev panel's meter follows. */
+function steadyScored() { if (steadyScoreTap) steadyScoreTap(steady.score()); }
+/** The tempo badge beside "8va with the band": "85%" while the band is below the learner's speed, gone at it. Laid over the panel, so no slot moves. */
+function syncBandTempo() {
+  const below = bandPct < 100;
+  els.tempoBadge.textContent = below ? `${bandPct}%` : '';
+  els.tempoBadge.setAttribute('aria-label', below ? `The band is playing at ${bandPct}% of your speed` : '');
+  els.tempoBadge.hidden = !below;
+}
+syncBandTempo();   // nothing to show until a play-along has the band below the learner's speed
+/** The band's share of the target on the clock, now (a step of an ease, or its end). */
+function setBandLive(pct) {
+  bandLive = pct;
+  if (state.norm && clock.running) clock.setTempo(bandBpm());
+}
+/** Back at the learner's speed: a start, a stop, the end, the box unticked. The caller sees to the clock if it is running. */
+function resetBandPct() {
+  steadyEase = null;
+  bandPct = bandLive = 100;
+  syncBandTempo();
+}
 /**
  * Every barline of a play-along, as the clock schedules it (up to the
  * lookahead before it sounds, and before any note of the new bar is
  * dispatched): the bars so far are judged, then the new bar is opened. The
  * judge is fed whether or not the box is ticked; only a ticked box acts.
+ * 'follow' (the bar that ended had expected notes): the band's percentage
+ * moves toward what the score asks for, inside the per-bar limits.
  */
 clock.on('bar', pos => {
   const L = state.listen;
   if (!L.active || L.mode !== 'playalong') return;
-  if (state.steady) sweepTiming();   // notes whose window has just closed are missed before the bars are read
-  const verdict = steady.barline(steadyKey(pos.pass, pos.seq));
-  if (!state.steady || L.hold) return;
+  if (state.steady) sweepTiming();   // notes whose window has just closed are missed before the score is read
+  const key = steadyKey(pos.pass, pos.seq);
+  const verdict = steady.barline(key);
+  const acting = state.steady && !L.hold;
+  const desired = verdict.action === 'follow' ? desiredPct(verdict.score, STEADY) : null;   // null: this barline leaves the tempo alone
+  const toPct = acting && desired != null ? stepPct(bandPct, desired, STEADY) : bandPct;
+  if (steadyTap && verdict.ended) {   // what the judge saw in the bar that has just ended, and what comes of it here
+    const was = steadyWas && steadyWas.key === verdict.ended.key ? steadyWas : null;
+    const idle = !state.steady ? 'box unticked' : L.hold ? 'already stopping' : '';
+    const action = idle ? 'none' : verdict.action === 'stop' ? 'stop' : toPct < bandPct ? 'slower' : toPct > bandPct ? 'faster' : 'none';
+    steadyTap({ pass: was ? was.pass : null, seq: was ? was.seq : null, bar: was ? was.bar : null, expected: verdict.ended.expected, hits: verdict.ended.hits, missed: verdict.ended.missed, keys: verdict.ended.keys, score: verdict.score, desired, actual: toPct, action, reason: idle || verdict.reason });
+  }
+  steadyWas = { key, pass: pos.pass, seq: pos.seq, bar: pos.bar };
+  if (!acting) return;
   if (verdict.action === 'stop') steadyStop(pos);
-  else if (verdict.action === 'slow') steadySlow(pos);
+  else if (toPct !== bandPct) steadyTempo(pos, toPct, verdict.score);
 });
-/** Keep a drop or an auto-pause on the pass that led to it: the open pass under way before the barline (at a loop wrap, the one that is ending). */
+/** Keep a tempo change or an auto-pause on the pass that led to it: the open pass under way before the barline (at a loop wrap, the one that is ending). */
 function steadyLog(entry) {
   const open = timing.openPasses();
   const p = open.filter(x => typeof x.startedAt === 'number' && x.startedAt < entry.audioTime - 1e-6).pop() || open[open.length - 1];
@@ -1886,34 +1954,34 @@ function steadyLog(entry) {
   p.steady.push(entry);
 }
 /**
- * Struggling: one notch slower (STEADY.DROP_PCT points, never under
- * STEADY.FLOOR_PCT), eased in over the bar that begins at this barline.
- * The steps move the tempo slider itself, so the clock's live tempo, the
- * readout and the saved value go down together and stay there. At the
- * floor nothing happens and nothing is said.
+ * The band's tempo follows the score: from this barline it plays at
+ * `toPct` percent of the learner's speed (slower or faster than it was,
+ * never above 100), eased in over the bar that begins here a point at a
+ * time. Only the clock's tempo moves: the slider, its readout and the
+ * saved value are the learner's. The badge and the status line say where
+ * the band is; the pill speaks only when it first drops below the
+ * learner's speed and when it is back at it.
  */
-function steadySlow(pos) {
+function steadyTempo(pos, toPct, S) {
   const L = state.listen, token = L.token;
-  settleSteady();   // an earlier drop still easing in (a short gap between drops): on its target first
-  const fromPct = state.tempoPct, toPct = nextPct(fromPct, STEADY);
-  if (toPct == null) return;
-  steady.slowed();
-  const from = clock.tempo, to = from * toPct / fromPct;
+  settleSteady();   // an earlier change still easing in (EASE_BARS over 1): on its target first
+  const fromPct = bandPct, target = pieceBpm(state.norm).bpm * state.tempoPct / 100;
   const steps = easeSteps(fromPct, toPct, STEADY);
-  const span = patternFor(state.norm.time, state.norm.beatsPerBar).bar * 60 / from * STEADY.EASE_BARS;   // seconds, at the tempo it leaves
-  const ease = steadyEase = { toPct };
+  const span = patternFor(state.norm.time, state.norm.beatsPerBar).bar * 60 / clock.tempo * STEADY.EASE_BARS;   // seconds, at the tempo it leaves
+  bandPct = toPct;
+  const ease = steadyEase = {};
   steps.forEach((pct, i) => clock.at(pos.audioTime + span * i / steps.length, () => {
     if (steadyEase !== ease || !L.active || L.token !== token) return;
     if (i === steps.length - 1) steadyEase = null;
-    setTempoPct(pct, { steady: true });
+    setBandLive(pct);
   }));
-  const detail = { from, to, fromPct, toPct, seq: pos.seq, bar: pos.bar, pass: pos.pass, audioTime: pos.audioTime };
-  steadyLog({ type: 'slowed', ...detail });
-  bus.emit('band:slowed', detail);
-  L.slowed = true;
-  els.status.textContent = `slowed to ${toPct}% to keep it steady`;
-  clearTimeout(steadyNote);
-  steadyNote = setTimeout(() => { if (L.active && L.token === token) els.status.textContent = transportStatus(); }, STEADY.MESSAGE_MS);
+  const detail = { from: fromPct, to: toPct, S: Math.round(S * 1000) / 1000, seq: pos.seq, bar: pos.bar, pass: pos.pass, audioTime: pos.audioTime, fromBpm: target * fromPct / 100, toBpm: target * toPct / 100 };   // from / to: percent of the learner's speed
+  steadyLog({ type: 'tempo', ...detail });
+  bus.emit('band:tempo', detail);
+  syncBandTempo();
+  els.status.textContent = transportStatus();
+  if (fromPct >= 100 && toPct < 100) staff.setPill('Easing off', { holdMs: STEADY.PILL_MS });   // large, over the staff: readable from the bench. The steps in between say nothing
+  else if (toPct >= 100) staff.setPill('Back to your speed', { holdMs: STEADY.PILL_MS, color: BACK_COLOR });
 }
 /**
  * Stopped: the band stops with the learner, at this barline. From now on
@@ -1933,21 +2001,27 @@ function steadyStop(pos) {
     bus.emit('band:stopped', detail);
     L.bar = pos.bar; L.seq = pos.seq;   // the pause is AT the barline: the bar it opens is the one to resume from
     finishListen({ pause: true, endedAt: pos.audioTime });
+    if (L.paused) L.paused.auto = true;   // the band's own pause, not one the learner chose: the resume puts a low score back at the comfort level
     els.status.textContent = 'paused: play along stopped. P to carry on';
+    staff.setPill('Paused. Press P to carry on');   // over the staff until the transport resumes or stops (startTransport, stopListen)
     if (!inDrawnRange(pos.bar)) redrawView();   // the page was turning to that bar's line as the pause landed: draw it, with the marker
   });
 }
-/** A transport ends (stop, pause, the end): a drop still easing in goes straight to its target — the slider and the saved value must not be left part-way — and the message timer is dropped. */
+/** A tempo change still easing in goes straight to its target (a transport ending or pausing, the next change arriving). */
 function settleSteady() {
-  clearTimeout(steadyNote);
   const ease = steadyEase;
   steadyEase = null;
-  if (ease && state.tempoPct !== ease.toPct) setTempoPct(ease.toPct, { steady: true });
+  if (ease && bandLive !== bandPct) setBandLive(bandPct);
 }
-/** "Band slows down for me" on / off (remembered). Ticked while a play-along runs: the bars so far are not held against the learner. */
+/** "Band slows down for me" on / off (remembered). Ticked while a play-along runs: what was played so far is not held against the learner (the score is 1 again). Unticked while the band is below the learner's speed: back at it, at once. */
 function setSteady(on, { save = true } = {}) {
   const want = !!on;
-  if (want && !state.steady) steady.reset();
+  if (want && !state.steady) { steady.clear(); steadyScored(); }
+  if (!want && bandPct !== 100) {
+    resetBandPct();
+    if (state.norm && clock.running) clock.setTempo(bandBpm());
+    if (state.listen.active) els.status.textContent = transportStatus();
+  }
   state.steady = want;
   els.steady.checked = want;
   if (save) { try { localStorage.setItem(STEADY_KEY, want ? '1' : '0'); } catch (_) { /* storage unavailable */ } }
@@ -1984,10 +2058,10 @@ clock.onDue('bar', pos => {
 });
 /**
  * Following the form, a bar comes round again inside one pass: the notes
- * missed an earlier time through must not still be faint. As the clock
- * enters a bar, the greying of that bar from earlier seqs goes — and, when
+ * missed an earlier time through must not still be coral. As the clock
+ * enters a bar, the colouring of that bar from earlier seqs goes — and, when
  * the bar begins a new visit to its line (another line before it, or a
- * jump into it), the greying of the whole line from earlier visits, so the
+ * jump into it), the colouring of the whole line from earlier visits, so the
  * line is clean before its later bars are reached.
  */
 function clearStaleMissed(pos) {
@@ -2001,7 +2075,7 @@ function clearStaleMissed(pos) {
   }
   if (dropped) applyMissed();
 }
-clock.onDue('loopWrap', pos => {   // a new pass: last pass's missed notes are no longer grey
+clock.onDue('loopWrap', pos => {   // a new pass: last pass's missed notes are no longer coral
   const L = state.listen;
   if (!L.active) return;
   L.pass = pos.pass;
@@ -2083,7 +2157,7 @@ function clockProbe(seconds = 20) {
 function openPass(pass, startedAt) {
   const L = state.listen, { range } = L;
   const startBar = pass === 1 ? L.startBar : range.from;   // a resumed run's first pass begins inside the range
-  timing.open(pass, { mode: 'playalong', piece: state.piece, run: L.run, from: range.from, to: range.to, startBar, loop: range.loop, hands: state.hands, tempoPct: state.tempoPct, bpm: clock.tempo, startedAt, windowMs: HIT_WINDOW_MS, timeSource, ...formDetail(range), startSeq: pass === 1 ? L.startSeq : null, band: L.band, transpose: L.shift, ...(state.steady ? { steady: [] } : {}), timebase: { start: clockSample(), end: null, drift: null } });   // steady: the drops and auto-pauses of "Band slows down for me" in this pass (steadyLog)
+  timing.open(pass, { mode: 'playalong', piece: state.piece, run: L.run, from: range.from, to: range.to, startBar, loop: range.loop, hands: state.hands, tempoPct: state.tempoPct, bpm: clock.tempo, startedAt, windowMs: HIT_WINDOW_MS, timeSource, ...formDetail(range), startSeq: pass === 1 ? L.startSeq : null, band: L.band, transpose: L.shift, ...(state.steady ? { steady: [] } : {}), timebase: { start: clockSample(), end: null, drift: null } });   // steady: the tempo changes and auto-pauses of "Band slows down for me" in this pass (steadyLog)
   bus.emit('pass:start', { pass, from: range.from, to: range.to, startBar, loop: range.loop, hands: state.hands, audioTime: startedAt, ...formDetail(range) });
 }
 function closePass(pass, endedAt, complete) {
@@ -2105,10 +2179,11 @@ function closeAllPasses(at, complete) {
 /** A note of yours that was played: green flash; the event carries the actual time and the offset. */
 function onHit(expected, played) {
   steady.hit(steadyKey(expected.pass, expected.seq));
+  steadyScored();
   bus.emit('note:played', { pitch: played.pitch, hand: expected.hand, bar: expected.bar, seq: expected.seq ?? null, beat: expected.beat, audioTime: played.audioTime, expectedAt: expected.audioTime, offsetMs: expected.offsetMs, matched: true, extra: false, pass: expected.pass, anchor: isAnchor(expected.bar, expected.beat) });
   flashNote(expected.ref, played.pitch);   // the key that was played: with the band, the shifted octave or the written one
 }
-/** Notes whose window has passed: expected ones are missed (grey for the rest of their pass), played ones that paired with nothing are extras (logged, never shown). */
+/** Notes whose window has passed: expected ones are missed (soft coral for the rest of their pass), played ones that paired with nothing are extras (logged, never shown). */
 function reportSettled(missed, extras) {
   const L = state.listen;
   let grey = false;
@@ -2117,6 +2192,7 @@ function reportSettled(missed, extras) {
     bus.emit('note:missed', { pitch: e.pitch, hand: e.hand, bar: e.bar, seq: e.seq ?? null, beat: e.beat, audioTime: e.audioTime, offsetMs: null, pass: e.pass, anchor: isAnchor(e.bar, e.beat) });
     if (L.active && e.pass === L.pass && e.ref) { L.missed.add(e.ref); grey = true; }
   }
+  if (missed.length) steadyScored();
   if (grey) applyMissed();
   for (const e of extras) bus.emit('note:played', { pitch: e.pitch, hand: null, bar: e.bar, seq: e.seq ?? null, beat: e.beat, audioTime: e.audioTime, expectedAt: null, offsetMs: null, matched: false, extra: true, pass: e.pass, anchor: false });   // an extra is nobody's anchor
 }
@@ -2132,7 +2208,7 @@ function playAlongNote(midi, perfMs) {
   const at = audioTimeOf(Number.isFinite(perfMs) ? perfMs : performance.now());
   const where = clock.positionAt(at);
   const r = timing.played(midi, at, where);
-  if (where && !where.countIn) steady.key(steadyKey(where.pass, where.seq));   // any key down in the bar: the learner has not stopped
+  if (where && !where.countIn) { const k = steadyKey(where.pass, where.seq); steady.key(k, !r.hit || steadyKey(r.hit.pass, r.hit.seq) === k); }   // any key down in the bar: the learner has not stopped. One that hit another bar's note (the next downbeat, a little early) is not something played in THIS bar for the score
   if (r.hit) onHit(r.hit, r.entry);
   clock.at(contextNow() + HIT_WINDOW_S + LOOKAHEAD + SETTLE_S, sweepTiming);   // nothing claimed it by then: an extra
 }
@@ -2589,7 +2665,7 @@ async function load(name) {
     }
     const norm = await res.json();
     state.piece = name; state.norm = norm; state.wrong = 0;
-    steady.clear();   // "Band slows down for me": the gap since the last drop starts over with the piece
+    steady.clear();   // "Band slows down for me": nothing of the last piece is remembered
     state.order = playOrderOf(norm); syncForm();   // null: the piece has no play order and plays as written
     syncBeatSound();                                // Drums only in 4/4: the button and its note follow the piece
     state.band = null; syncBand();                  // the last piece's band goes now; this piece's is fetched once it is up (loadBand)
@@ -2725,9 +2801,17 @@ window.__player = {
   setRackOpen, setRackAuto, get rack() { return state.rack; },
   setLines, viewFor, nextLine, get lines() { return state.viewLines; },
   setForm, transportForm, get form() { return state.form; }, get order() { return state.order; },
-  setSteady, steady, STEADY, get steadyOn() { return state.steady; },
+  setSteady, steady, STEADY, get steadyOn() { return state.steady; }, get bandPct() { return bandPct; },
   setBandOn, setBandVolume, bandOn, loadBand, mixer, pieceRange, get band() { return state.band; }, get bandPiano() { return bandPiano; }, get guidePiano() { return guidePiano; },
   get trouble() { return state.trouble; }, get practice() { return state.practice; }, loopCounts, passHistory, get recorder() { return recorder; }, thresholds: THRESHOLDS,
   get keyboard() { return keyboard; }, get input() { return input; }, get follower() { return state.follower; }, get steps() { return state.steps; },
   noteOn: onMidiNoteOn, noteOff: onMidiNoteOff, pedal: onPedal,
+  dev: null,   // the dev tuning panel, with ?dev=1 only (below)
 };
+
+// Developer tuning panel (player-dev.js): fetched and mounted only when the URL has ?dev=1. Without it nothing is loaded, drawn or read from storage.
+if (new URLSearchParams(window.location.search).get('dev') === '1') {
+  import('./player-dev.js')
+    .then(m => { window.__player.dev = m.mountDevPanel({ onJudge: fn => { steadyTap = typeof fn === 'function' ? fn : null; }, onScore: fn => { steadyScoreTap = typeof fn === 'function' ? fn : null; steadyScored(); } }); })
+    .catch(err => console.warn('[player] dev panel failed to load', err));
+}

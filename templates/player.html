@@ -119,7 +119,12 @@
     display: flex; flex-direction: column; gap: 0.5rem; min-width: 0;
     background: #FFFFFF; border: 1px solid var(--pl-border); border-radius: 14px; padding: 0.55rem 0.85rem 0.7rem;
   }
-  .pl-card--practice .pl-hint { font-size: 13px; line-height: 1.35; }
+  .pl-card--practice .pl-hint, .pl-mode-group > .pl-hint { font-size: 13px; line-height: 1.35; }
+  /* Mode card (and the Listen card's "Play along" group): settings in groups, each under a sub-heading in the card titles' quiet type (no rule under it; a hairline between groups). Text wraps, nothing is clipped. */
+  .pl-card__sub { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+  .pl-mode-group { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; min-width: 0; }
+  .pl-mode-group + .pl-mode-group, .pl-card--listen .pl-mode-group { padding-top: 0.5rem; border-top: 1px solid var(--pl-border); }
+  .pl-mode-group .pl-seg { min-height: 44px; }
   .pl-card__title {
     margin: 0 0 0.15rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--pl-border);
     font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted);
@@ -131,7 +136,7 @@
   .pl-stack { display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
   .pl-stack > .pl-card { flex: 1 1 auto; }
 
-  /* Listen card: the tempo slider, then the metronome row (2b) under a dashed divider (the ▶ Listen button lives in the strip) */
+  /* Listen & play along card: the tempo slider, the metronome row (2b) under a dashed divider — both for Listen and play-along alike — then the "Play along" group: guide volume and "Band slows down for me" (the ▶ Listen / ♪ Play along buttons live in the strip) */
   .pl-listen-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
   .pl-tempo { display: flex; flex-direction: column; gap: 0.2rem; flex: 1 1 10em; min-width: 10em; }
   .pl-tempo__top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
@@ -139,8 +144,15 @@
   .pl-tempo__readout { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); white-space: nowrap; }
   .pl-tempo input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent-blue); min-height: 44px; }   /* Tempo and Guide volume: full-height targets */
   .pl-tempo input[type="range"]:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 4px; border-radius: 4px; }
+  /* Guide volume: play-along only, the first row of the card's "Play along" group, as wide as the card. */
+  .pl-guide { position: relative; flex: none; align-self: stretch; min-width: 0; }
+  /* While Listen runs or is paused the slider is disabled (player.js syncGuideLock) and dimmed, with a note under it. The note is laid over the foot of the slider's 44px box, out of the flow: the card keeps its height and the staff does not move when Listen starts. */
+  .pl-guide[data-listen="true"] .pl-tempo__top, .pl-guide[data-listen="true"] input[type="range"] { opacity: 0.45; }
+  .pl-guide[data-listen="true"] input[type="range"] { cursor: not-allowed; }
+  .pl-guide__note { position: absolute; left: 0; right: 0; top: 100%; margin: -10px 0 0; font-size: 12px; line-height: 1.2; color: var(--text-secondary); pointer-events: none; }
+  .pl-guide__note[hidden] { display: none; }
   .pl-metro-row {
-    margin-top: auto; padding-top: 0.5rem; border-top: 1px dashed var(--pl-border);
+    padding-top: 0.5rem; border-top: 1px dashed var(--pl-border);
     min-height: 44px; display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 1rem;
   }
   .pl-metro-row .pl-check { flex: none; }
@@ -265,9 +277,13 @@
 
   /* ── Hosts: staff and keyboard ─────────────────────────────── */
   .pl-panel { position: relative; background: #FFFFFF; border: 1px solid var(--pl-border); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
-  /* "8va with the band": laid over the top of the staff panel, out of the flow, so the staff and its slots keep their size. */
-  .pl-band-8va { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); z-index: 2; padding: 2px 10px; border: 1px solid var(--accent-blue); border-radius: 999px; background: #FFFFFF; color: var(--accent-blue); font-size: 0.8rem; font-weight: 600; line-height: 1.2; white-space: nowrap; pointer-events: none; }
-  .pl-band-8va[hidden] { display: none; }
+  /* The badges — "8va with the band" and, beside it, the band's tempo ("85%") — are laid over the top of the staff panel, out of the flow, so the staff and its slots keep their size. */
+  .pl-staff-badges { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; align-items: center; gap: 6px; pointer-events: none; }
+  .pl-band-8va, .pl-band-tempo { padding: 2px 10px; border: 1px solid var(--accent-blue); border-radius: 999px; background: #FFFFFF; color: var(--accent-blue); font-size: 0.8rem; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+  .pl-band-tempo { border-color: var(--accent-coral); color: var(--accent-coral); font-variant-numeric: tabular-nums; }
+  .pl-band-8va[hidden], .pl-band-tempo[hidden] { display: none; }
+  /* Band volume: a row of the Band card, as wide as the card's inner box. Without this it keeps .pl-tempo's 10em minimum width (meant for the Listen card's row), which is wider than this narrow card's inside, so the readout and the track ran over the right padding. */
+  .pl-band-vol { flex: none; min-width: 0; }
   .pl-band-note { font-size: 13px; line-height: 1.35; margin: 0; }
   .pl-panel__label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: 0 0 0.5rem; }
   .pl-staff-host { min-height: 220px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
@@ -355,7 +371,7 @@
 
       <!-- Listen + play-along (player.js on beat-clock.js): the loop repeating, or from the current bar to the end; tempo is live. Space / P. -->
       <section class="pl-card pl-card--listen" aria-labelledby="pl-h-listen">
-        <h3 class="pl-card__title" id="pl-h-listen">Listen</h3>
+        <h3 class="pl-card__title" id="pl-h-listen">Listen &amp; play along</h3>
         <div class="pl-listen-row">
           <div class="pl-tempo">
             <div class="pl-tempo__top">
@@ -363,14 +379,6 @@
               <span class="pl-tempo__readout" id="pl-tempo-readout">100%</span>
             </div>
             <input type="range" id="pl-tempo" min="25" max="200" step="1" value="100" aria-label="Tempo, percent of the piece's tempo">
-          </div>
-          <!-- Guide volume (play-along): how loud the piece plays underneath; 0 = click only. Remembered. -->
-          <div class="pl-tempo pl-guide" title="Play along: how loud the piece plays underneath you (0 = click only)">
-            <div class="pl-tempo__top">
-              <label for="pl-guide">Guide volume</label>
-              <span class="pl-tempo__readout" id="pl-guide-readout">35</span>
-            </div>
-            <input type="range" id="pl-guide" min="0" max="100" step="1" value="35" aria-label="Guide volume for play-along, 0 to 100; 0 is click only">
           </div>
         </div>
         <!-- Metronome (2b, metronome.js, driven by the beat clock): click while Listen / play-along runs, its volume, and a count-in of 0 / 1 / 2 bars that clicks even with the metronome off. All remembered. -->
@@ -395,6 +403,22 @@
           </div>
           <p class="pl-hint pl-beat-note" id="pl-beat-note" role="status" hidden></p>
         </div>
+        <!-- Play along: what applies only there — how loud the piece plays underneath, and whether the band follows the learner. Tempo, the metronome and the count-in above apply to Listen and play-along alike. -->
+        <div class="pl-mode-group" id="pl-listen-playalong" role="group" aria-labelledby="pl-h-listen-playalong">
+          <h4 class="pl-card__sub" id="pl-h-listen-playalong">Play along</h4>
+          <p class="pl-hint">The music keeps going and you play with it.</p>
+          <!-- Guide volume (play-along only): how loud the piece plays underneath; 0 = click only. Remembered. Listen always plays the piece at full volume, so while Listen runs or is paused the slider is disabled and the note under it says why (player.js syncGuideLock); the stored value is not touched. -->
+          <div class="pl-tempo pl-guide" id="pl-guide-box" title="Play along: how loud the piece plays underneath you (0 = click only)">
+            <div class="pl-tempo__top">
+              <label for="pl-guide">Guide volume</label>
+              <span class="pl-tempo__readout" id="pl-guide-readout">35</span>
+            </div>
+            <input type="range" id="pl-guide" min="0" max="100" step="1" value="35" aria-label="Guide volume for play-along, 0 to 100; 0 is click only" aria-describedby="pl-guide-note">
+            <p class="pl-guide__note" id="pl-guide-note" hidden>Listen plays the piece at full volume</p>
+          </div>
+          <!-- Band slows down for me (player.js setSteady, player-steady.js): in play-along the band's tempo follows the learner's steadiness — easing off when notes are missed, back to the slider's speed when they are not — and the band pauses when the learner stops. Remembered; on by default. -->
+          <label class="pl-check" title="Play along: the band eases off when you are missing notes, comes back to your speed as you settle, and pauses when you stop. It never moves the tempo slider."><input type="checkbox" id="pl-steady" checked> Band slows down for me</label>
+        </div>
       </section>
 
       <div class="pl-stack">
@@ -408,20 +432,26 @@
         </section>
         <section class="pl-card pl-card--mode" aria-labelledby="pl-h-mode">
           <h3 class="pl-card__title" id="pl-h-mode">Mode</h3>
-          <label class="pl-check" title="Wrong notes don't block, aren't shown and aren't counted; the player just follows along"><input type="checkbox" id="pl-no-stress"> No stress</label>
-          <!-- Band slows down for me (player.js setSteady, player-steady.js): in play-along the tempo drops a notch when the learner is struggling and the band pauses when the learner stops. Remembered; on by default. -->
-          <label class="pl-check" title="Play along: the band slows down a notch when you are struggling and pauses when you stop. It never speeds up by itself: move the tempo slider to go faster."><input type="checkbox" id="pl-steady" checked> Band slows down for me</label>
-          <!-- Auto-collapse (player.js autoCollapse): the rack closes on the first MIDI note or Listen start after it was opened -->
-          <label class="pl-check" title="Close the controls on the first note played or when Listen / Play along starts; off: they only open and close with ⚙ Controls"><input type="checkbox" id="pl-rack-auto" checked> Hide controls while playing</label>
-          <!-- Play repeats (player.js setForm): Listen and play-along follow the piece's repeats and jumps (form.playOrder); unticked, every bar is played once. Remembered. Shown only for a piece that has a play order. -->
-          <label class="pl-check" id="pl-form-row" hidden title="Listen and Play along follow the repeats and jumps; unticked, every bar is played once. A loop always plays its bars as written."><input type="checkbox" id="pl-form" checked> Play repeats</label>
-          <!-- Lines (player.js setLines): one line on the staff, or the current line with the next one under it. Remembered. -->
-          <div class="pl-seg">
-            <span class="pl-seg__label" id="pl-lines-label">Lines</span>
-            <div class="pl-seg__group" role="group" aria-labelledby="pl-lines-label" id="pl-lines" title="Lines of music on the staff: the current line alone, or with the next line under it">
-              <button type="button" class="pl-seg__btn" data-lines="1" aria-pressed="false" aria-label="Show one line">1</button>
-              <button type="button" class="pl-seg__btn" data-lines="2" aria-pressed="true" aria-label="Show two lines: the current line and the next">2</button>
+          <!-- Each setting sits under the way of playing it applies to. Layout only: ids, storage keys, defaults and effects are as they were. -->
+          <div class="pl-mode-group" id="pl-mode-practice" role="group" aria-labelledby="pl-h-mode-practice">
+            <h4 class="pl-card__sub" id="pl-h-mode-practice">Practice</h4>
+            <p class="pl-hint">The page waits for you, note by note.</p>
+            <label class="pl-check" title="Wrong notes don't block, aren't shown and aren't counted; the player just follows along"><input type="checkbox" id="pl-no-stress"> No stress</label>
+          </div>
+          <div class="pl-mode-group" id="pl-mode-everywhere" role="group" aria-labelledby="pl-h-mode-everywhere">
+            <h4 class="pl-card__sub" id="pl-h-mode-everywhere">Everywhere</h4>
+            <!-- Play repeats (player.js setForm): Listen and play-along follow the piece's repeats and jumps (form.playOrder); unticked, every bar is played once. Remembered. Shown only for a piece that has a play order; the heading stays for the rows under it. -->
+            <label class="pl-check" id="pl-form-row" hidden title="Listen and Play along follow the repeats and jumps; unticked, every bar is played once. A loop always plays its bars as written."><input type="checkbox" id="pl-form" checked> Play repeats</label>
+            <!-- Lines (player.js setLines): one line on the staff, or the current line with the next one under it. Remembered. -->
+            <div class="pl-seg">
+              <span class="pl-seg__label" id="pl-lines-label">Lines</span>
+              <div class="pl-seg__group" role="group" aria-labelledby="pl-lines-label" id="pl-lines" title="Lines of music on the staff: the current line alone, or with the next line under it">
+                <button type="button" class="pl-seg__btn" data-lines="1" aria-pressed="false" aria-label="Show one line">1</button>
+                <button type="button" class="pl-seg__btn" data-lines="2" aria-pressed="true" aria-label="Show two lines: the current line and the next">2</button>
+              </div>
             </div>
+            <!-- Auto-collapse (player.js autoCollapse): the rack closes on the first MIDI note or Listen start after it was opened -->
+            <label class="pl-check" title="Hide controls while playing: close the controls on the first note played or when Listen / Play along starts; off: they only open and close with ⚙ Controls"><input type="checkbox" id="pl-rack-auto" checked> Auto-hide controls</label>
           </div>
         </section>
       </div>
@@ -522,7 +552,8 @@
       <!-- Trouble spots (player-trouble.js): filled by player.js at the end of a pass; "Loop these" starts a loop on that range -->
       <div class="pl-trouble" id="pl-trouble" hidden role="status" aria-live="polite"></div>
       <!-- With the band the solo is played shifted (accompaniment.soloTranspose); the staff stays as written and this says so while Listen / play-along runs -->
-      <div class="pl-band-8va" id="pl-band-8va" hidden role="status"></div>
+      <!-- Beside it: where "Band slows down for me" has the band, as a percentage of the learner's speed ("85%"); shown only while it is below it (player.js syncBandTempo) -->
+      <div class="pl-staff-badges"><div class="pl-band-8va" id="pl-band-8va" hidden role="status"></div><div class="pl-band-tempo" id="pl-band-tempo" hidden></div></div>
       <div class="pl-staff-host" id="pl-staff">Staff loads with the piece.</div>
     </section>
   </div>

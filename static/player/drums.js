@@ -92,6 +92,8 @@ const DRUM_SPECS = {
 };
 const STICK_ACCENT = 1.3;      // the count-in's first beat of a bar, against the others
 const HAT_OFFBEAT = 0.7;       // a hat between beats, against one on the beat (about -3 dB): not machine-identical
+/** The levels inside the kit that are not a drum's own gain, read at each hit (player.js drumItem): the dev panel (player-dev.js, ?dev=1) may change one mid-run. */
+const DRUM_MIX = { hatOffbeat: HAT_OFFBEAT };
 const NOISE_SECONDS = 0.5;     // the shared white-noise buffer of the fallback synths (longer than any noise drum)
 
 /** One straight bar of 4/4, in time order (the kick / snare before the hat at one position). */
@@ -307,7 +309,7 @@ function createDrums({ audio = toneAudio() } = {}) {
 /** The page's kit, on Tone's context. */
 const drums = createDrums();
 
-export { drums, createDrums, createSampleLoader, drumsFor, grooveItems, GROOVE, DRUM_SPECS, STICK_ACCENT, HAT_OFFBEAT, SAMPLE_BASE, selfTest };
+export { drums, createDrums, createSampleLoader, drumsFor, grooveItems, GROOVE, DRUM_SPECS, DRUM_MIX, STICK_ACCENT, HAT_OFFBEAT, SAMPLE_BASE, selfTest };
 
 // ════════════════════════════════════════════════════════════════════
 // SELF-TEST

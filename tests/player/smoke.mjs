@@ -8,13 +8,14 @@
  * RD-2000 check: nothing is drawn and nothing sounds.
  *
  *   node tests/player/smoke.mjs            every scenario, each in its own process (≈ 2 min: the clock is real time)
- *   node tests/player/smoke.mjs pause      one scenario: form | form-none | band | band-none | pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars | two-lines | drums-fallback | drums | steady | steady-stop
+ *   node tests/player/smoke.mjs pause      one scenario: form | form-none | band | band-none | pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars | two-lines | drums-fallback | drums | steady | steady-stop | dev | dev-off | mode-card
  *
  * Add a scenario: a function in SCENARIOS that boots the harness, checks,
  * and ends with h.done().
  */
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { boot, fixtureNorm } from './harness.mjs';
 
 const FEEL_NOTE = {
@@ -47,6 +48,9 @@ const CLEAN = () => true, SILENT = () => false;
 const ONE_MISS = d => d.pitch !== 70;                 // the B♭4 is left out: one missed note
 const BAD = d => d.pitch === 86 && d.beat === 0;      // only the downbeat D6: G4, B♭4 and D5 are missed (and the last D6, once its window closes)
 
+/** What an earlier dev visit left in storage: a band that may not slow at all, a quieter kick, and things the panel must not take (not a number, not a known key). */
+const DEV_STORED = JSON.stringify({ steady: { MAX_SLOWER_PER_BAR: 0, HALF_LIFE_NOTES: 'three', NOT_A_KEY: 7 }, drums: { kick: 0.5 } });
+
 const SCENARIOS = {
   /** Listen and play-along follow form.playOrder: the played sequence, the two-line view at the jumps, pause / resume by seq, seq in the log, the Form setting. */
   async form() {
@@ -64,7 +68,11 @@ const SCENARIOS = {
     const bars = [], snaps = {};
     P.clock.onDue('bar', p => { bars.push([p.bar, p.seq]); });
     let from = S.shows.length;
+    const guide = () => [el('pl-guide').disabled, el('pl-guide-box').dataset.listen, el('pl-guide-note').hidden];
+    const guideWas = [P.state.guide, el('pl-guide').value, Object.keys(storage).filter(k => /guide/i.test(k)).map(k => storage[k])];
+    check('before anything plays the guide volume slider is live, with no note under it', guide(), [false, 'false', true]);
     await C.listen();
+    check('while Listen runs the guide volume slider is disabled and dimmed, and the note under it is shown (Listen plays at full volume)', guide(), [true, 'true', false]);
     check('Listen names the run plainly, and says so in listen:start', [el('pl-status').textContent, (d => [d.form, d.bars, d.fromSeq, d.toSeq, d.startSeq, d.from, d.to, d.loop])(started('listen:start'))], ['Listening · whole song · 18 bars', [true, 18, 0, 17, 0, 1, 16, false]]);
     await until(() => !L.active);
     await sleep(40);
@@ -77,16 +85,18 @@ const SCENARIOS = {
     ]);
     check('it ended complete, and the follower was never moved', [(d => [d.complete, d.form])(started('listen:stop')), P.state.bar, P.state.line], [[true, true], 1, 0]);
 
-    // ── play-along: missed greying is dropped on re-entry; pause in the second time through bar 3, resume there ──
+    // ── play-along: missed colouring is dropped on re-entry; pause in the second time through bar 3, resume there ──
     bars.length = 0;
     const stale = () => [...L.missed].filter(n => (n.bar === 3 || n.bar === 4) && n.seq < 8).length;
     const off = P.clock.onDue('bar', p => { if (p.seq === 5) snaps.before = stale(); if (p.seq === 8) { snaps.after = stale(); snaps.others = L.missed.size; } });
+    check('Listen over: the slider is live again', guide(), [false, 'false', true]);
     await C.playAlong();
     check('play-along: the same run', el('pl-status').textContent, 'Playing along · whole song · 18 bars');
+    check('during play-along the guide volume slider is enabled, with no note', guide(), [false, 'false', true]);
     await until(() => L.seq === 8);
     const at = [L.bar, L.seq];
     C.pause(); off();
-    check('nothing was played, so bars 3–4 were grey after the first time through; entering bar 3 again clears that line, and only that line', [snaps.before > 0, snaps.after, snaps.others > 0], [true, 0, true]);
+    check('nothing was played, so bars 3–4 were marked missed (coral) after the first time through; entering bar 3 again clears that line, and only that line', [snaps.before > 0, snaps.after, snaps.others > 0], [true, 0, true]);
     check('paused in the SECOND time through bar 3: the pause remembers the seq', [at, C.paused && [C.paused.mode, C.paused.bar, C.paused.seq], P.staff.marker], [[3, 8], ['playalong', 3, 8], 3]);
     const lp = C.getPasses().slice(-1)[0];
     check('the pass is one trip through the form, cut short; its entries carry seq, and bar 3 is in it twice (seq 2 and 8)', [lp.pass, lp.form, lp.bars, lp.complete, lp.expected.every(e => typeof e.seq === 'number'), [...new Set(lp.expected.filter(e => e.bar === 3).map(e => e.seq))]], [1, true, 18, false, true, [2, 8]]);
@@ -102,7 +112,10 @@ const SCENARIOS = {
     P.stepLine(1); P.stepLine(1); await sleep(40);   // line 3: bars 5–6
     await C.listen(); await sleep(40);
     check('from bar 5: its first occurrence (seq 4), 14 bars to the end of the form', [el('pl-status').textContent, (d => [d.fromSeq, d.toSeq, d.bars, d.startBar])(started('listen:start'))], ['Listening · from bar 5 · 14 bars with repeats', [4, 17, 14, 5]]);
+    C.pause();
+    check('Listen paused: the slider stays disabled, the note stays', [C.paused && C.paused.mode, guide()], ['listen', [true, 'true', false]]);
     C.stop(); await sleep(40);
+    check('Listen stopped: enabled again, and none of this touched the guide volume or what is stored for it', [guide(), [P.state.guide, el('pl-guide').value, Object.keys(storage).filter(k => /guide/i.test(k)).map(k => storage[k])]], [[false, 'false', true], guideWas]);
 
     // ── a loop plays as written; so does Form "as written" ──
     P.setLoop(7, 8); await sleep(40);
@@ -593,67 +606,98 @@ const SCENARIOS = {
     h.done();
   },
 
-  /** "Band slows down for me", the drops: one missed note and one bad bar do nothing; two bad bars drop a notch, eased; the slider and the saved tempo move and stay; four bars between drops; a loop; the floor. */
+  /** "Band slows down for me", the tempo following the score: isolated misses absorbed; a small drop, then larger ones inside the per-bar limit; rest bars hold; clean playing brings it back to the learner's speed and no higher; the slider and the saved tempo are never touched; badge, pill, status line; pause / resume; the box unticked. */
   async steady() {
-    const h = await boot({ norm: fixtureNorm({ tempo: 200 }), pieces: { 'smoke-fast': fixtureNorm({ piece: 'smoke-fast', title: 'Smoke fast', tempo: 360 }) } });
+    // Four notes a bar, all inside its first beat and a bit, so each is hit or missed well before the next barline is judged (the fixture's last eighth would still be open). Bars 12–13 are rests.
+    const ev = (onset, dur, pitches) => ({ onset, dur, pitches, rest: !pitches.length, tie: null });
+    const piece = fixtureNorm({ tempo: 200, lines: [1, 5, 9, 13, 17, 21] });
+    piece.bars = Array.from({ length: 24 }, (_, i) => (i === 11 || i === 12
+      ? { bar: i + 1, voice: [], rh: [ev(0, 3, [])], lh: [ev(0, 3, [])] }
+      : { bar: i + 1, voice: [], rh: [ev(0, 3, ['D6'])], lh: [ev(0, 0.5, ['G4']), ev(0.5, 0.5, ['B♭4']), ev(1, 2, ['D5'])] }));
+    const h = await boot({ norm: piece });
     const { P, C, L, el, check, sleep, storage } = h;
     const until = async (f, ms = 15000) => { const t = Date.now(); while (!f() && Date.now() - t < ms) await sleep(5); return f(); };
     const of = type => h.events.filter(e => e[0] === type).map(e => e[1]);
-    const slowed = () => of('band:slowed');
-    const brief = d => [d.fromPct, d.toPct, Math.round(d.from), Math.round(d.to), d.seq, d.bar, d.pass];
-    P.setCountIn(0); P.STEADY.MESSAGE_MS = 500;   // 200 bpm, 3/4: a bar is 0.9 s
-    check('"Band slows down for me" is on by default, with every threshold in one place', [P.steadyOn, el('pl-steady').checked, [P.STEADY.JUDGE_BARS, P.STEADY.STRUGGLE_MISSED, P.STEADY.STOP_BARS, P.STEADY.GRACE_BARS, P.STEADY.DROP_PCT, P.STEADY.FLOOR_PCT, P.STEADY.MIN_BARS_BETWEEN_DROPS, P.STEADY.EASE_BARS]], [true, true, [2, 0.5, 2, 1, 10, 50, 4, 1]]);
+    const tempo = () => of('band:tempo');
+    const brief = d => [d.from, d.to, d.seq, d.bar];
+    const badge = () => [el('pl-band-tempo').textContent, el('pl-band-tempo').hidden];
+    const slider = () => [P.tempo, el('pl-tempo').value, el('pl-tempo-readout').textContent, storage.songlab_player_tempo_pct ?? null];
+    const TWO_MISSES = d => d.beat === 0;   // the two notes on the downbeat are played; B♭4 and D5 are missed
+    P.setCountIn(0); P.STEADY.PILL_MS = 400;   // 200 bpm, 3/4: a bar is 0.9 s
+    check('"Band slows down for me" is on by default, with every threshold in one place and none of the notch ones left', [P.steadyOn, el('pl-steady').checked, [P.STEADY.HALF_LIFE_NOTES, P.STEADY.COMFORT, P.STEADY.BOTTOM, P.STEADY.FLOOR, P.STEADY.MAX_SLOWER_PER_BAR, P.STEADY.MAX_FASTER_PER_BAR, P.STEADY.STOP_BARS, P.STEADY.GRACE_BARS, P.STEADY.EASE_BARS], ['JUDGE_BARS', 'STRUGGLE_MISSED', 'DROP_PCT', 'FLOOR_PCT', 'MIN_BARS_BETWEEN_DROPS', 'MESSAGE_MS'].filter(k => k in P.STEADY)], [true, true, [12, 0.8, 0.35, 0.5, 5, 3, 2, 1, 1], []]);
+    check('before anything: the band is at the learner\'s speed, no badge', [P.bandPct, badge(), P.steady.score()], [100, ['', true], 1]);
 
-    // ── a whole run: bar 2 one missed note, bar 4 a bad bar on its own, bars 6–11 bad, then clean ──
-    const kinds = { 2: ONE_MISS, 4: BAD, 6: BAD, 7: BAD, 8: BAD, 9: BAD, 10: BAD, 11: BAD };
-    robot(h, d => (kinds[d.bar] || CLEAN)(d));
+    // ── one run: bar 2 one miss; bars 6–7 two misses each; bars 8–9 bad; clean from bar 10, with rests in 12–13 ──
+    const kinds = { 2: ONE_MISS, 6: TWO_MISSES, 7: TWO_MISSES, 8: BAD, 9: BAD };
+    const R = robot(h, d => (kinds[d.bar] || CLEAN)(d));
     const beats = [];
-    P.clock.onDue('beat', p => { if (L.active) beats.push([p.bar, P.clock.tempo, P.tempo]); });
+    P.clock.onDue('beat', p => { if (L.active) beats.push([p.bar, P.clock.tempo]); });
     await C.playAlong();
-    await until(() => L.seq === 5);
+    await until(() => L.seq === 6);
     const p1 = C.getCurrentPass();
-    check('one missed note (bar 2) and one bad bar (bar 4, with clean bars either side) do nothing: 100 %, still playing', [P.tempo, P.clock.tempo, slowed().length, L.active, p1.expected.filter(e => e.status === 'missed').map(e => e.bar).filter((b, i, a) => a.indexOf(b) === i), p1.steady], [100, 200, 0, true, [2, 4], []]);
-    await until(() => slowed().length === 1);
-    check('two bad bars (6 and 7): one notch down at the barline into bar 8, said calmly on the status line', [brief(slowed()[0]), el('pl-status').textContent, L.active], [[100, 90, 200, 180, 7, 8, 1], 'slowed to 90% to keep it steady', true]);
-    await until(() => L.seq === 8);
-    const eased = beats.filter(b => b[0] === 8).map(b => b[1]);
-    check('eased in over bar 8 on the clock\'s live tempo: part-way during the bar, 180 bpm by the next barline', [eased.some(t => t < 200 && t > 180), eased.every((t, i) => i === 0 || t <= eased[i - 1]), P.clock.tempo], [true, true, 180]);
-    check('the tempo slider, its readout and the saved value moved with it', [P.tempo, el('pl-tempo').value, el('pl-tempo-readout').textContent, storage.songlab_player_tempo_pct], [90, '90', '90% · 180 bpm', '90']);
-    check('…and the status line is the usual one again, with the new percentage', el('pl-status').textContent, 'Playing along · bars 1–16 · 90%');
-    await until(() => L.seq === 10);
-    check('bars 8–10 are bad too: no second drop within four bars', [slowed().length, P.tempo], [1, 90]);
-    await until(() => slowed().length === 2);
-    check('the next drop comes four bars after the first (the barline into bar 12)', slowed().map(brief), [[100, 90, 200, 180, 7, 8, 1], [90, 80, 180, 160, 11, 12, 1]]);
+    check('an isolated miss (bar 2) and a couple of misses in one bar (bar 6) are absorbed by the comfort zone: at the target, nothing said', [P.bandPct, P.clock.tempo, tempo().length, badge(), P.staff.pills, el('pl-status').textContent, p1.steady, P.steady.score() < 1 && P.steady.score() >= P.STEADY.COMFORT], [100, 200, 0, ['', true], [], 'Playing along · bars 1–24', [], true]);
+    await until(() => tempo().length === 1);
+    const first = tempo()[0];
+    check('a couple more in bar 7: the score is just under the comfort level — a small drop, one point, at the barline into bar 8', [brief(first), first.pass, first.S < 0.8 && first.S > 0.75, Math.round(first.fromBpm), Math.round(first.toBpm)], [[100, 99, 7, 8], 1, true, 200, 198]);
+    check('the badge beside the 8va label, the status line, and the pill for the moment it first drops', [badge(), el('pl-status').textContent, P.staff.pill, P.staff.pillColor], [['99%', false], 'playing at 99% of your speed', 'Easing off', '']);
+    await until(() => tempo().length === 3);
+    check('continued misses (bars 8 and 9): larger drops, each held to the limit of 5 points a bar', tempo().slice(1).map(brief), [[99, 94, 8, 9], [94, 89, 9, 10]]);
+    check('the badge and the status line follow at each barline; the pill said its piece once and has gone — no pill for the steps', [badge(), el('pl-status').textContent, P.staff.pills], [['89%', false], 'playing at 89% of your speed', ['Easing off', '']]);
+    await until(() => L.seq === 9);
+    const eased = beats.filter(b => b[0] === 9).map(b => b[1]);
+    check('eased across the bar on the clock\'s live tempo: during bar 9 it is part-way from 99 % (198 bpm) to 94 % (188), never going back up', [eased.some(t => t < 198 && t > 188), eased.every(t => t <= 198 && t >= 188), eased.every((t, i) => i === 0 || t <= eased[i - 1])], [true, true, true]);
+    await until(() => tempo().length === 5);
+    check('clean again from bar 10: the tempo lags the score both ways — one more step down (3: all the score still asks for), then up by the limit of 3', tempo().slice(3).map(brief), [[89, 86, 10, 11], [86, 89, 11, 12]]);
     await until(() => L.seq === 13);
-    check('clean bars after it: nothing raises the tempo — it never went up at any beat of the run', [P.tempo, P.clock.tempo, beats.every((b, i) => i === 0 || b[1] <= beats[i - 1][1]), slowed().length], [80, 160, true, 2]);
+    check('two bars of rests (12–13): the tempo stays where it is, though the score asks for more', [tempo().length, P.bandPct, Math.round(P.clock.tempo), badge(), P.steady.score() > 0.72 && P.steady.score() < 0.8], [5, 89, 178, ['89%', false], true]);   // 178 bpm: the ease landed on 89 % exactly
+    check('the tempo slider, its readout and the saved value have not moved', slider(), [100, '100', '100% · 200 bpm', null]);
+    await until(() => tempo().length === 9);
+    check('clean playing brings it back, 3 points a bar, to the target', tempo().slice(5).map(brief), [[89, 92, 14, 15], [92, 95, 15, 16], [95, 98, 16, 17], [98, 100, 17, 18]]);
+    check('back at the learner\'s speed: the badge has gone, the status line is the usual one, and the pill says so in green', [badge(), el('pl-status').textContent, P.staff.pill, P.staff.pillColor], [['', true], 'Playing along · bars 1–24', 'Back to your speed', '#4CAF50']);
+    await until(() => L.seq === 20);
+    check('…and no higher: three more clean bars, no change; the clock was never above 200 bpm at any beat of the run', [tempo().length, P.bandPct, P.clock.tempo, Math.max(...beats.map(b => b[1])) <= 200, P.staff.pills], [9, 100, 200, true, ['Easing off', '', 'Back to your speed', '']]);
     C.stop(); await sleep(40);
     const lp = C.getLastPass();
-    check('each drop is in the pass\'s timing log', lp.steady.map(e => [e.type, e.fromPct, e.toPct, e.seq, e.bar, typeof e.audioTime]), [['slowed', 100, 90, 7, 8, 'number'], ['slowed', 90, 80, 11, 12, 'number']]);
-    check('after the run the slower tempo stays: slider, saved value', [P.tempo, el('pl-tempo').value, storage.songlab_player_tempo_pct], [80, '80', '80']);
+    check('each tempo change is in the pass\'s timing log, with the score', [lp.steady.map(e => [e.type, e.from, e.to, e.seq, e.bar]), lp.steady.every(e => typeof e.S === 'number' && e.S > 0 && e.S < 1 && typeof e.audioTime === 'number')], [[['tempo', 100, 99, 7, 8], ['tempo', 99, 94, 8, 9], ['tempo', 94, 89, 9, 10], ['tempo', 89, 86, 10, 11], ['tempo', 86, 89, 11, 12], ['tempo', 89, 92, 14, 15], ['tempo', 92, 95, 15, 16], ['tempo', 95, 98, 16, 17], ['tempo', 98, 100, 17, 18]], true]);
+    check('after the run the slider and the saved tempo are as the learner left them', slider(), [100, '100', '100% · 200 bpm', null]);
+
+    // ── bad from the start, with nothing played in bar 4; a pause the learner chose keeps the band's tempo and the score; the slider moves the target under the band; a stop puts the band back ──
+    h.events.length = 0;
+    R.plays = d => d.bar !== 4 && BAD(d);
+    let s3 = null, s4 = null;
+    const offBar = P.clock.on('bar', p => { if (!L.active) return; if (p.bar === 4 && s3 == null) s3 = P.steady.score(); if (p.bar === 5 && s4 == null) s4 = P.steady.score(); });   // as each barline is scheduled (the judge's own moment): bar 4's notes are all decided by the second, and bar 5's downbeat has not been played yet
+    await C.playAlong();
+    await until(() => tempo().length === 2);
+    if (typeof offBar === 'function') offBar();
+    check('bad from the start: bar 1 does not count, bar 2 is absorbed, bar 3 slows the band by 5; bar 4, with no key pressed at all, holds the tempo at its barline; bar 5 slows it again', tempo().map(brief), [[100, 95, 3, 4], [95, 90, 5, 6]]);
+    check('…and bar 4\'s misses did not feed the score: S at the end of the bar is S at its start, though all four notes are in the log as missed', [s3 != null && s3 === s4, s3 < 0.8, C.getCurrentPass().expected.filter(e => e.bar === 4).map(e => e.status)], [true, true, ['missed', 'missed', 'missed', 'missed']]);
+    C.pause();
+    const s0 = P.steady.score();
+    check('paused: the band stays where it was, and so does the badge', [C.paused && C.paused.mode, P.bandPct, badge(), s0 < 0.8], ['playalong', 90, ['90%', false], true]);
+    await C.resume(); await sleep(40);
+    const resumed = of('playalong:start').slice(-1)[0];
+    check('resumed after a pause the learner chose: at 90 % of the learner\'s speed, with the score it had (not 1 again, not lifted to the comfort level)', [resumed.resumed, resumed.tempoPct, Math.round(resumed.bpm), Math.round(P.clock.tempo), P.steady.score() === s0, el('pl-status').textContent], [true, 100, 180, 180, true, 'playing at 90% of your speed']);
+    P.tempo = 80;
+    check('the learner moves the slider: the target moves, the band keeps its share of it (90 % of 160 bpm)', [slider(), P.bandPct, Math.round(P.clock.tempo)], [[80, '80', '80% · 160 bpm', '80'], 90, 144]);
+    C.stop(); await sleep(40);
+    check('a stop puts the band back at the learner\'s speed: no badge, no pill, and the slider is where the learner put it', [P.bandPct, badge(), P.staff.pill, slider()], [100, ['', true], '', [80, '80', '80% · 160 bpm', '80']]);
+    P.tempo = 100;
+
+    // ── a fresh start is at the target with the score at 1; the box unticked while the band is slow ──
     h.events.length = 0;
     await C.playAlong(); await sleep(60);
-    check('…and the next run starts there (a fresh run\'s status line is the plain one)', [of('playalong:start')[0].tempoPct, of('playalong:start')[0].bpm, el('pl-status').textContent], [80, 160, 'Playing along · bars 1–16']);
+    check('the next start: the score is 1 again and the band is at the target', [P.steady.score(), P.bandPct, Math.round(of('playalong:start')[0].bpm), el('pl-status').textContent], [1, 100, 200, 'Playing along · bars 1–24']);
+    await until(() => tempo().length === 1);
+    el('pl-steady').checked = false; el('pl-steady').fire('change');
+    check('unticked while the band is slow: back at the learner\'s speed at once', [P.steadyOn, P.bandPct, Math.round(P.clock.tempo), badge(), el('pl-status').textContent], [false, 100, 200, ['', true], 'Playing along · bars 1–24']);
+    const at = L.seq;
+    await until(() => L.seq >= at + 3);
+    check('off: three more bad bars and it plays on at the target, as it did before there was a band to follow — no event, nothing said', [tempo().length, P.bandPct, P.clock.tempo, L.active, el('pl-status').textContent, slider()], [1, 100, 200, true, 'Playing along · bars 1–24', [100, '100', '100% · 200 bpm', '100']]);
     C.stop(); await sleep(40);
-    P.tempo = 100;
-    check('the learner raises it: the slider is theirs', [P.tempo, storage.songlab_player_tempo_pct], [100, '100']);
-
-    // ── a loop, near the floor: 55 % → 50 %, then never lower ──
-    await P.load('smoke-fast'); await sleep(100);   // 360 bpm: at 55 % a bar is 0.91 s
-    P.tempo = 55; P.setLoop(2, 3); await sleep(40);
-    h.events.length = 0; beats.length = 0;
-    for (const b of [2, 3]) kinds[b] = BAD;   // the same robot plays this piece: every bar of the loop is bad
-    await C.playAlong();
-    await until(() => slowed().length === 1);
-    check('in a loop: bar 3 of pass 1 and bar 2 of pass 2 are bad — the drop is at the next barline, to the floor (55 → 50)', [brief(slowed()[0]), el('pl-status').textContent], [[55, 50, 198, 180, 2, 3, 2], 'slowed to 50% to keep it steady']);
-    const at = beats.length;
-    await until(() => beats.length - at >= 6 * 3 + 3);   // six more bars, all bad
-    check('at the floor nothing lower: six more bad bars, no second drop, no event, and the loop plays on at 50 %', [slowed().length, P.tempo, P.clock.tempo, el('pl-tempo').value, storage.songlab_player_tempo_pct, L.active, el('pl-status').textContent], [1, 50, 180, '50', '50', true, 'Playing along · bars 2–3 · looping · 50%']);
-    C.stop(); await sleep(40);
-    check('the drop is on the loop pass it happened in', C.getPasses().filter(p => p.loop && p.steady && p.steady.length).map(p => [p.pass, p.loop, p.steady.map(e => [e.type, e.toPct])]), [[2, true, [['slowed', 50]]]]);
     h.done();
   },
 
-  /** "Band slows down for me", the stop: two silent bars pause the band at the barline, inside a repeat, and P carries on from there; rest bars count for neither; the box unticked is play-along as it was. */
+  /** "Band slows down for me", the stop: two silent bars pause the band at the barline, inside a repeat, and P carries on from there; rest bars count for neither the stop nor the tempo; the box unticked is play-along as it was. */
   async 'steady-stop'() {
     const ev = (onset, dur, pitches) => ({ onset, dur, pitches, rest: !pitches.length, tie: null });
     const RESTS = new Set([3, 5, 6, 7, 9]);
@@ -674,13 +718,15 @@ const SCENARIOS = {
     R.plays = d => !quiet.has(d.seq);
     await C.playAlong();
     await until(() => L.seq === 7);
-    check('one silent bar (seq 5) does nothing: still playing, no drop, no stop', [L.active, of('band:stopped').length, of('band:slowed').length], [true, 0, 0]);
+    check('one silent bar (seq 5) does nothing: still playing, no stop, no tempo change, and the score is where it was (1)', [L.active, of('band:stopped').length, of('band:tempo').length, P.bandPct, P.steady.score()], [true, 0, 0, 100, 1]);
     await until(() => !L.active);
     await sleep(60);
     const stop = of('band:stopped')[0];
     check('two silent bars in a row: band:stopped at the barline into bar 6, the second time through (seq 11)', [of('band:stopped').length, stop.bar, stop.seq, stop.pass], [1, 6, 11, 1]);
     check('paused there as Space would, keeping the seq; the status says how to carry on', [C.paused && [C.paused.mode, C.paused.bar, C.paused.seq], P.clock.running, el('pl-playalong').textContent, P.staff.marker, el('pl-status').textContent], [['playalong', 6, 11], false, '▶ Resume', 6, 'paused: play along stopped. P to carry on']);
-    check('the clock never reached that barline\'s bar; the tempo was not dropped for the silent bars', [bars[bars.length - 1], P.tempo, of('band:slowed').length, storage.songlab_player_tempo_pct ?? null], [[5, 10], 100, 0, null]);
+    await sleep(600);
+    check('the pill over the staff says so too, and stays (nothing came before it: it is the only thing the pill has said)', [P.staff.pill, P.staff.pills.filter(Boolean)], ['Paused. Press P to carry on', ['Paused. Press P to carry on']]);
+    check('the clock never reached that barline\'s bar; the silent bars fed nothing into the score and moved no tempo', [bars[bars.length - 1], of('band:tempo').length, P.bandPct, P.steady.score(), P.tempo, storage.songlab_player_tempo_pct ?? null], [[5, 10], 0, 100, 1, 100, null]);
     const last = h.sounds.filter(s => s[0] === 'on').map(s => s[2]), clicks = h.sounds.filter(s => s[0] === 'click').map(s => s[1]);
     check('nothing of the bar after the barline was sounded or clicked, and the band played right up to it', [last.filter(t => t >= stop.audioTime - 0.001).length, clicks.filter(t => t >= stop.audioTime - 0.001).length, last.some(t => t > stop.audioTime - 0.75), clicks.some(t => t > stop.audioTime - 0.3)], [0, 0, true, true]);
     const lp = C.getPasses().slice(-1)[0];
@@ -691,46 +737,174 @@ const SCENARIOS = {
     h.events.length = 0; bars.length = 0;
     R.plays = SILENT;
     key('p');
+    await until(() => L.active);
+    check('P: the pill clears as the transport resumes', P.staff.pill, '');
     await until(() => bars.length >= 2);
     check('P resumes at bar 6 the second time through (seq 11), then bar 7', [bars.slice(0, 2), (d => [d.resumed, d.startBar, d.startSeq])(of('playalong:start')[0])], [[[6, 11], [7, 12]], [true, 6, 11]]);
     await until(() => !L.active);
     await sleep(60);
     check('still silent: the resumed bar is not judged, so the band plays three bars before it stops again (the barline into seq 14)', [bars, of('band:stopped').map(d => [d.bar, d.seq]), C.paused && C.paused.seq], [[[6, 11], [7, 12], [8, 13]], [[3, 14]], 14]);
+    check('the pill is up again for the second auto-pause', P.staff.pill, 'Paused. Press P to carry on');
     C.stop(); await sleep(40);
+    check('…and stopping from the pause clears it', P.staff.pill, '');
 
-    // ── rest bars count for neither: bad, rest, bad is a drop; silent, rest, silent is a stop; rests alone are nothing ──
+    // ── rest bars count for neither: bad, rest, bad eases the band; rests hold the tempo; silent, rest, silent is a stop; rests alone are nothing ──
     await P.load('smoke-rests'); await sleep(100);
     h.events.length = 0; bars.length = 0;
     const kinds = { 2: BAD, 4: BAD, 8: SILENT, 10: SILENT };
     R.plays = d => (kinds[d.bar] || CLEAN)(d);
     await C.playAlong();
-    await until(() => of('band:slowed').length === 1);
-    check('bad bar 2, rest bar 3, bad bar 4: the rest is skipped — a drop at the barline into bar 5', of('band:slowed').map(d => [d.fromPct, d.toPct, d.seq, d.bar]), [[100, 90, 4, 5]]);
+    await until(() => of('band:tempo').length === 1);
+    check('bad bar 2, rest bar 3, bad bar 4: the rest bar\'s barline moved nothing — the band eases at the barline into bar 5', of('band:tempo').map(d => [d.from, d.to, d.seq, d.bar]), [[100, 95, 4, 5]]);
+    check('the pill for the moment it dropped', P.staff.pill, 'Easing off');
     await until(() => L.seq === 7);
-    check('three bars of rests (5–7) with nothing played: no stop, no second drop', [L.active, of('band:stopped').length, of('band:slowed').length], [true, 0, 1]);
+    check('three bars of rests (5–7) with nothing played: no stop, and the tempo stays where it is', [L.active, of('band:stopped').length, of('band:tempo').length, P.bandPct], [true, 0, 1, 95]);
+    const s7 = P.steady.score();
     await until(() => !L.active);
     await sleep(60);
-    check('silent bar 8, rest bar 9, silent bar 10: two silent bars in a row — stopped at the barline into bar 11, the tempo as it was', [of('band:stopped').map(d => [d.bar, d.seq]), C.paused && C.paused.bar, of('band:slowed').length, P.tempo], [[[11, 10]], 11, 1, 90]);
-    check('the drop and the stop are both on that pass', C.getPasses().slice(-1)[0].steady.map(e => e.type), ['slowed', 'stopped']);
+    check('silent bar 8, rest bar 9, silent bar 10: two silent bars in a row — stopped at the barline into bar 11; the silent bars moved neither the tempo nor the score', [of('band:stopped').map(d => [d.bar, d.seq]), C.paused && C.paused.bar, of('band:tempo').map(d => [d.from, d.to, d.seq, d.bar]), P.bandPct, P.tempo, P.steady.score() === s7], [[[11, 10]], 11, [[100, 95, 4, 5]], 95, 100, true]);
+    check('the change and the stop are both on that pass', C.getPasses().slice(-1)[0].steady.map(e => e.type), ['tempo', 'stopped']);
+    check('the auto-pause has the pill', P.staff.pill, 'Paused. Press P to carry on');
+
+    // ── P after the band stopped by itself: a score below the comfort level is put at it, and clean playing brings the tempo back at the usual rate ──
+    R.plays = CLEAN;
+    key('p');
+    await until(() => L.active && L.started);
+    check('resumed after the auto-pause: the score was below the comfort level and is now at it; the band is still where it was', [s7 < P.STEADY.COMFORT, P.steady.score(), P.bandPct, el('pl-status').textContent], [true, P.STEADY.COMFORT, 95, 'playing at 95% of your speed']);
+    await until(() => of('band:tempo').length === 3);
+    check('…so it does not slow any further: after the resumed bar (not judged), each clean bar brings it back by up to 3 points, to the learner\'s speed', [of('band:tempo').slice(1).map(d => [d.from, d.to, d.seq, d.bar]), P.bandPct, P.staff.pill], [[[95, 98, 12, 13], [98, 100, 13, 14]], 100, 'Back to your speed']);
     C.stop(); await sleep(40);
 
     // ── the box unticked: play-along as it was ──
     el('pl-steady').checked = false; el('pl-steady').fire('change');
     check('unticking is remembered', [P.steadyOn, storage.songlab_player_band_follow], [false, '0']);
-    P.tempo = 100;
     h.events.length = 0; bars.length = 0;
     const off = { 1: BAD, 2: BAD, 4: BAD };
     R.plays = d => (off[d.bar] || SILENT)(d);   // bad bars, then silence (bar 3 is a rest): a drop and a stop if it were on
     await C.playAlong();
     await until(() => bars.length >= 13);
-    check('off: bad bars, then nine bars of silence — it plays on at 100 %, no event, no message, nothing on the pass', [L.active, P.tempo, P.clock.tempo, h.events.filter(e => e[0].startsWith('band:')).length, el('pl-status').textContent, 'steady' in C.getCurrentPass(), bars[bars.length - 1]], [true, 100, 240, 0, 'Playing along · bars 1–16', false, [13, 12]]);
+    check('off: bad bars, then nine bars of silence — it plays on at 100 %, no event, no message, nothing on the pass', [L.active, P.bandPct, P.clock.tempo, h.events.filter(e => e[0].startsWith('band:')).length, el('pl-status').textContent, 'steady' in C.getCurrentPass(), bars[bars.length - 1]], [true, 100, 240, 0, 'Playing along · bars 1–16', false, [13, 12]]);
     key(' ');
     check('…and Space pauses with its own status line, as ever', [C.paused && C.paused.bar, /^Paused · play-along · bar 13/.test(el('pl-status').textContent)], [13, true]);
+    check('a pause by hand puts no pill up', P.staff.pill, '');
     C.stop(); await sleep(40);
     el('pl-steady').checked = true; el('pl-steady').fire('change');
     check('ticked again: on, remembered', [P.steadyOn, storage.songlab_player_band_follow], [true, '1']);
     h.done();
   },
+
+  /** The dev tuning panel with ?dev=1: mounted over the page, a slider per STEADY value and per drum; stored values applied; a slider moved mid-run changes what the next barline does; the Judge readout and its live score meter; copy, reset. */
+  async dev() {
+    const h = await boot({ norm: fixtureNorm({ tempo: 200 }), search: '?dev=1', stored: { songlab_player_dev: DEV_STORED } });
+    const { P, C, L, el, check, sleep, storage } = h;
+    const until = async (f, ms = 15000) => { const t = Date.now(); while (!f() && Date.now() - t < ms) await sleep(5); return f(); };
+    const tempo = () => h.events.filter(e => e[0] === 'band:tempo').map(e => e[1]);
+    const D = P.dev, F = D && D.fields;
+    check('with ?dev=1 the panel is mounted on the body, over the page', [!!D, document.body.children.includes(D && D.el), D.el.className], [true, true, 'pl-dev']);
+    check('a slider for every value in STEADY, with a range that holds the code\'s value', [Object.keys(P.STEADY).filter(k => !F[`steady.${k}`]), Object.values(F).filter(f => !(f.min <= f.def && f.def <= f.max && f.step > 0)).map(f => f.id)], [[], []]);
+    check('…and one per drum level', Object.keys(F).filter(k => k.startsWith('drums.')), ['drums.kick', 'drums.snare', 'drums.hat', 'drums.hatOffbeat', 'drums.stick']);
+    check('stored dev values are applied on load: the live value, the slider and its readout; nonsense and unknown keys are left out', [P.STEADY.MAX_SLOWER_PER_BAR, F['steady.MAX_SLOWER_PER_BAR'].input.value, F['steady.MAX_SLOWER_PER_BAR'].out.textContent, P.STEADY.HALF_LIFE_NOTES, 'NOT_A_KEY' in P.STEADY, D.values().drums.kick], [0, '0', '0', 12, false, 0.5]);
+    const M = D.judge.meter;
+    check('the score meter at the top of the Judge section: 0 to 1, at 1 before anything is played', [M.getAttribute('role'), M.getAttribute('aria-valuemin'), M.getAttribute('aria-valuemax'), M.getAttribute('aria-valuenow'), D.judge.meterValue.textContent, D.judge.score], ['meter', '0', '1', '1.00', 'S 1.00', 1]);
+
+    // ── every bar is bad (3 of its 5 notes missed, the last still open at the barline): the score falls, but with 0 points slower per bar the band may not follow ──
+    P.setCountIn(0);   // 200 bpm, 3/4: a bar is 0.9 s
+    robot(h, BAD);
+    await C.playAlong();
+    await until(() => L.seq === 4);
+    const rows = D.judge.rows.map(r => ({ ...r }));
+    check('with no points slower allowed, four bad bars change nothing', [tempo().length, P.bandPct, P.tempo], [0, 100, 100]);
+    check('the Judge readout has a row per barline, newest first: the played bar, what was expected, hit and missed, and what came of it', rows.map(r => [r.seq, r.bar, r.expected, r.hits, r.missed, r.action, r.actual]), [[3, 4, 5, 1, 3, 'none', 100], [2, 3, 5, 1, 3, 'none', 100], [1, 2, 5, 1, 3, 'none', 100], [0, 1, 5, 1, 3, 'none', 100]]);   // keys: not compared — a downbeat struck at the barline may be counted in either bar
+    check('…with the score after each bar (the grace bar left it at 1; it falls from there) and the tempo it asks for (none for the grace bar; 100 % while still in the comfort zone; then less)', [rows[3].score, rows[3].desired, rows[3].reason, rows[2].desired, rows.slice(0, 3).every(r => r.score < 1), rows[0].score < rows[1].score && rows[1].score < rows[2].score, rows[0].desired < rows[1].desired && rows[1].desired < 100], [1, null, 'grace bar', 100, true, true, true]);
+    const cells = D.judge.el.children[0].children.map(c => c.textContent);
+    check('…drawn as rows of the panel: seq, bar, expected, hit, missed, S to two decimals, the desired tempo and the actual one', [D.judge.el.children.length, cells.slice(0, 5), cells[5] === rows[0].score.toFixed(2), cells[6] === `${Math.round(rows[0].desired)}%`, cells[7], D.judge.el.children[3].children.map(c => c.textContent).slice(5)], [4, ['3', '4', '5', '1', '3'], true, true, '100%', ['1.00', '–', '100%']]);
+    check('the meter follows the score as notes are judged, between barlines too', [M.getAttribute('aria-valuenow') === P.steady.score().toFixed(2), D.judge.score === P.steady.score(), D.judge.score < 1, D.judge.meterValue.textContent === `S ${P.steady.score().toFixed(2)}`], [true, true, true, true]);
+
+    // ── the slider moved mid-run: the next barline acts on it ──
+    const s = F['steady.MAX_SLOWER_PER_BAR'].input;
+    s.value = '5'; s.fire('input');
+    check('the slider writes the live value the page reads, and saves under the dev key', [P.STEADY.MAX_SLOWER_PER_BAR, JSON.parse(storage.songlab_player_dev).steady.MAX_SLOWER_PER_BAR], [5, 5]);
+    await until(() => tempo().length === 1);
+    check('…and the very next barline slows by 5', [tempo()[0].seq, tempo()[0].from, tempo()[0].to, D.judge.rows[0].action, D.judge.rows[0].seq, D.judge.rows[0].actual, D.judge.el.children[0].children[7].textContent], [5, 100, 95, 'slower', 4, 95, '95%']);
+    D.set('steady', 'MAX_SLOWER_PER_BAR', 2);
+    await until(() => tempo().length === 2);
+    check('a smaller limit: the barline after it slows by 2', [tempo()[1].seq, tempo()[1].from, tempo()[1].to], [6, 95, 93]);
+    C.stop(); await sleep(40);
+    for (let i = 0; i < 20; i++) D.judge.add({ pass: 1, seq: i, bar: i + 1, expected: 0, hits: 0, missed: 0, keys: 0, score: 1, desired: null, actual: 100, action: 'none', reason: 'no expected notes' });
+    check('the readout keeps the last 16 rows', [D.judge.rows.length, D.judge.rows[0].seq, D.judge.rows[15].seq], [16, 19, 4]);
+    D.judge.clear();
+    check('Clear empties it', [D.judge.rows.length, D.judge.el.children.length], [0, 0]);
+
+    // ── drums, copy, reset ──
+    const k = F['drums.kick'].input;
+    k.value = '0.8'; k.fire('input');
+    D.set('drums', 'hatOffbeat', 0.33);   // off the slider's grid: put on it
+    check('a drum slider writes the gain the kit reads at each hit', [D.values().drums.kick, D.values().drums.hatOffbeat], [0.8, 0.35]);
+    D.set('steady', 'COMFORT', 0.9);
+    const copied = JSON.parse(await D.copy());
+    check('Copy settings: the current values as JSON, grouped by section', [Object.keys(copied), copied.steady.MAX_SLOWER_PER_BAR, copied.steady.COMFORT, copied.steady.HALF_LIFE_NOTES, copied.drums], [['steady', 'drums'], 2, 0.9, 12, { kick: 0.8, snare: 0.6, hat: 0.4, hatOffbeat: 0.35, stick: 0.75 }]);
+    D.reset();
+    check('Reset to defaults: the values in the code, sliders too, and nothing left in storage', [P.STEADY.MAX_SLOWER_PER_BAR, P.STEADY.COMFORT, P.STEADY.MAX_FASTER_PER_BAR, D.values().drums, s.value, 'songlab_player_dev' in storage], [5, 0.8, 3, { kick: 1.35, snare: 0.6, hat: 0.4, hatOffbeat: 0.7, stick: 0.75 }, '5', false]);
+    h.done();
+  },
+
+  /** Without ?dev=1: no panel, and dev values left in storage by an earlier dev visit are not applied — the band follows the code's values. */
+  async 'dev-off'() {
+    const h = await boot({ norm: fixtureNorm({ tempo: 200 }), stored: { songlab_player_dev: DEV_STORED } });
+    const { P, C, check, sleep, storage } = h;
+    const until = async (f, ms = 15000) => { const t = Date.now(); while (!f() && Date.now() - t < ms) await sleep(5); return f(); };
+    const tempo = () => h.events.filter(e => e[0] === 'band:tempo').map(e => e[1]);
+    check('no panel: nothing mounted, nothing added to the body or the head', [P.dev, document.body.children.length, document.head.children.length], [null, 0, 0]);
+    check('the stored dev values are ignored: STEADY is the code\'s, and the storage is left as it was', [P.STEADY.MAX_SLOWER_PER_BAR, P.STEADY.HALF_LIFE_NOTES, P.STEADY.COMFORT, storage.songlab_player_dev === DEV_STORED], [5, 12, 0.8, true]);
+    P.setCountIn(0);
+    robot(h, BAD);
+    await C.playAlong();
+    await until(() => tempo().length === 1);
+    check('…so bad bars slow the band by the code\'s 5 points (the stored 0 would not have)', [tempo()[0].seq, tempo()[0].from, tempo()[0].to], [3, 100, 95]);
+    C.stop(); await sleep(40);
+    h.done();
+  },
+};
+
+/** The Mode card's and the Listen card's markup (templates/player.html), read as text — the harness has no real DOM: each setting sits under the heading for the way of playing it applies to. No page is booted. */
+SCENARIOS['mode-card'] = async () => {
+  const results = [];
+  const check = (label, actual, expected) => {
+    const ok = JSON.stringify(actual) === JSON.stringify(expected);
+    results.push(ok);
+    console.log(ok ? `  ✓ ${label}` : `  ✗ ${label}\n      got:      ${JSON.stringify(actual)}\n      expected: ${JSON.stringify(expected)}`);
+  };
+  const html = readFileSync(new URL('../../templates/player.html', import.meta.url), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+  const cardOf = name => (html.match(new RegExp(`<section class="pl-card pl-card--${name}"[\\s\\S]*?<\\/section>`)) || [''])[0];
+  const CONTROLS = 'tempo|metro|count-in|guide|no-stress|steady|form|lines|rack-auto';
+  const ids = text => [...text.matchAll(new RegExp(`<(?:input|div)[^>]*\\bid="(pl-(?:${CONTROLS}))"`, 'g'))].map(m => m[1]);
+  const groupsOf = card => card.split('<div class="pl-mode-group"').slice(1).map(g => ({
+    heading: (g.match(/<h4[^>]*>([^<]*)<\/h4>/) || [])[1],
+    labelled: (g.match(/aria-labelledby="([^"]*)"/) || [])[1] === (g.match(/<h4[^>]*id="([^"]*)"/) || [])[1],
+    hint: (g.match(/<p class="pl-hint">([^<]*)<\/p>/) || [])[1] || null,
+    controls: ids(g),
+    labels: [...g.matchAll(/<label class="pl-check"[^>]*>\s*<input[^>]*>\s*([^<]*)<\/label>/g)].map(m => m[1].trim()),
+  }));
+  const mode = cardOf('mode'), listen = cardOf('listen');
+  const M = groupsOf(mode), Lg = groupsOf(listen);
+
+  // ── the Mode card: Practice and Everywhere ──
+  check('the Mode card has two groups, each named by its own sub-heading', M.map(g => [g.heading, g.labelled]), [['Practice', true], ['Everywhere', true]]);
+  check('each of its controls sits under the heading for the way of playing it applies to', M.map(g => [g.heading, g.controls]), [['Practice', ['pl-no-stress']], ['Everywhere', ['pl-form', 'pl-lines', 'pl-rack-auto']]]);
+  check('…with its label', M.map(g => g.labels), [['No stress'], ['Play repeats', 'Auto-hide controls']]);
+  check('a one-line hint under Practice, none under Everywhere', M.map(g => g.hint), ['The page waits for you, note by note.', null]);
+  check('"Play repeats" is still the row that hides for a piece with no repeats', /<label class="pl-check" id="pl-form-row" hidden/.test(mode), true);
+
+  // ── the Listen card: what Listen and play-along share, then the "Play along" group ──
+  check('the card is titled for both', (listen.match(/<h3[^>]*>([^<]*)<\/h3>/) || [])[1], 'Listen &amp; play along');
+  check('the Listen card has one group, "Play along", with its hint', Lg.map(g => [g.heading, g.labelled, g.hint]), [['Play along', true, 'The music keeps going and you play with it.']]);
+  check('under it, in order: the guide volume slider, then "Band slows down for me"', [Lg[0] && Lg[0].controls, Lg[0] && Lg[0].labels, (listen.match(/<label for="pl-guide">([^<]*)<\/label>/) || [])[1]], [['pl-guide', 'pl-steady'], ['Band slows down for me'], 'Guide volume']);
+  check('Tempo, the Metronome and Count-in are above the heading: they apply to Listen and play-along alike', ids(listen.split('<div class="pl-mode-group"')[0]), ['pl-tempo', 'pl-metro', 'pl-count-in']);
+  check('the slider keeps its note for when Listen has it disabled', /<p class="pl-guide__note" id="pl-guide-note" hidden>Listen plays the piece at full volume<\/p>/.test(Lg[0] ? listen.split('<div class="pl-mode-group"')[1] : ''), true);
+  check('every control is on the page once', ['pl-tempo', 'pl-metro', 'pl-count-in', 'pl-guide', 'pl-no-stress', 'pl-steady', 'pl-form', 'pl-lines', 'pl-rack-auto', 'pl-form-row', 'pl-guide-box', 'pl-guide-note'].map(id => html.split(`id="${id}"`).length - 1), Array(12).fill(1));
+  const passed = results.filter(Boolean).length;
+  console.log(`\n─── ${passed}/${results.length} passed ───\n`);
+  process.exit(passed === results.length ? 0 : 1);
 };
 
 const which = process.argv[2];
