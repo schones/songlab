@@ -8,7 +8,7 @@
  * RD-2000 check: nothing is drawn and nothing sounds.
  *
  *   node tests/player/smoke.mjs            every scenario, each in its own process (≈ 25 s: the clock is real time)
- *   node tests/player/smoke.mjs pause      one scenario: form | form-none | band | band-none | pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars | two-lines
+ *   node tests/player/smoke.mjs pause      one scenario: form | form-none | band | band-none | pause | first-downbeat | shortcuts | notes | notes-legacy | feel-none | feel-bars | two-lines | drums-fallback | drums
  *
  * Add a scenario: a function in SCENARIOS that boots the harness, checks,
  * and ends with h.done().
@@ -451,6 +451,126 @@ const SCENARIOS = {
     P.setLines(2); await sleep(20);
     C.stop(); await sleep(50);
     check('stop: the practice pair is back (lines 1 and 2), cut', [view(), S.shows[S.shows.length - 1].animate], [[[1, 4], [5, 8], 0, { from: 1, to: 4 }, 0], false]);
+    h.done();
+  },
+
+  /** A drum sample that fails to load: that drum plays its synthesized stand-in, the others their samples; nothing goes silent, and Stop still cancels both kinds. */
+  async 'drums-fallback'() {
+    const four = fixtureNorm({ piece: 'smoke-44', title: 'Smoke 4/4', time: '4/4', beatsPerBar: 4, tempo: 120 });
+    const warn = console.warn; const warned = []; console.warn = (...a) => { warned.push(String(a[0])); };
+    const h = await boot({ norm: four, drumFiles: { hat: null } });
+    const { P, C, L, check, sleep } = h;
+    const until = async (f, ms = 8000) => { const t = Date.now(); while (!f() && Date.now() - t < ms) await sleep(5); return f(); };
+    const of = (type, drum) => h.sounds.filter(s => s[0] === type && (!drum || s[1] === drum));
+    const how = drum => [...new Set(of('drum', drum).map(s => s[3]))];
+    P.tempo = 200; P.setMetronome(true); P.setCountIn(1); P.setBeatSound('drums');
+    check('before audio starts nothing is fetched', [h.drumFetches, P.drums.samples.state], [[], 'idle']);
+    await C.listen();
+    const t0 = h.events.filter(e => e[0] === 'listen:start').slice(-1)[0][1].audioTime;
+    await until(() => L.bar === 3);
+    const stopAt = h.now();
+    C.stop();
+    console.warn = warn;
+    const cancelled = of('drumCancel').map(s => `${s[1]}@${Math.round(s[2] * 1000)}`);
+    const queued = of('drum').filter(s => s[2] > stopAt + 0.005);
+    await sleep(300);
+    check('the hat\'s file is a 404: the loader says partial, and says so once in the console', [P.drums.samples, warned.filter(w => /\[drums\]/.test(w)).length, /hat\.flac did not load: the synthesized hat plays instead/.test(warned.find(w => /\[drums\]/.test(w)) || '')], [{ state: 'partial', loaded: ['kick', 'snare', 'stick'], failed: ['hat'] }, 1, true]);
+    check('the hat plays its synth, kick, snare and stick their samples', [how('hat'), how('kick'), how('snare'), how('stick')], [['synth'], ['sample'], ['sample'], ['sample']]);
+    check('nothing went silent: the hat is still on every eighth of bars 1–2', of('drum', 'hat').map(s => Math.round((s[2] - t0) * 1000)).filter(t => t < 2000), Array.from({ length: 16 }, (_, i) => i * 125));
+    check('Stop cancels the queued hits of both kinds, and nothing more is made', [queued.length > 0, queued.every(s => cancelled.includes(`${s[1]}@${Math.round(s[2] * 1000)}`)), of('drum').filter(s => s[2] > stopAt + 0.2).length], [true, true, 0]);
+    h.done();
+  },
+
+  /** The drum groove in place of the click: 4/4 only, as clock items beside the guide; stick-click count-in; the click in 3/4; Stop cancels what is queued. */
+  async drums() {
+    const four = fixtureNorm({ piece: 'smoke-44', title: 'Smoke 4/4', time: '4/4', beatsPerBar: 4, tempo: 120 });
+    const h = await boot({ norm: four, pieces: { 'smoke-34': fixtureNorm() } });
+    const { P, C, L, el, check, sleep, storage } = h;
+    const until = async (f, ms = 8000) => { const t = Date.now(); while (!f() && Date.now() - t < ms) await sleep(5); return f(); };
+    const started = type => h.events.filter(e => e[0] === type).slice(-1)[0][1];
+    const of = (type, drum) => h.sounds.filter(s => s[0] === type && (!drum || s[1] === drum));
+    const ms = (list, t0) => list.map(s => Math.round((s[2] - t0) * 1000));   // drum entries: ['drum', name, t, how]
+    const pressed = () => [el('pl-beat-click').getAttribute('aria-pressed'), el('pl-beat-drums').getAttribute('aria-pressed')];
+    P.tempo = 200;   // 240 bpm in 4/4: a quarter is 0.25 s, a bar 1 s
+
+    check('a 4/4 piece: Click is the default, Drums can be chosen, no note', [P.metro.sound, pressed(), el('pl-beat-drums').disabled, el('pl-beat-note').hidden, P.drumsOk(), P.drumsOn()], ['click', ['true', 'false'], false, true, true, false]);
+
+    // ── Click chosen: as it always was ──
+    P.setMetronome(true); P.setCountIn(1);
+    await C.listen(); await until(() => L.bar === 2);
+    C.stop(); await sleep(40);
+    check('Click: the count-in and the beats are the metronome\'s; no drum is made', [of('click').length >= 8, of('drum').length], [true, 0]);
+
+    // ── Drums chosen: sticks count in, then the groove under the guide ──
+    el('pl-beat-drums').fire('click');
+    check('Drums is remembered, shown pressed, and named in the summary', [P.metro.sound, storage.songlab_player_metro_sound, pressed(), P.drumsOn(), el('pl-summary-text').children.map(c => c.textContent).includes('drums on')], ['drums', 'drums', ['false', 'true'], true, true]);
+    h.sounds.length = 0; h.events.length = 0;
+    await C.listen();
+    const t0 = started('listen:start').audioTime;   // bar 1's downbeat
+    await until(() => L.bar === 3);
+    const stopAt = h.now();
+    C.stop();
+    const cancelled = of('drumCancel').map(s => `${s[1]}@${Math.round(s[2] * 1000)}`);
+    const queued = of('drum').filter(s => s[2] > stopAt + 0.005);
+    await sleep(400);
+    check('the count-in is one stick click per beat, and no metronome click sounds at all', [ms(of('drum', 'stick'), t0), of('click').length], [[-1000, -750, -500, -250], 0]);
+    const bars2 = list => ms(list, t0).filter(t => t < 2000);
+    check('the groove, straight: kick on 1 and 3, snare on 2 and 4 (bars 1–2)', [bars2(of('drum', 'kick')), bars2(of('drum', 'snare'))], [[0, 500, 1000, 1500], [250, 750, 1250, 1750]]);
+    check('…and a closed hi-hat on every eighth', bars2(of('drum', 'hat')), Array.from({ length: 16 }, (_, i) => i * 125));
+    check('the four samples were fetched once each when audio started, and every hit — sticks included — plays its sample, none the synth', [h.drumFetches.slice().sort(), P.drums.samples, [...new Set(of('drum').map(s => s[3]))]], [['hat', 'kick', 'snare', 'stick'], { state: 'ready', loaded: ['kick', 'snare', 'hat', 'stick'], failed: [] }, ['sample']]);
+    check('the guide piano plays alongside: the piece\'s notes on the same downbeats', [of('on').length > 0, of('on').filter(s => s[1] === 'G4').slice(0, 2).map(s => Math.round((s[2] - t0) * 1000))], [true, [0, 1000]]);
+    check('Stop cancels every hit still queued (there always is one: the next eighth), and nothing more is made', [queued.length > 0, queued.every(s => cancelled.includes(`${s[1]}@${Math.round(s[2] * 1000)}`)), of('drum').filter(s => s[2] > stopAt + 0.2).length], [true, true, 0]);
+
+    // ── the checkbox and the choice are live, and neither stops the transport ──
+    P.setCountIn(0);
+    h.sounds.length = 0;
+    await C.listen(); await until(() => L.bar === 2);
+    el('pl-metro').checked = false; el('pl-metro').fire('change');
+    const offAt = h.now();
+    await sleep(500);
+    check('unticking Metronome silences the drums; Listen plays on', [L.active, of('drum').filter(s => s[2] > offAt + 0.2).length, of('on').filter(s => s[2] > offAt + 0.2).length > 0], [true, 0, true]);
+    el('pl-metro').checked = true; el('pl-metro').fire('change');
+    await sleep(400);
+    const drumsBack = of('drum', 'hat').filter(s => s[2] > offAt + 0.5).length;
+    el('pl-beat-click').fire('click');
+    const clickAt = h.now();
+    await sleep(500);
+    check('ticking it brings them back; choosing Click mid-play swaps to the click without stopping', [drumsBack > 0, L.active, of('click').filter(s => s[1] > clickAt).length > 0, of('drum').filter(s => s[2] > clickAt + 0.2).length], [true, true, true, 0]);
+    C.stop(); await sleep(40);
+    el('pl-beat-drums').fire('click');
+
+    // ── play-along: the drums are never expected or logged ──
+    h.sounds.length = 0; h.events.length = 0;
+    await C.playAlong(); await until(() => L.bar === 3);
+    C.stop(); await sleep(40);
+    const exp = h.events.filter(e => e[0] === 'note:expected').map(e => e[1]);
+    check('play-along with drums: the groove sounds; only the piece\'s five notes a bar are expected, each a pitch', [of('drum', 'kick').length >= 4, exp.filter(e => e.bar === 1).length, exp.filter(e => e.bar === 2).length, exp.every(e => Number.isInteger(e.pitch))], [true, 5, 5, true]);
+
+    // ── a loop: the groove goes round with it ──
+    P.setLoop(2, 3);
+    h.sounds.length = 0; h.events.length = 0;
+    await C.listen();
+    const l0 = started('listen:start').audioTime;
+    await until(() => L.pass >= 2 && L.bar === 3);
+    C.stop(); await sleep(40);
+    check('looping bars 2–3: the kick is on 1 and 3 of every bar, across the wrap', ms(of('drum', 'kick'), l0).filter(t => t < 3000), [0, 500, 1000, 1500, 2000, 2500]);
+    P.clearLoop();
+
+    // ── 3/4: the click, with Drums disabled and a note saying why ──
+    await P.load('smoke-34'); await sleep(60);
+    check('a 3/4 piece: Drums is disabled and Click shown as playing; the note says why; the choice stays remembered', [el('pl-beat-drums').disabled, pressed(), el('pl-beat-note').hidden, el('pl-beat-note').textContent, P.metro.sound, storage.songlab_player_metro_sound, P.drumsOn()], [true, ['true', 'false'], false, 'Drums need 4/4: this piece is in 3/4, so the click plays.', 'drums', 'drums', false]);
+    el('pl-beat-drums').fire('click');
+    check('the disabled button does nothing', [P.drumsOn(), pressed()], [false, ['true', 'false']]);
+    P.setCountIn(1);
+    h.sounds.length = 0; h.events.length = 0;
+    await C.listen();
+    const w0 = started('listen:start').audioTime;
+    await until(() => L.bar === 3);
+    C.stop(); await sleep(40);
+    const beat34 = 60 / (82 * 2);   // 82 bpm at 200 %
+    check('in 3/4 the count-in and every beat are the metronome\'s click, three to the bar; no drum, no stick', [of('drum').length, of('click').slice(0, 6).map(s => Math.round((s[1] - w0) / beat34)), el('pl-summary-text').children.map(c => c.textContent).includes('metronome on')], [0, [-3, -2, -1, 0, 1, 2], true]);
+    await P.load('smoke-44'); await sleep(60);
+    check('back in 4/4 the remembered Drums is in effect again', [el('pl-beat-drums').disabled, pressed(), el('pl-beat-note').hidden, P.drumsOn()], [false, ['false', 'true'], true, true]);
     h.done();
   },
 };

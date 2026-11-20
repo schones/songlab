@@ -160,6 +160,13 @@
   .pl-seg__btn:hover:not([aria-pressed="true"]) { color: var(--accent-blue); }
   .pl-seg__btn[aria-pressed="true"] { background: var(--accent-blue); color: #FFFFFF; }
   .pl-seg__btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+  .pl-seg__btn:disabled { color: var(--text-muted); opacity: 0.5; cursor: default; }
+  .pl-seg__btn:disabled:hover { color: var(--text-muted); }
+  /* Click | Drums: beside the Metronome checkbox, never shrunk; the row wraps (Volume and Count-in drop to a second line) rather than clip.
+     The note for a meter the drums cannot play takes a line of its own under the row. */
+  .pl-beat-sound { flex: none; }
+  .pl-beat-note { flex: 1 1 100%; margin: 0; font-size: 13px; line-height: 1.35; }
+  .pl-beat-note[hidden] { display: none; }
 
   /* Hands: segmented LH / RH / Both (radios styled as one control) */
   .pl-hands { display: flex; border: 1px solid var(--pl-border); border-radius: 10px; overflow: hidden; }
@@ -368,7 +375,12 @@
         </div>
         <!-- Metronome (2b, metronome.js, driven by the beat clock): click while Listen / play-along runs, its volume, and a count-in of 0 / 1 / 2 bars that clicks even with the metronome off. All remembered. -->
         <div class="pl-metro-row" id="pl-metro-row">
-          <label class="pl-check" title="A click on every beat while Listen or play-along runs (the downbeat accented)"><input type="checkbox" id="pl-metro"> Metronome</label>
+          <label class="pl-check" title="The beat while Listen or play-along runs: a click on every beat (the downbeat accented), or a drum groove"><input type="checkbox" id="pl-metro"> Metronome</label>
+          <!-- Click | Drums (player.js setBeatSound; drums.js): what the beat is. Remembered. Drums are 4/4 only: in any other meter the button is disabled, the click plays and #pl-beat-note says why. -->
+          <div class="pl-seg__group pl-beat-sound" role="group" aria-label="Beat sound" id="pl-beat-sound">
+            <button type="button" class="pl-seg__btn" id="pl-beat-click" aria-pressed="true" title="A click on every beat">Click</button>
+            <button type="button" class="pl-seg__btn" id="pl-beat-drums" aria-pressed="false" title="A drum groove on the beat: kick, snare and hi-hat">Drums</button>
+          </div>
           <div class="pl-metro-vol">
             <label for="pl-metro-volume">Volume</label>
             <input type="range" id="pl-metro-volume" min="0" max="100" step="1" value="70" aria-label="Metronome volume">
@@ -381,6 +393,7 @@
               <button type="button" class="pl-seg__btn" data-count-in="2" aria-pressed="false" aria-label="Count in two bars">2</button>
             </div>
           </div>
+          <p class="pl-hint pl-beat-note" id="pl-beat-note" role="status" hidden></p>
         </div>
       </section>
 

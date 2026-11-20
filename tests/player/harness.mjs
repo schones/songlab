@@ -5,7 +5,8 @@
  * (top-level DOM wiring, one piece loaded at import), so each scenario
  * runs in its own process — see smoke.mjs.
  *
- *   const h = await boot({ norm, pieces });   // norm: the piece the fake /player/data serves;
+ *   const h = await boot({ norm, pieces, drumFiles });   // norm: the piece the fake /player/data serves;
+ *                        drumFiles: { hat: null } makes that drum's sample a 404 (drums.js then plays its synth);
  *                        pieces: { name: norm | null } served by name at /player/data/<name> (null: 404) — any other name gets `norm`.
  *                        h.pieces is that map, live: change it and load again.
  *   h.P / h.C / h.L      window.__player, window.songlabPlayer, state.listen
@@ -14,7 +15,10 @@
  *   h.focusOn(tag)       a stand-in focused element of that tag (answers closest() for selectors naming the tag)
  *   h.events             every bus event as [type, detail]
  *   h.sounds             ['click', t] / ['on', note, t, id] / ['releaseAll', id] from the fake audio; id: which fake
- *                        Sampler played it, numbered from 1 in the order they were made (sampler.id)
+ *                        Sampler played it, numbered from 1 in the order they were made (sampler.id).
+ *                        Drums (drums.js): ['drum', 'kick' | 'snare' | 'hat' | 'stick', t, 'sample' | 'synth'] when a hit
+ *                        is scheduled (which of the two played it) and ['drumCancel', drum, t] when one is cancelled
+ *   h.drumFetches        the drum samples asked of the fake fetch, by drum name, in order
  *   h.now()              the fake AudioContext's currentTime (real seconds since boot)
  *   h.check(label, actual, expected), h.done()   → prints, exits non-zero on a failure
  */
@@ -63,7 +67,7 @@ function fixtureNorm(extra = {}) {
   return { piece: 'smoke-fixture', title: 'Smoke fixture', reader: 'test', key: 'G minor', time: '3/4', beatsPerBar: 3, tempo: 82, lines: [1, 5, 9, 13], ...extra, bars };
 }
 
-async function boot({ norm = fixtureNorm(), pieces = {} } = {}) {
+async function boot({ norm = fixtureNorm(), pieces = {}, drumFiles = {} } = {}) {
   const elsById = {}, docListeners = {}, storage = {};
   globalThis.window = globalThis;
   globalThis.Node = class {}; globalThis.Element = class {};
@@ -80,8 +84,15 @@ async function boot({ norm = fixtureNorm(), pieces = {} } = {}) {
   globalThis.addEventListener = () => {}; globalThis.removeEventListener = () => {};
   globalThis.requestAnimationFrame = f => setTimeout(f, 0);
   globalThis.matchMedia = () => ({ matches: false, addEventListener() {} });
+  const drumFetches = [];
   globalThis.fetch = async url => {
     const u = String(url);
+    if (u.includes('/static/audio/drums/')) {   // the kit's samples (drums.js): the "file" is its drum name as bytes, which the fake decodeAudioData reads back
+      const drum = u.split('/').pop().replace(/\.[a-z0-9]+$/, '');
+      drumFetches.push(drum);
+      if (drum in drumFiles && drumFiles[drum] == null) return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) };
+      return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(drum).buffer };
+    }
     if (u.includes('/pieces')) return { ok: true, status: 200, json: async () => [{ name: norm.piece, title: norm.title }] };
     const name = decodeURIComponent(u.split('?')[0].split('/').pop());
     if (name in pieces && pieces[name] == null) return { ok: false, status: 404, json: async () => ({}) };
@@ -100,8 +111,31 @@ async function boot({ norm = fixtureNorm(), pieces = {} } = {}) {
     context: {
       get currentTime() { return now(); }, state: 'running', on() {},
       rawContext: { outputLatency: LATENCY, baseLatency: 0.005, sampleRate: 48000, getOutputTimestamp: () => ({ contextTime: now() - LATENCY, performanceTime: performance.now() }) },
-      createOscillator: () => ({ frequency: {}, connect() {}, start(t) { sounds.push(['click', t]); }, stop() {}, disconnect() {} }),
+      // The kit's samples: a decoded buffer remembers which drum it is, so a source playing it can say so.
+      decodeAudioData: async data => ({ duration: 0.2, drum: new TextDecoder().decode(data) }),
+      // An oscillator with a pitch sweep is a synthesized drum (drums.js fallback: triangle = the count-in stick, else the kick); a plain one is the metronome's click.
+      createOscillator: () => {
+        const o = { type: 'sine', swept: false, at: null, connect() {}, stop() {} };
+        o.frequency = { ...param(), setValueAtTime() { o.swept = true; } };
+        const kind = () => (o.type === 'triangle' ? 'stick' : 'kick');
+        o.start = t => { o.at = t; sounds.push(o.swept ? ['drum', kind(), t, 'synth'] : ['click', t]); };
+        o.disconnect = () => { if (o.swept && o.at != null) { sounds.push(['drumCancel', kind(), o.at]); o.at = null; } };   // drums.js disconnects on cancel (onended never fires here)
+        return o;
+      },
       createGain: () => new FakeNode(),
+      // Buffer sources (drums.js): a decoded sample straight into a gain, or — the fallback synths — noise through a filter: high-pass is the hi-hat, band-pass the snare.
+      sampleRate: 48000,
+      createBuffer: (channels, length) => ({ length, getChannelData: () => new Float32Array(length) }),
+      createBiquadFilter: () => ({ type: 'lowpass', frequency: param(), Q: param(), connect() {}, disconnect() {} }),
+      createBufferSource: () => {
+        const s = { buffer: null, to: null, at: null, stop() {} };
+        const sampled = () => !!(s.buffer && s.buffer.drum);
+        const kind = () => (sampled() ? s.buffer.drum : s.to && s.to.type === 'highpass' ? 'hat' : 'snare');
+        s.connect = node => { s.to = node; };
+        s.start = t => { s.at = t; sounds.push(['drum', kind(), t, sampled() ? 'sample' : 'synth']); };
+        s.disconnect = () => { if (s.at != null) { sounds.push(['drumCancel', kind(), s.at]); s.at = null; } };
+        return s;
+      },
     },
     start: async () => {}, immediate: () => now(), now: () => now() + 0.1, connect() {},
     Gain: FakeNode, Volume: FakeNode,
@@ -131,7 +165,7 @@ async function boot({ norm = fixtureNorm(), pieces = {} } = {}) {
     process.exit(passed === results.length ? 0 : 1);   // exit: the page's timers would keep the process alive
   };
   return {
-    P, C, L: P.state.listen, norm, pieces, events, sounds, now, sleep, check, done,
+    P, C, L: P.state.listen, norm, pieces, events, sounds, drumFetches, now, sleep, check, done,
     el: id => elsById[id],
     /** Dispatch a keydown to the document listeners; returns whether one of them called preventDefault. */
     key: (k, extra = {}) => { const e = { key: k, target: null, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra }; (docListeners.keydown || []).forEach(f => f(e)); return e.defaultPrevented; },

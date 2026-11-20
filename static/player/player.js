@@ -17,6 +17,7 @@
  *   createBeatClock        beat-clock.js              the shared beat clock: Listen, play-along, metronome, page turns (3)
  *   createTimingLog        player-playalong.js        play-along's expected / played pairing and per-pass timing log (3)
  *   metronome / patternFor  metronome.js               the click, driven by the clock's beats (2b, 3)
+ *   drums / grooveItems     drums.js                   the drum groove in place of the click, 4/4 only (C): samples, synth fallback
  *
  * Nothing musical lives here: the norm → steps → ids mapping is the
  * follower's, the engraving is the staff's. This file owns the DOM, the
@@ -89,8 +90,9 @@
  * transport under way (its items and shift were built for the other
  * setting); the band volume is live.
  *
- * Mixer (player-mixer.js, `mixer`): the guide, band and click levels — one
- * slider-to-gain curve, each remembered under its own key.
+ * Mixer (player-mixer.js, `mixer`): the guide, band, click and drums levels
+ * — one slider-to-gain curve, each remembered under its own key (click and
+ * drums share the Metronome row's one Volume and its key).
  *
  * Loop for practice (state.loop mirrors follower.loop()): "Repeat bar" /
  * "Repeat line" toggles act on the current bar / drawn line; tapping two
@@ -234,6 +236,28 @@
  * Space during the count-in cancels it (clock.stop: no note is ever
  * scheduled); finishListen stops every click already queued.
  *
+ * Drums (C; drums.js, state.metro.sound, METRO_SOUND_KEY): "Click | Drums"
+ * beside the Metronome checkbox chooses what the beat is; the checkbox
+ * still turns it on and off and the row's Volume sets whichever is chosen
+ * (the mixer's 'click' and 'drums' levels move together; each has its own
+ * ceiling). The groove — kick on 1 and 3, snare on 2 and 4, closed hi-hat
+ * on every eighth, straight — is 4/4 only: every transport in 4/4 carries
+ * it as clock items of part 'drums' (grooveItems over the run's bars), so
+ * it follows tempo, loops, the form, pause and resume as the notes do, in
+ * Listen and play-along, beside the guide and the band. The items are
+ * always there and gated when they come up (drumItem: checkbox on, Drums
+ * chosen), so the checkbox and the choice join or leave mid-play and
+ * neither stops the transport. Drum hits are never lit, expected or
+ * logged. The count-in stays on the clock's beat events: stick clicks
+ * (drums.stick) when Drums is in effect, else the metronome's click. In
+ * any other meter the Drums button is disabled, a note under the row says
+ * why, and the click plays (the choice itself stays remembered). One stop
+ * path: releaseSound cancels every queued hit. The sounds are four recorded
+ * one-shots (static/audio/drums/, CC0), loaded once when audio starts
+ * (drums.load in onAudioRunning); a hit whose sample is not in yet, or
+ * whose file failed, plays its synthesized stand-in (drums.samples says
+ * which). The off-beat hats are a little softer (the item's `level`).
+ *
  * Sustain pedal (3; state.pedal / state.sustained): CC64 from the selected
  * input. For "Sound for my notes" only: while it is down a key release
  * does not stop the echo; lifting it releases every note whose key is
@@ -254,6 +278,7 @@ import { VoicingKeyboard } from '../shared/voicing-keyboard.js';
 import { loadTone, midiToNoteName, SALAMANDER_URLS, SALAMANDER_BASE } from '../shared/voicing-player.js';   // Tone + the piano samples only; VoicingPlayer itself is no longer used here (3)
 import { listenSchedule, pieceBpm, tempoLabel, DEFAULT_BPM } from './player-listen.js';
 import { metronome, patternFor, DEFAULT_VOLUME as METRO_VOLUME_DEFAULT } from './metronome.js';
+import { drums, drumsFor, grooveItems } from './drums.js';
 import { createBeatClock, LOOKAHEAD } from './beat-clock.js';
 import { createTimingLog, audioTimeFromStamp, HIT_WINDOW_MS } from './player-playalong.js';
 import { playOrderOf, playedSequence, firstSeqOf, isJump, nextLineAt, prevLineAt, jumpLabel } from './player-form.js';
@@ -270,6 +295,7 @@ const TEMPO_DEFAULT = 100;
 const TEMPO_MIN = 25, TEMPO_MAX = 200, TEMPO_STEP = 1;
 const METRO_KEY = 'songlab_player_metro_on';          // Metronome checkbox (click while Listen plays); off by default
 const METRO_VOLUME_KEY = 'songlab_player_metro_volume'; // click volume 0–100; default 70
+const METRO_SOUND_KEY = 'songlab_player_metro_sound';  // "Click | Drums" (Listen card): what the beat is; 'click' by default. Drums play in 4/4 only (drums.js drumsFor)
 const COUNT_IN_KEY = 'songlab_player_count_in';       // count-in bars 0 / 1 / 2 before Listen's first note; default 1
 const COUNT_IN_DEFAULT = 1, COUNT_IN_MAX = 2;
 const RACK_OPEN_KEY = 'songlab_player_rack_open';     // control rack open ('1') / closed ('0'); read only when auto-collapse is off
@@ -282,6 +308,7 @@ const BAND_ON_KEY = 'songlab_player_band_on';         // "Play with the band" ch
 const BAND_VOLUME_KEY = 'songlab_player_band_volume'; // band volume 0–100; default 60
 const BAND_DEFAULT = 60;
 const CLICK_CEILING = 0.75;                            // the click's gain at 100 on the mixer's curve: at the default 70 it is the level it always was (0.44)
+const DRUMS_CEILING = 0.6;                             // the kit's gain at 100 on the mixer's curve: 0.35 at the default 70, under the click's 0.44 — with the samples the kick peaks near 0.42, the snare 0.19, the on-beat hat 0.12; at 100 kick + snare + hat together peak at 0.76 (drums.js DRUM_SPECS)
 const FORM_DEFAULT = 'repeats';
 const GUIDE_KEY = 'songlab_player_guide_volume';      // play-along "Guide volume" 0–100 (0 = click only); default 35
 const GUIDE_DEFAULT = 35;
@@ -322,6 +349,7 @@ const els = {
   listen: $('pl-listen'), playAlong: $('pl-playalong'), tempo: $('pl-tempo'), tempoReadout: $('pl-tempo-readout'),
   guide: $('pl-guide'), guideReadout: $('pl-guide-readout'),   // Listen card: play-along guide volume
   metro: $('pl-metro'), metroVolume: $('pl-metro-volume'), countIn: $('pl-count-in'),   // Listen card, bottom row (2b)
+  beatClick: $('pl-beat-click'), beatDrums: $('pl-beat-drums'), beatNote: $('pl-beat-note'),   // …its "Click | Drums" choice and the note for a meter the drums cannot play
   trouble: $('pl-trouble'),
   viewLines: $('pl-lines'),   // Mode card: "Lines" 1 | 2 (segmented)
   form: $('pl-form'), formRow: $('pl-form-row'),   // Mode card: "Play repeats" checkbox and its label (hidden for a piece with no play order)
@@ -356,7 +384,7 @@ const state = {
   tempoPct: TEMPO_DEFAULT,   // Listen tempo, percent of the piece's tempo (TEMPO_KEY)
   listen: { active: false, started: false, paused: null, startBar: null, run: 0, mode: null, token: 0, range: null, schedule: null, bar: null, seq: null, startSeq: null, drawnSeq: null, visitLine: null, pass: 1, drawn: -1, shift: 0, band: false, bandNotes: new Set(), sounding: new Set(), flash: new Map(), missed: new Set(), guideOn: new Set() },   // the transport (Listen or play-along) under way; see the header. mode: 'listen' | 'playalong'; range: { from, to, loop }; paused: { mode, range, bar } while a transport is paused (else null); startBar: the bar this start began at (a resume: the paused bar); run: counts fresh starts (a resume keeps it); bar / pass: where the clock is; seq: the played index of that bar (the clock's; with range.form it tells the times through a repeated bar apart), startSeq / drawnSeq: the seq this start began at / the line on the staff was turned to (form runs only, else null); visitLine: the line the clock is on (missed-note clearing); shift: semitones the solo sounds / is expected / lights above where it is written (the band's soloTranspose while it plays, else 0); band: this run plays the band; bandNotes: band notes sounding; drawn: the line on the staff; flash / missed: play-along feedback
   guide: GUIDE_DEFAULT,      // play-along guide volume 0–100 (GUIDE_KEY)
-  metro: { on: false, volume: METRO_VOLUME_DEFAULT, countIn: COUNT_IN_DEFAULT },   // Metronome row (METRO_KEY, METRO_VOLUME_KEY, COUNT_IN_KEY)
+  metro: { on: false, volume: METRO_VOLUME_DEFAULT, countIn: COUNT_IN_DEFAULT, sound: 'click' },   // Metronome row (METRO_KEY, METRO_VOLUME_KEY, COUNT_IN_KEY); sound: 'click' | 'drums' as chosen (METRO_SOUND_KEY) — drumsOn() says whether the drums really play
   rack: { open: false, auto: true, armed: false, pointer: false },   // control rack: open; auto-collapse on; armed = opened since the last auto-collapse; pointer = a drag inside it is under way (RACK_OPEN_KEY, RACK_AUTO_KEY)
   held: new Set(),        // midis down on the MIDI device (de-duplicated by the input)
   echoing: new Set(),     // midis sounding on the sampler for MIDI echo, key down
@@ -399,8 +427,10 @@ const mixer = createMixer({
   guide: { key: GUIDE_KEY, level: GUIDE_DEFAULT },
   band: { key: BAND_VOLUME_KEY, level: BAND_DEFAULT },
   click: { key: METRO_VOLUME_KEY, level: METRO_VOLUME_DEFAULT, ceiling: CLICK_CEILING },
+  drums: { key: METRO_VOLUME_KEY, level: METRO_VOLUME_DEFAULT, ceiling: DRUMS_CEILING },   // the same slider and key as the click (setMetroVolume moves both)
 });
 mixer.attach('click', g => metronome.setGain(g));
+mixer.attach('drums', g => drums.setGain(g));
 /**
  * The player's event bus — the hook for the future scoring and coach
  * (window.songlabPlayer.on). Events: 'playalong:start' / 'playalong:stop',
@@ -523,6 +553,7 @@ function onAudioRunning() {
   ensureSampler();                   // preload the echo piano; not awaited
   loadGuidePiano().catch(() => {});  // and Listen's / the guide's (the samples are shared by the browser cache)
   if (bandOn()) loadBandPiano().catch(() => {});   // and the band's, when it is going to play
+  drums.load();                      // and the kit's four samples (never rejects; until they are in, a hit plays its synth)
 }
 /** A pending Tone.start() (no activation yet) resolves on the next gesture anywhere, even one our own listener misses: follow the context's state. */
 let _watching = false;
@@ -1545,6 +1576,7 @@ async function startTransport(mode, opts = {}) {
   let items = transportItems(schedule);
   if (band) items = items.concat(transportItems(listenSchedule(band.norm, { sequence: runSequence(state.norm, range), bpm: 60 }), 'band'));   // on the solo's played sequence, by bar number: in step whatever the solo does
   const pattern = patternFor(state.norm.time, state.norm.beatsPerBar);   // the same grid as the schedule's bar length
+  if (drumsOk()) items = items.concat(grooveItems(runSequence(state.norm, range).length, { barQuarters: pattern.bar }));   // the groove over every bar of the run, 4/4 only; sounded or not when each hit comes up (drumItem)
   cancelPending();
   const token = ++L.token;
   const startSeq = F ? (resume && resume.seq != null ? resume.seq : F.fromSeq) : null;
@@ -1674,6 +1706,7 @@ function releaseBand() {
 function releaseSound() {
   releaseGuide();
   releaseBand();
+  drums.stop();   // drum hits already queued, count-in sticks included
 }
 
 /**
@@ -1693,9 +1726,11 @@ async function listenTurnTo(index, token, { animate = true } = {}) {
 
 // ── The clock's listeners. on(): ahead of time, with the exact audio time → sound. onDue(): on time → paint. ──
 
-/** The metronome is driven by the clock: count-in beats always click, the rest while the checkbox is on (read per beat, so it joins / leaves at once). */
+/** The metronome is driven by the clock: count-in beats always click — stick clicks when the drums are in effect — and the rest click while the checkbox is on (read per beat, so it joins / leaves at once). With the drums in effect the beat after the count-in is the groove's items (drumItem), not this. */
 clock.on('beat', pos => {
-  if (pos.countIn || state.metro.on) metronome.click(pos.audioTime, { accent: pos.accent, countIn: pos.countIn });
+  const kit = drumsOn();
+  if (pos.countIn && kit) drums.stick(pos.audioTime, { accent: pos.accent });
+  else if (pos.countIn || (state.metro.on && !kit)) metronome.click(pos.audioTime, { accent: pos.accent, countIn: pos.countIn });
 });
 /** A bar on another line: turn the page as soon as it is scheduled (up to the lookahead, 150 ms, before its downbeat). */
 clock.on('bar', pos => {
@@ -1709,15 +1744,15 @@ clock.on('bar', pos => {
  * handler (the item is scheduled, up to the lookahead early, with its exact
  * audio time: make the sound) and a `due` one (the audio clock is there:
  * paint), either of which may be missing. An item with no part is the
- * solo's. A new part (drums) is an entry here and a release in releaseSound.
+ * solo's. A new part is an entry here and a release in releaseSound.
  *   solo   the piece itself: the guide piano, the lit notes and keys, and in play-along the expected notes
  *   band   the accompaniment: its own piano; never lit, expected or logged
- *   drums  (reserved)
+ *   drums  the groove's hits (drums.js grooveItems): the kit; never lit, expected or logged
  */
 const ITEM_PARTS = {
   solo: { ahead: soloItem, due: pos => lightNote(pos.item.note, pos.item.kind === 'on') },
   band: { ahead: bandItem, due: null },
-  drums: { ahead: null, due: null },
+  drums: { ahead: drumItem, due: null },
 };
 const partOf = item => ITEM_PARTS[(item && item.part) || 'solo'] || null;
 clock.on('item', pos => {
@@ -1771,6 +1806,10 @@ function bandItem(pos, L) {
   bandPiano.triggerAttack(name, pos.audioTime, GUIDE_VELOCITY[note.hand] || 0.7);
   L.bandNotes.add(note);
   bandCount.set(note.midi, (bandCount.get(note.midi) || 0) + 1);
+}
+/** A hit of the groove: sound only, while the Metronome checkbox is on and the drums are in effect — read per hit, so both join / leave at once. */
+function drumItem(pos) {
+  if (state.metro.on && drumsOn()) drums.hit(pos.audioTime, pos.item.drum, { level: pos.item.level });   // level: the hit's velocity (the off-beat hats are a little softer)
 }
 clock.on('loopWrap', pos => {
   const L = state.listen;
@@ -1961,11 +2000,36 @@ function setMetronome(on, { save = true } = {}) {
   els.metro.checked = state.metro.on;
   if (save) saveMetro(METRO_KEY, state.metro.on ? '1' : '0');
   syncSummary();
-  if (!state.metro.on) metronome.stop({ countIn: false });
+  if (!state.metro.on) { metronome.stop({ countIn: false }); drums.stop({ countIn: false }); }
 }
 function setMetroVolume(v, { save = true } = {}) {
   state.metro.volume = mixer.set('click', v, { save });   // the mixer's click level: the shared curve, under CLICK_CEILING (attached to metronome.setGain)
+  mixer.set('drums', state.metro.volume, { save: false });   // …and the kit's, under DRUMS_CEILING: one slider for whichever is chosen
   els.metroVolume.value = String(state.metro.volume);
+}
+/** Can this piece have the groove (drums.js drumsFor: 4/4 only)? With no piece loaded: yes, nothing to refuse. */
+function drumsFit() { return state.norm ? drumsFor(state.norm.time, state.norm.beatsPerBar) : { ok: true, reason: '' }; }   // declarations, not consts: syncSummary runs before this line is reached
+function drumsOk() { return !!state.norm && drumsFit().ok; }
+/** The drums are what the beat is right now: chosen, and the piece is in 4/4. Otherwise the click. */
+function drumsOn() { return state.metro.sound === 'drums' && drumsOk(); }
+/** "Click | Drums": what the beat is. Live — a transport under way keeps running and changes sound at the next beat; whatever the other one had queued is cut (a count-in under way finishes as it began). */
+function setBeatSound(v, { save = true } = {}) {
+  state.metro.sound = v === 'drums' ? 'drums' : 'click';
+  if (save) saveMetro(METRO_SOUND_KEY, state.metro.sound);
+  metronome.stop({ countIn: false }); drums.stop({ countIn: false });
+  syncBeatSound();
+  return state.metro.sound;
+}
+/** The choice as shown: the pressed button is what plays; in a meter the drums cannot play, Drums is disabled and the note says why (load / unload / setBeatSound). */
+function syncBeatSound() {
+  const fit = drumsFit(), kit = drumsOn();
+  els.beatClick.setAttribute('aria-pressed', String(!kit));
+  els.beatDrums.setAttribute('aria-pressed', String(kit));
+  els.beatDrums.disabled = !fit.ok;
+  els.beatDrums.title = fit.ok ? 'A drum groove on the beat: kick, snare and hi-hat' : fit.reason;
+  els.beatNote.textContent = fit.ok ? '' : fit.reason;
+  els.beatNote.hidden = fit.ok;
+  syncSummary();
 }
 /** 0 / 1 / 2 bars before the first note of Listen / play-along (aria-pressed on the segment buttons); applies to the next start. */
 function setCountIn(bars, { save = true } = {}) {
@@ -1978,6 +2042,9 @@ function setCountIn(bars, { save = true } = {}) {
 setMetronome(readMetro(METRO_KEY) === '1', { save: false });
 setMetroVolume(readMetro(METRO_VOLUME_KEY) ?? METRO_VOLUME_DEFAULT, { save: false });
 setCountIn(readMetro(COUNT_IN_KEY) ?? COUNT_IN_DEFAULT, { save: false });
+setBeatSound(readMetro(METRO_SOUND_KEY), { save: false });
+els.beatClick.addEventListener('click', () => { setBeatSound('click'); els.beatClick.blur(); });
+els.beatDrums.addEventListener('click', () => { if (!els.beatDrums.disabled) setBeatSound('drums'); els.beatDrums.blur(); });
 els.metro.addEventListener('change', () => { setMetronome(els.metro.checked); els.metro.blur(); });
 els.metroVolume.addEventListener('input', () => setMetroVolume(els.metroVolume.value));
 els.metroVolume.addEventListener('change', () => els.metroVolume.blur());   // so Space goes back to the page, as the tempo slider
@@ -2090,7 +2157,7 @@ els.form.addEventListener('change', () => { setForm(els.form.checked ? 'repeats'
 function syncSummary() {
   const parts = [
     `${state.tempoPct}%`,
-    `metronome ${state.metro.on ? 'on' : 'off'}`,
+    state.metro.on && drumsOn() ? 'drums on' : `metronome ${state.metro.on ? 'on' : 'off'}`,
     `count-in ${state.metro.countIn}`,
     state.hands === 'both' ? 'both hands' : state.hands.toUpperCase(),
   ];
@@ -2351,7 +2418,7 @@ function unload() {
   stopListen();
   showNotes(null, null);
   state.norm = null; state.bar = null; state.steps = []; state.follower = null; state.wrong = 0;
-  state.order = null; syncForm();
+  state.order = null; syncForm(); syncBeatSound();
   state.band = null; syncBand();
   state.lines = []; state.lineWarnings = []; state.line = -1;
   cancelPending(); clearTrouble(); recorder.cancel();
@@ -2374,6 +2441,7 @@ async function load(name) {
     const norm = await res.json();
     state.piece = name; state.norm = norm; state.wrong = 0;
     state.order = playOrderOf(norm); syncForm();   // null: the piece has no play order and plays as written
+    syncBeatSound();                                // Drums only in 4/4: the button and its note follow the piece
     state.band = null; syncBand();                  // the last piece's band goes now; this piece's is fetched once it is up (loadBand)
     showHeader(name, norm);
     showNotes(name, norm);
@@ -2503,6 +2571,7 @@ window.__player = {
   setNotesOpen, songNotesOf, isAnchor, get notes() { return state.notes; }, get anchors() { return state.anchors; },
   listen, playAlong, stopListen, pauseListen, resumeListen, clockSample, clockDrift, clockProbe, get tempo() { return state.tempoPct; }, set tempo(v) { setTempoPct(v); }, clock, timing, bus, setGuideVolume, controller: songlabPlayer,
   metronome, setMetronome, setMetroVolume, setCountIn, get metro() { return state.metro; },
+  drums, setBeatSound, drumsOn, drumsOk,
   setRackOpen, setRackAuto, get rack() { return state.rack; },
   setLines, viewFor, nextLine, get lines() { return state.viewLines; },
   setForm, transportForm, get form() { return state.form; }, get order() { return state.order; },

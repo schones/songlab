@@ -1,0 +1,24 @@
+Drum one-shots for the player's drum groove (static/player/drums.js).
+
+Kit:      Gogodze Phu Vol II, v1.001
+Author:   Karoryfer Samples (Karoryfer Lecolds)
+Licence:  CC0 1.0 Universal (public domain dedication) — the LICENSE file in
+          the kit's download is the full CC0 1.0 legal code.
+Source:   https://sfzinstruments.github.io/drums  (listing)
+          https://github.com/sfzinstruments/karoryfer.gogodze-phu-vol-ii/releases/download/v1.001/Karoryfer_Gogodze_Phu_vol_II.v1.001.zip
+Fetched:  2026-11-20
+
+Each file is one hit from one microphone of the kit (16-bit mono, 44.1 kHz):
+
+  kick.flac   Samples/kick_mic/ks_vl6_rr1.wav    kick, velocity layer 6 of 6 (the hardest),   0.40 s
+                                                 kick mic
+  snare.flac  Samples/snare_mic/sc_vl5_rr1.wav   snare centre hit, layer 5 of 6, snare mic    0.26 s
+  hat.flac    Samples/oh_mic/hc_vl3_rr1.wav      closed hi-hat, layer 3 of 4, overhead mic    0.20 s
+  stick.flac  Samples/oh_mic/ss_vl3_rr1.wav      snare sidestick, layer 3 of 4, overhead mic  0.15 s
+              (the count-in's stick click)
+
+Processing, the same for all four: start 1 ms before the onset (the first
+sample over 5 % of the peak) with a 0.5 ms fade-in; cut to the length above;
+raised-cosine fade-out over the last 50 / 40 / 40 / 30 ms; normalised to a
+peak of -1 dBFS; encoded losslessly as FLAC. No EQ, compression or resampling.
+The relative levels are set in drums.js (DRUM_SPECS), not in the files.
